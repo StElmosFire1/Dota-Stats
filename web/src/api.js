@@ -1397,6 +1397,34 @@ export async function submitMatchPrediction(matchId, predictorName, predictedWin
   return data;
 }
 
+// Task #449 — Match prediction game.
+export async function getOpenPredictionWindows() {
+  const r = await fetch(BASE + '/predictions/open', { credentials: 'same-origin' });
+  if (!r.ok) throw new Error('Failed to load open predictions');
+  return r.json();
+}
+export async function submitMatchPick(matchId, predictedWinner) {
+  const r = await fetch(BASE + '/predictions', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ match_id: matchId, predicted_winner: predictedWinner }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || 'Failed to submit prediction');
+  return data;
+}
+export async function getMyPredictions() {
+  const r = await fetch(BASE + '/predictions/me', { credentials: 'same-origin' });
+  if (r.status === 401) throw new Error('Sign in with Steam to view your predictions.');
+  if (!r.ok) throw new Error('Failed to load your predictions');
+  return r.json();
+}
+export async function getPredictionLeaderboard(type = 'accuracy') {
+  const r = await fetch(BASE + '/predictions/leaderboard?type=' + encodeURIComponent(type), { credentials: 'same-origin' });
+  if (!r.ok) throw new Error('Failed to load leaderboard');
+  return r.json();
+}
+
 export async function getPlayerPredictionStats(accountId) {
   return fetchJson(`/players/${accountId}/predictions`);
 }

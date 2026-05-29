@@ -2010,36 +2010,34 @@ export default function PlayerProfile() {
         <section style={{ marginBottom: 24 }}>
           <h2 className="section-title">🎯 Match Predictions</h2>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{
-              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
-              padding: '14px 20px', minWidth: 120, textAlign: 'center',
-            }}>
-              <div style={{ fontSize: 24, fontWeight: 800 }}>{predictionStats.total}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Total Predictions</div>
-            </div>
-            <div style={{
-              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
-              padding: '14px 20px', minWidth: 120, textAlign: 'center',
-            }}>
-              <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent-green)' }}>{predictionStats.correct_count}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Correct</div>
-            </div>
-            <div style={{
-              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
-              padding: '14px 20px', minWidth: 120, textAlign: 'center',
-            }}>
-              <div style={{
-                fontSize: 24, fontWeight: 800,
-                color: parseInt(predictionStats.total) > 0
-                  ? (parseInt(predictionStats.correct_count) / parseInt(predictionStats.total) >= 0.5 ? 'var(--accent-green)' : 'var(--accent-red)')
-                  : 'var(--text-primary)',
-              }}>
-                {parseInt(predictionStats.total) > 0
-                  ? `${Math.round((parseInt(predictionStats.correct_count) / parseInt(predictionStats.total)) * 100)}%`
-                  : '—'}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Accuracy</div>
-            </div>
+            {(() => {
+              // Task #449 — widget now reads current_streak / best_streak when
+              // the server returns them (new getPlayerPredictionStreak helper);
+              // falls back gracefully to total/correct only for older payloads.
+              const total = parseInt(predictionStats.total) || 0;
+              const correct = parseInt(predictionStats.correct_count) || 0;
+              const acc = total > 0 ? Math.round((correct / total) * 100) : 0;
+              const curr = parseInt(predictionStats.current_streak) || 0;
+              const best = parseInt(predictionStats.best_streak) || 0;
+              const card = (label, value, color = 'var(--text-primary)') => (
+                <div key={label} style={{
+                  background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+                  padding: '14px 20px', minWidth: 110, textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color }}>{value}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{label}</div>
+                </div>
+              );
+              return [
+                card('Total Predictions', total),
+                card('Correct', correct, 'var(--accent-green)'),
+                card('Accuracy', `${acc}%`, acc >= 50 ? 'var(--accent-green)' : 'var(--accent-red)'),
+                ...(curr > 0 || best > 0 ? [
+                  card('Current Streak', curr, curr >= 3 ? 'var(--amber, #f59e0b)' : 'var(--text-primary)'),
+                  card('Best Streak', best, 'var(--brass, #c5a975)'),
+                ] : []),
+              ];
+            })()}
           </div>
         </section>
       )}

@@ -5546,21 +5546,148 @@ function createApiRouter(startupStatus = {}, _app = null) {
 
   router.get('/predictions/open', async (req, res) => {
     try {
-      const data = await db.getOpenPrediction();
-      res.json({ prediction: data });
+      // Task #449 — return all currently-open prediction windows so the
+      // /predictions page can render the full picker list. Falls back to
+      // the legacy single-row shape under `prediction` for old clients.
+      const windows = await db.listOpenMatchPredictionWindows(25).catch(() => []);
+      const viewerAccountId = req.session?.accountId ? parseInt(req.session.accountId) : null;
+      const enriched = await Promise.all((windows || []).map(async (w) => {
+        const mp = await db.getMatchPredictions(w.match_id).catch(() => []);
+        const radiantPicks = mp.filter(x => x.predicted_winner === 'radiant').length;
+        const direPicks    = mp.filter(x => x.predicted_winner === 'dire').length;
+        let myPick = null;
+        if (viewerAccountId) {
+          const mine = mp.find(x => x.predictor_account_id != null
+            && String(x.predictor_account_id) === String(viewerAccountId));
+          if (mine) myPick = mine.predicted_winner;
+        }
+        const isInMatch = viewerAccountId
+          ? [...(w.radiant_account_ids || []), ...(w.dire_account_ids || [])]
+              .some(a => String(a) === String(viewerAccountId))
+          : false;
+        return {
+          match_id: w.match_id,
+          lobby_name: w.lobby_name,
+          opened_at: w.opened_at,
+          locked_at: w.locked_at,
+          locked: !!w.locked_at,
+          radiant_picks: radiantPicks,
+          dire_picks: direPicks,
+          total_picks: mp.length,
+          my_pick: myPick,
+          in_match: isInMatch,
+        };
+      }));
+      // Back-compat: also expose the most-recent legacy shape under `prediction`.
+      const legacy = await db.getOpenPrediction().catch(() => null);
+      res.json({ open: enriched, prediction: legacy });
     } catch (err) {
-      res.status(500).json({ error: 'Failed to fetch open prediction' });
+      console.error('[API] /predictions/open:', err.message);
+      res.status(500).json({ error: 'Failed to fetch open predictions' });
     }
   });
 
-  router.post('/match-predictions/:matchId', async (req, res) => {
+  // Task #449 — auth-required submit (with anti-cheat + rate limit).
+  router.post('/predictions', publicWriteLimiter, express.json(), async (req, res) => {
     try {
-      const matchId = parseInt(req.params.matchId);
-      const { predictor_account_id, predictor_name, predicted_winner } = req.body;
-      if (!predictor_name || !['radiant', 'dire'].includes(predicted_winner)) {
-        return res.status(400).json({ error: 'predictor_name and predicted_winner (radiant|dire) required' });
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam to predict.' });
+      const { match_id, predicted_winner } = req.body || {};
+      const matchId = parseInt(match_id);
+      if (!matchId || !['radiant', 'dire'].includes(predicted_winner)) {
+        return res.status(400).json({ error: 'match_id and predicted_winner (radiant|dire) required' });
       }
-      const pred = await db.upsertMatchPrediction(matchId, predictor_account_id || null, predictor_name, predicted_winner);
+      const win = await db.getMatchPredictionWindow(matchId);
+      if (!win) return res.status(404).json({ error: 'Prediction window not open for this match.' });
+      if (win.locked_at) return res.status(409).json({ error: 'Predictions for this match are locked.' });
+      if (win.graded_at) return res.status(409).json({ error: 'This match has already been graded.' });
+      const inMatch = [...(win.radiant_account_ids || []), ...(win.dire_account_ids || [])]
+        .some(a => String(a) === String(accountId));
+      if (inMatch) return res.status(403).json({ error: "You can't predict a match you're playing in." });
+      // Resolve a sensible predictor_name: prefer the canonical nickname.
+      let predictorName = null;
+      try {
+        predictorName = await db.getNickname(accountId).catch(() => null);
+      } catch (_) {}
+      if (!predictorName) predictorName = req.session?.personaname || `Player ${accountId}`;
+      const pred = await db.upsertMatchPrediction(matchId, accountId, predictorName, predicted_winner);
+      res.json({ prediction: pred });
+    } catch (err) {
+      console.error('[API] POST /predictions:', err.message);
+      res.status(500).json({ error: 'Failed to save prediction' });
+    }
+  });
+
+  // Task #449 — signed-in user's prediction history + lifetime stats.
+  router.get('/predictions/me', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam to view your predictions.' });
+      const [stats, history] = await Promise.all([
+        db.getPlayerPredictionStreak(accountId),
+        db.getPlayerPredictionHistory(accountId, 50),
+      ]);
+      res.json({ stats, history });
+    } catch (err) {
+      console.error('[API] /predictions/me:', err.message);
+      res.status(500).json({ error: 'Failed to load your predictions' });
+    }
+  });
+
+  // Task #449 — three-tab leaderboard: ?type=accuracy|streak|season.
+  router.get('/predictions/leaderboard', async (req, res) => {
+    try {
+      const type = req.query.type || 'accuracy';
+      if (type === 'streak') {
+        const rows = await db.getPredictionStreakLeaderboard({ limit: 50 });
+        return res.json({ type, rows });
+      }
+      if (type === 'season') {
+        const seasonId = req.query.season_id ? parseInt(req.query.season_id) : null;
+        let effective = seasonId;
+        if (!effective) {
+          const active = await db.getActiveSeason().catch(() => null);
+          effective = active?.id || null;
+        }
+        if (!effective) return res.json({ type, rows: [], season_id: null });
+        const rows = await db.getPredictionSeasonLeaderboard({ seasonId: effective, minPredictions: 5, limit: 50 });
+        return res.json({ type, rows, season_id: effective });
+      }
+      // default: accuracy
+      const min = parseInt(req.query.min_predictions) || 25;
+      const rows = await db.getPredictionAccuracyLeaderboard({ minPredictions: min, limit: 50 });
+      return res.json({ type: 'accuracy', rows, min_predictions: min });
+    } catch (err) {
+      console.error('[API] /predictions/leaderboard:', err.message);
+      res.status(500).json({ error: 'Failed to load leaderboard' });
+    }
+  });
+
+  router.post('/match-predictions/:matchId', publicWriteLimiter, express.json(), async (req, res) => {
+    try {
+      // Task #449 — auth + anti-cheat hardening on the legacy endpoint.
+      const matchId = parseInt(req.params.matchId);
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam to predict.' });
+      const { predicted_winner } = req.body;
+      if (!['radiant', 'dire'].includes(predicted_winner)) {
+        return res.status(400).json({ error: 'predicted_winner (radiant|dire) required' });
+      }
+      // Task #449 — legacy endpoint now requires an open window (same
+      // contract as POST /predictions). Without this, callers could submit
+      // predictions for matches with no active window, bypassing the
+      // lifecycle entirely.
+      const win = await db.getMatchPredictionWindow(matchId);
+      if (!win) return res.status(404).json({ error: 'Prediction window not open for this match.' });
+      if (win.locked_at) return res.status(409).json({ error: 'Predictions for this match are locked.' });
+      if (win.graded_at) return res.status(409).json({ error: 'This match has already been graded.' });
+      const inMatch = [...(win.radiant_account_ids || []), ...(win.dire_account_ids || [])]
+        .some(a => String(a) === String(accountId));
+      if (inMatch) return res.status(403).json({ error: "You can't predict a match you're playing in." });
+      let predictorName = null;
+      try { predictorName = await db.getNickname(accountId).catch(() => null); } catch (_) {}
+      if (!predictorName) predictorName = req.session?.personaname || `Player ${accountId}`;
+      const pred = await db.upsertMatchPrediction(matchId, accountId, predictorName, predicted_winner);
       res.json({ prediction: pred });
     } catch (err) {
       console.error('[API] Error saving prediction:', err.message);
@@ -5579,7 +5706,10 @@ function createApiRouter(startupStatus = {}, _app = null) {
 
   router.get('/players/:accountId/predictions', async (req, res) => {
     try {
-      const stats = await db.getPlayerPredictionStats(parseInt(req.params.accountId));
+      // Task #449 — upgraded to return current_streak / best_streak / accuracy
+      // alongside the legacy total + correct_count fields the profile widget
+      // already consumed. Backwards-compatible shape — extra keys are additive.
+      const stats = await db.getPlayerPredictionStreak(parseInt(req.params.accountId));
       res.json({ stats });
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch prediction stats' });
@@ -19628,6 +19758,49 @@ async function processReplayJob(jobId, filePath, ip, patch = null, opts = {}) {
       }
     } catch (e) {
       console.warn('[Rivals] post-match hook failed:', e.message);
+    }
+
+    // Task #449 — Match prediction grader. Fan-out grades every open
+    // prediction for this match, then DMs each predictor via notify() with
+    // the result of their call (opt-in via `prediction_graded` event).
+    // Best-effort — never blocks the upload pipeline.
+    try {
+      if (typeof db.gradeMatchPredictionWindow === 'function' && matchStats?.matchId != null) {
+        const winnerTeam = matchStats.radiantWin ? 'radiant' : 'dire';
+        const graded = await db.gradeMatchPredictionWindow(matchStats.matchId, winnerTeam).catch(() => []);
+        if (graded && graded.length > 0) {
+          const { notify } = require('../notify');
+          const correctTotal = graded.filter(g => g.correct).length;
+          for (const g of graded) {
+            try {
+              const aid = g.predictor_account_id;
+              if (!aid) continue;
+              const verdict = g.correct ? '✅ Correct call!' : '❌ Wrong call.';
+              const winnerLabel = winnerTeam === 'radiant' ? 'Radiant' : 'Dire';
+              notify(aid, 'prediction_graded', {
+                discord: {
+                  embed: {
+                    title: `${verdict} — Match ${matchStats.matchId}`,
+                    description: `You picked **${g.predicted_winner === 'radiant' ? 'Radiant' : 'Dire'}**. ${winnerLabel} won.`,
+                    color: g.correct ? 0x22c55e : 0xef4444,
+                    fields: [
+                      { name: 'This match', value: `${correctTotal}/${graded.length} predictors were right`, inline: true },
+                    ],
+                    footer: { text: 'OCE Inhouse — Match Predictions · /predictions' },
+                  },
+                },
+                push: {
+                  title: g.correct ? 'Prediction: WIN' : 'Prediction: loss',
+                  body: `${winnerLabel} won match ${matchStats.matchId}.`,
+                  url: '/predictions',
+                },
+              }).catch(() => {});
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Predictions] grader hook failed:', e.message);
     }
 
     // Notify Discord about achievements granted inside recordMatch()

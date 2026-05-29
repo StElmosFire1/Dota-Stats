@@ -592,6 +592,31 @@ async function init() {
       )
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_match_predictions_match ON match_predictions(match_id)`);
+    // Task #449 — match prediction game. Per-account index for streak queries
+    // and the "my predictions" history endpoint.
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_match_predictions_account ON match_predictions(predictor_account_id, created_at DESC)`);
+
+    // Task #449 — prediction-window engine. One row per inhouse match the
+    // moment the lobby locks (post-draft, pre-first-blood). `opened_at` is
+    // set when the window opens; `locked_at` is stamped at first-blood (or
+    // matchStarted as a fallback). `radiant_account_ids` / `dire_account_ids`
+    // are captured up front so the anti-cheat check (the 10 players in the
+    // match can't predict it) survives even if `player_stats` hasn't been
+    // written yet. `winner_team` is populated by the grader so we can list
+    // recently-graded windows on the UI without re-joining `matches`.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS match_prediction_windows (
+        match_id BIGINT PRIMARY KEY,
+        lobby_name TEXT,
+        opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        locked_at TIMESTAMPTZ,
+        graded_at TIMESTAMPTZ,
+        winner_team VARCHAR(10),
+        radiant_account_ids BIGINT[] NOT NULL DEFAULT '{}',
+        dire_account_ids    BIGINT[] NOT NULL DEFAULT '{}'
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_mpw_open ON match_prediction_windows(opened_at DESC) WHERE graded_at IS NULL`);
 
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS buyin_amount_cents INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS end_date TIMESTAMPTZ`);
@@ -12222,6 +12247,281 @@ async function getOpenPrediction() {
   return { match_id: matchId, predictions: all.rows };
 }
 
+// ---------- Task #449 — Match prediction game ----------
+// Window lifecycle:
+//   openMatchPredictionWindow  → lobby locks (post-draft, pre-first-blood)
+//   lockMatchPredictionWindow  → first-blood (or matchStarted fallback)
+//   gradeMatchPredictionWindow → match completion → grader fans out
+//
+// Anti-cheat: the 10 player account_ids are captured at window open time so
+// the submit endpoint can reject in-match players even before player_stats
+// rows exist on disk.
+
+async function openMatchPredictionWindow(matchId, opts = {}) {
+  if (!matchId) return null;
+  const p = getPool();
+  const radiant = (opts.radiantAccountIds || []).filter(x => x && Number(x) > 0).map(x => parseInt(x));
+  const dire    = (opts.direAccountIds    || []).filter(x => x && Number(x) > 0).map(x => parseInt(x));
+  const r = await p.query(
+    `INSERT INTO match_prediction_windows (match_id, lobby_name, radiant_account_ids, dire_account_ids)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (match_id) DO UPDATE
+       SET radiant_account_ids = CASE WHEN array_length(EXCLUDED.radiant_account_ids,1) > 0
+                                      THEN EXCLUDED.radiant_account_ids
+                                      ELSE match_prediction_windows.radiant_account_ids END,
+           dire_account_ids    = CASE WHEN array_length(EXCLUDED.dire_account_ids,1) > 0
+                                      THEN EXCLUDED.dire_account_ids
+                                      ELSE match_prediction_windows.dire_account_ids END,
+           lobby_name = COALESCE(EXCLUDED.lobby_name, match_prediction_windows.lobby_name)
+     RETURNING *`,
+    [parseInt(matchId), opts.lobbyName || null, radiant, dire]
+  );
+  return r.rows[0];
+}
+
+async function lockMatchPredictionWindow(matchId, lockedAt = null) {
+  if (!matchId) return;
+  const p = getPool();
+  await p.query(
+    `UPDATE match_prediction_windows
+       SET locked_at = COALESCE(locked_at, $2)
+     WHERE match_id = $1`,
+    [parseInt(matchId), lockedAt || new Date()]
+  );
+}
+
+async function getMatchPredictionWindow(matchId) {
+  if (!matchId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT * FROM match_prediction_windows WHERE match_id = $1`,
+    [parseInt(matchId)]
+  );
+  return r.rows[0] || null;
+}
+
+// Returns currently-open windows (opened but not graded). Newest first.
+async function listOpenMatchPredictionWindows(limit = 25) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT match_id, lobby_name, opened_at, locked_at, radiant_account_ids, dire_account_ids
+       FROM match_prediction_windows
+      WHERE graded_at IS NULL AND locked_at IS NULL
+      ORDER BY opened_at DESC
+      LIMIT $1`,
+    [Math.min(100, Math.max(1, parseInt(limit) || 25))]
+  );
+  return r.rows;
+}
+
+// Returns the most recently graded windows so the UI can render a "recent
+// results" strip. Includes winner + grade counts.
+async function listRecentGradedPredictionWindows(limit = 10) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT w.match_id, w.lobby_name, w.opened_at, w.graded_at, w.winner_team,
+            (SELECT COUNT(*) FROM match_predictions mp WHERE mp.match_id = w.match_id)::int AS total_predictions,
+            (SELECT COUNT(*) FROM match_predictions mp WHERE mp.match_id = w.match_id AND mp.correct)::int AS correct_predictions
+       FROM match_prediction_windows w
+      WHERE w.graded_at IS NOT NULL
+      ORDER BY w.graded_at DESC
+      LIMIT $1`,
+    [Math.min(50, Math.max(1, parseInt(limit) || 10))]
+  );
+  return r.rows;
+}
+
+// Grade every open prediction for a finished match. Returns the list of
+// affected predictions (account_id + correct) so the caller can DM each
+// predictor through notify().
+async function gradeMatchPredictionWindow(matchId, winnerTeam) {
+  if (!matchId || !['radiant', 'dire'].includes(winnerTeam)) return [];
+  const p = getPool();
+  await p.query(
+    `UPDATE match_predictions
+       SET resolved = true,
+           correct = CASE WHEN predicted_winner = $2 THEN true ELSE false END
+     WHERE match_id = $1`,
+    [parseInt(matchId), winnerTeam]
+  );
+  await p.query(
+    `INSERT INTO match_prediction_windows (match_id, winner_team, graded_at, locked_at)
+       VALUES ($1, $2, NOW(), COALESCE(
+         (SELECT locked_at FROM match_prediction_windows WHERE match_id = $1),
+         NOW()))
+       ON CONFLICT (match_id) DO UPDATE
+         SET winner_team = EXCLUDED.winner_team,
+             graded_at   = NOW(),
+             locked_at   = COALESCE(match_prediction_windows.locked_at, NOW())`,
+    [parseInt(matchId), winnerTeam]
+  );
+  const r = await p.query(
+    `SELECT predictor_account_id, predictor_name, predicted_winner, correct
+       FROM match_predictions
+      WHERE match_id = $1 AND predictor_account_id IS NOT NULL`,
+    [parseInt(matchId)]
+  );
+  return r.rows;
+}
+
+// Per-account stats including current streak + best streak. Streaks walk
+// the graded predictions in chronological order; a wrong call (resets to 0)
+// or a not-yet-graded row are skipped from the streak walk.
+async function getPlayerPredictionStreak(accountId) {
+  if (!accountId) return { total: 0, correct_count: 0, current_streak: 0, best_streak: 0, accuracy: 0 };
+  const p = getPool();
+  const totalsRes = await p.query(
+    `SELECT COUNT(*) FILTER (WHERE resolved) AS total,
+            COUNT(*) FILTER (WHERE resolved AND correct) AS correct_count
+       FROM match_predictions WHERE predictor_account_id = $1`,
+    [parseInt(accountId)]
+  );
+  const t = totalsRes.rows[0] || { total: 0, correct_count: 0 };
+  const total = parseInt(t.total) || 0;
+  const correct = parseInt(t.correct_count) || 0;
+  const rowsRes = await p.query(
+    `SELECT correct
+       FROM match_predictions
+      WHERE predictor_account_id = $1 AND resolved = true
+      ORDER BY created_at ASC`,
+    [parseInt(accountId)]
+  );
+  let cur = 0, best = 0;
+  for (const row of rowsRes.rows) {
+    if (row.correct) { cur += 1; if (cur > best) best = cur; }
+    else cur = 0;
+  }
+  return {
+    total,
+    correct_count: correct,
+    current_streak: cur,
+    best_streak: best,
+    accuracy: total > 0 ? Math.round((correct / total) * 1000) / 10 : 0,
+  };
+}
+
+// All-time accuracy leaderboard with a minimum-graded-predictions floor.
+async function getPredictionAccuracyLeaderboard({ minPredictions = 25, limit = 50 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT mp.predictor_account_id AS account_id,
+            COALESCE(n.nickname, MAX(mp.predictor_name)) AS display_name,
+            COUNT(*) FILTER (WHERE mp.resolved) AS total,
+            COUNT(*) FILTER (WHERE mp.resolved AND mp.correct) AS correct_count
+       FROM match_predictions mp
+       LEFT JOIN nicknames n ON n.account_id = mp.predictor_account_id
+      WHERE mp.predictor_account_id IS NOT NULL
+      GROUP BY mp.predictor_account_id, n.nickname
+     HAVING COUNT(*) FILTER (WHERE mp.resolved) >= $1
+      ORDER BY (COUNT(*) FILTER (WHERE mp.resolved AND mp.correct))::float
+               / NULLIF(COUNT(*) FILTER (WHERE mp.resolved), 0) DESC,
+               COUNT(*) FILTER (WHERE mp.resolved) DESC
+      LIMIT $2`,
+    [parseInt(minPredictions) || 25, parseInt(limit) || 50]
+  );
+  return r.rows.map(row => ({
+    account_id: row.account_id,
+    display_name: row.display_name,
+    total: parseInt(row.total) || 0,
+    correct_count: parseInt(row.correct_count) || 0,
+    accuracy: row.total > 0 ? Math.round((row.correct_count / row.total) * 1000) / 10 : 0,
+  }));
+}
+
+// Season-scoped accuracy leaderboard. Joins to `matches` to filter on
+// `season_id`. No min-predictions floor because seasons are short.
+async function getPredictionSeasonLeaderboard({ seasonId, minPredictions = 5, limit = 50 } = {}) {
+  if (!seasonId) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT mp.predictor_account_id AS account_id,
+            COALESCE(n.nickname, MAX(mp.predictor_name)) AS display_name,
+            COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE mp.correct) AS correct_count
+       FROM match_predictions mp
+       JOIN matches m ON m.match_id = mp.match_id AND m.season_id = $1
+       LEFT JOIN nicknames n ON n.account_id = mp.predictor_account_id
+      WHERE mp.predictor_account_id IS NOT NULL AND mp.resolved = true
+      GROUP BY mp.predictor_account_id, n.nickname
+     HAVING COUNT(*) >= $2
+      ORDER BY (COUNT(*) FILTER (WHERE mp.correct))::float / NULLIF(COUNT(*), 0) DESC,
+               COUNT(*) DESC
+      LIMIT $3`,
+    [parseInt(seasonId), parseInt(minPredictions) || 5, parseInt(limit) || 50]
+  );
+  return r.rows.map(row => ({
+    account_id: row.account_id,
+    display_name: row.display_name,
+    total: parseInt(row.total) || 0,
+    correct_count: parseInt(row.correct_count) || 0,
+    accuracy: row.total > 0 ? Math.round((row.correct_count / row.total) * 1000) / 10 : 0,
+  }));
+}
+
+// Current-streak leaderboard. We need the walk per account so we do it in
+// SQL via a window function ordering by created_at and tracking the tail
+// run of TRUE values.
+async function getPredictionStreakLeaderboard({ limit = 50 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `WITH ordered AS (
+       SELECT predictor_account_id, correct, created_at,
+              ROW_NUMBER() OVER (PARTITION BY predictor_account_id ORDER BY created_at DESC) AS rn
+         FROM match_predictions
+        WHERE predictor_account_id IS NOT NULL AND resolved = true
+     ),
+     since_last_wrong AS (
+       SELECT predictor_account_id,
+              MIN(rn) FILTER (WHERE NOT correct) AS first_wrong_rn,
+              COUNT(*) AS total
+         FROM ordered
+       GROUP BY predictor_account_id
+     ),
+     streaks AS (
+       SELECT s.predictor_account_id,
+              CASE WHEN s.first_wrong_rn IS NULL THEN s.total
+                   ELSE s.first_wrong_rn - 1 END AS current_streak,
+              s.total
+         FROM since_last_wrong s
+     )
+     SELECT st.predictor_account_id AS account_id,
+            COALESCE(n.nickname, MAX(mp.predictor_name)) AS display_name,
+            st.current_streak,
+            st.total
+       FROM streaks st
+       LEFT JOIN nicknames n ON n.account_id = st.predictor_account_id
+       LEFT JOIN match_predictions mp ON mp.predictor_account_id = st.predictor_account_id
+      WHERE st.current_streak > 0
+      GROUP BY st.predictor_account_id, n.nickname, st.current_streak, st.total
+      ORDER BY st.current_streak DESC, st.total DESC
+      LIMIT $1`,
+    [parseInt(limit) || 50]
+  );
+  return r.rows.map(row => ({
+    account_id: row.account_id,
+    display_name: row.display_name,
+    current_streak: parseInt(row.current_streak) || 0,
+    total: parseInt(row.total) || 0,
+  }));
+}
+
+// Returns the most recent graded predictions for an account.
+async function getPlayerPredictionHistory(accountId, limit = 50) {
+  if (!accountId) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT mp.match_id, mp.predicted_winner, mp.correct, mp.resolved, mp.created_at,
+            w.winner_team, w.lobby_name
+       FROM match_predictions mp
+       LEFT JOIN match_prediction_windows w ON w.match_id = mp.match_id
+      WHERE mp.predictor_account_id = $1
+      ORDER BY mp.created_at DESC
+      LIMIT $2`,
+    [parseInt(accountId), Math.min(200, parseInt(limit) || 50)]
+  );
+  return r.rows;
+}
+
 async function getPlayerWardPlacements(accountIds, seasonId = null) {
   const p = getPool();
   const ids = Array.isArray(accountIds) ? accountIds : [accountIds];
@@ -14282,6 +14582,10 @@ const NOTIFICATION_EVENTS = [
   { key: 'quest_completed',         label: 'Quest completed',             desc: 'When you finish a daily or weekly quest.',                   legacy: null,                         defaults: { discord: true,  push: true  } },
   { key: 'season_wrapped',          label: 'Season Wrapped recap',        desc: 'Personal season-end retrospective DM after season rollover.', legacy: null,                        defaults: { discord: true,  push: false } },
   { key: 'anniversary_shoutout',    label: 'Anniversary shout-out',       desc: 'Yearly OCE-inhouse anniversary celebration in Discord.',    legacy: null,                         defaults: { discord: true,  push: false } },
+  // Task #449 — match prediction game. Opt-in (defaults off) per product
+  // requirement so users who never visit /predictions don't get DMs from a
+  // feature they're not engaging with.
+  { key: 'prediction_graded',       label: 'Match prediction graded',     desc: 'DM with the result of any inhouse-match prediction you made.', legacy: null,                       defaults: { discord: false, push: false } },
 ];
 
 function eventDef(eventKey) {
@@ -23309,6 +23613,23 @@ module.exports = {
   recomputeAllAchievements,
   getPredictions,
   savePrediction,
+  // Task #449 — match prediction game
+  getMatchPredictions,
+  upsertMatchPrediction,
+  resolveMatchPredictions,
+  getPlayerPredictionStats,
+  getOpenPrediction,
+  openMatchPredictionWindow,
+  lockMatchPredictionWindow,
+  getMatchPredictionWindow,
+  listOpenMatchPredictionWindows,
+  listRecentGradedPredictionWindows,
+  gradeMatchPredictionWindow,
+  getPlayerPredictionStreak,
+  getPredictionAccuracyLeaderboard,
+  getPredictionSeasonLeaderboard,
+  getPredictionStreakLeaderboard,
+  getPlayerPredictionHistory,
   getWeeklyRecap,
   getFunRecapStats,
   getPlayerByDiscordId,

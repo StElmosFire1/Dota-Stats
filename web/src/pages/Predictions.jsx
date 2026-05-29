@@ -1,5 +1,285 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getPredictions, getPredictionAccuracy, savePrediction, getSeasons, getLeaderboard } from '../api';
+import { Link } from 'react-router-dom';
+import { getPredictions, getPredictionAccuracy, savePrediction, getSeasons, getLeaderboard,
+         getOpenPredictionWindows, submitMatchPick, getMyPredictions, getPredictionLeaderboard } from '../api';
+import { useSteamAuth } from '../context/SteamAuthContext';
+
+// Task #449 — Match Pick game subpage. Free, signed-in-only winner pick on
+// any open inhouse match. The list polls every 15s while visible so a
+// freshly-locked lobby disappears, a newly opened one appears, and "X picks
+// so far" stays close to live.
+function MatchPickTab() {
+  const { steamUser } = useSteamAuth() || {};
+  const [windows, setWindows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyMatchId, setBusyMatchId] = useState(null);
+  const [error, setError] = useState(null);
+  const [mine, setMine] = useState(null);
+
+  const refresh = React.useCallback(() => {
+    getOpenPredictionWindows()
+      .then(d => setWindows(d.open || []))
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+    if (steamUser?.accountId) {
+      getMyPredictions().then(setMine).catch(() => {});
+    }
+  }, [steamUser?.accountId]);
+
+  useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 15000);
+    return () => clearInterval(t);
+  }, [refresh]);
+
+  const pick = async (matchId, side) => {
+    setBusyMatchId(matchId);
+    setError(null);
+    try {
+      await submitMatchPick(matchId, side);
+      refresh();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusyMatchId(null);
+    }
+  };
+
+  const stats = mine?.stats || null;
+
+  return (
+    <div>
+      {/* Personal stats strip — only when signed in and has stats. */}
+      {stats && stats.total > 0 && (
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+          <Stat label="Total Predictions" value={stats.total} />
+          <Stat label="Correct" value={stats.correct_count} color="var(--accent-green)" />
+          <Stat label="Accuracy" value={`${stats.accuracy}%`} color={stats.accuracy >= 50 ? 'var(--accent-green)' : 'var(--accent-red)'} />
+          <Stat label="Current Streak" value={stats.current_streak} color={stats.current_streak >= 3 ? 'var(--amber, #f59e0b)' : 'var(--text-primary)'} />
+          <Stat label="Best Streak" value={stats.best_streak} color="var(--brass, #c5a975)" />
+        </div>
+      )}
+
+      {!steamUser?.accountId && (
+        <div className="stat-card" style={{ marginBottom: 20 }}>
+          <p style={{ margin: 0, fontSize: 14 }}>
+            <strong>Sign in with Steam</strong> to make predictions on open matches and track your streak.
+          </p>
+        </div>
+      )}
+
+      {error && <div style={{ color: 'var(--accent-red)', fontSize: 13, marginBottom: 12 }}>{error}</div>}
+
+      {loading ? (
+        <div className="loading">Loading open matches…</div>
+      ) : windows.length === 0 ? (
+        <div className="empty-state">
+          <p>No open inhouse matches right now. Check back when the next lobby locks in!</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: 14 }}>
+          {windows.map(w => {
+            const total = w.total_picks || 0;
+            const pctR = total > 0 ? Math.round((w.radiant_picks / total) * 100) : 50;
+            const pctD = 100 - pctR;
+            const locked = w.locked;
+            const isInMatch = w.in_match;
+            const myPick = w.my_pick;
+            const disabled = locked || isInMatch || !steamUser?.accountId || busyMatchId === w.match_id;
+            return (
+              <div key={w.match_id} className="stat-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>
+                      Match <Link to={`/match/${w.match_id}`} style={{ color: 'var(--accent, #c5a975)' }}>{w.match_id}</Link>
+                      {w.lobby_name && <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 8 }}>· {w.lobby_name}</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      Opened {timeAgo(w.opened_at)} · {total} prediction{total === 1 ? '' : 's'} so far
+                    </div>
+                  </div>
+                  {locked
+                    ? <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-red)', textTransform: 'uppercase' }}>🔒 Locked</span>
+                    : isInMatch
+                      ? <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--amber, #f59e0b)' }}>You're in this match</span>
+                      : <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent-green)', textTransform: 'uppercase' }}>● Open</span>}
+                </div>
+
+                {total > 0 && (
+                  <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 10, background: 'var(--bg-hover)' }}
+                       aria-label={`${pctR}% picked Radiant, ${pctD}% picked Dire`}>
+                    <div style={{ width: `${pctR}%`, background: '#4ade80' }} />
+                    <div style={{ width: `${pctD}%`, background: '#ef4444' }} />
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    aria-pressed={myPick === 'radiant'}
+                    aria-label={`Pick Radiant for match ${w.match_id}`}
+                    onClick={() => pick(w.match_id, 'radiant')}
+                    disabled={disabled}
+                    style={{
+                      flex: 1, minWidth: 160, padding: '12px 16px', borderRadius: 8,
+                      border: `2px solid ${myPick === 'radiant' ? '#4ade80' : 'var(--border)'}`,
+                      background: myPick === 'radiant' ? 'rgba(74,222,128,0.18)' : 'var(--bg-input)',
+                      color: 'var(--text-primary)', fontWeight: 700, fontSize: 14,
+                      cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled && myPick !== 'radiant' ? 0.6 : 1,
+                    }}
+                  >
+                    🟢 Radiant {total > 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 6 }}>{pctR}% ({w.radiant_picks})</span>}
+                    {myPick === 'radiant' && ' ✓'}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={myPick === 'dire'}
+                    aria-label={`Pick Dire for match ${w.match_id}`}
+                    onClick={() => pick(w.match_id, 'dire')}
+                    disabled={disabled}
+                    style={{
+                      flex: 1, minWidth: 160, padding: '12px 16px', borderRadius: 8,
+                      border: `2px solid ${myPick === 'dire' ? '#ef4444' : 'var(--border)'}`,
+                      background: myPick === 'dire' ? 'rgba(239,68,68,0.18)' : 'var(--bg-input)',
+                      color: 'var(--text-primary)', fontWeight: 700, fontSize: 14,
+                      cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled && myPick !== 'dire' ? 0.6 : 1,
+                    }}
+                  >
+                    🔴 Dire {total > 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 6 }}>{pctD}% ({w.dire_picks})</span>}
+                    {myPick === 'dire' && ' ✓'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {mine?.history?.length > 0 && (
+        <section style={{ marginTop: 28 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 12 }}>
+            Your recent predictions
+          </h3>
+          <div className="scoreboard-wrapper">
+            <table className="scoreboard">
+              <thead><tr><th>Match</th><th>Picked</th><th>Winner</th><th>Result</th><th>When</th></tr></thead>
+              <tbody>
+                {mine.history.slice(0, 15).map((h, i) => (
+                  <tr key={i}>
+                    <td><Link to={`/match/${h.match_id}`} style={{ color: 'var(--accent, #c5a975)' }}>{h.match_id}</Link></td>
+                    <td style={{ textTransform: 'capitalize' }}>{h.predicted_winner}</td>
+                    <td style={{ textTransform: 'capitalize', color: 'var(--text-muted)' }}>{h.winner_team || (h.resolved ? '—' : 'pending')}</td>
+                    <td style={{ fontWeight: 700, color: !h.resolved ? 'var(--text-muted)' : h.correct ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                      {!h.resolved ? '⏳ pending' : h.correct ? '✓ correct' : '✗ wrong'}
+                    </td>
+                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{timeAgo(h.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function MatchPickLeaderboards() {
+  const [type, setType] = useState('accuracy');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+    getPredictionLeaderboard(type).then(setData).catch(() => setData({ rows: [] })).finally(() => setLoading(false));
+  }, [type]);
+  const tabs = [
+    { key: 'accuracy', label: '🎯 All-Time Accuracy (min 25)' },
+    { key: 'streak',   label: '🔥 Current Streak' },
+    { key: 'season',   label: '📅 This Season' },
+  ];
+  return (
+    <div>
+      <div role="radiogroup" aria-label="Leaderboard type" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        {tabs.map(t => (
+          <button
+            type="button" key={t.key}
+            role="radio" aria-checked={type === t.key}
+            onClick={() => setType(t.key)}
+            style={{
+              padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              border: `1px solid ${type === t.key ? 'var(--accent, #c5a975)' : 'var(--border)'}`,
+              background: type === t.key ? 'var(--accent-muted, rgba(197,169,117,0.18))' : 'var(--bg-input)',
+              color: 'var(--text-primary)',
+            }}
+          >{t.label}</button>
+        ))}
+      </div>
+      {loading ? (
+        <div className="loading">Loading…</div>
+      ) : !data?.rows?.length ? (
+        <div className="empty-state"><p>No rows yet for this leaderboard.</p></div>
+      ) : (
+        <div className="scoreboard-wrapper">
+          <table className="scoreboard">
+            <thead>
+              <tr>
+                <th style={{ width: 40 }}>#</th>
+                <th>Predictor</th>
+                {type === 'streak'
+                  ? <><th className="col-stat">Current Streak</th><th className="col-stat">Total</th></>
+                  : <><th className="col-stat">Accuracy</th><th className="col-stat">Correct</th><th className="col-stat">Total</th></>}
+              </tr>
+            </thead>
+            <tbody>
+              {data.rows.map((r, i) => (
+                <tr key={r.account_id}>
+                  <td>{i === 0 ? '🏆' : i + 1}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    <Link to={`/profile/${r.account_id}`} style={{ color: 'var(--text-primary)' }}>{r.display_name || `Player ${r.account_id}`}</Link>
+                  </td>
+                  {type === 'streak' ? (
+                    <>
+                      <td className="col-stat" style={{ fontWeight: 700, color: 'var(--amber, #f59e0b)' }}>🔥 {r.current_streak}</td>
+                      <td className="col-stat" style={{ color: 'var(--text-muted)' }}>{r.total}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="col-stat" style={{ fontWeight: 700, color: r.accuracy >= 60 ? 'var(--accent-green)' : 'var(--text-primary)' }}>{r.accuracy}%</td>
+                      <td className="col-stat">{r.correct_count}</td>
+                      <td className="col-stat" style={{ color: 'var(--text-muted)' }}>{r.total}</td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, color = 'var(--text-primary)' }) {
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 18px', minWidth: 110, textAlign: 'center' }}>
+      <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{label}</div>
+    </div>
+  );
+}
+
+function timeAgo(ts) {
+  if (!ts) return '—';
+  const ms = Date.now() - new Date(ts).getTime();
+  if (ms < 0) return 'now';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
 
 function SearchableSelect({ players, value, onChange, placeholder = 'Search player…' }) {
   const [query, setQuery] = useState('');
@@ -129,7 +409,9 @@ export default function Predictions() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
-  const [tab, setTab] = useState('submit');
+  // Task #449 — `picks` (winner-pick game) is now the default tab. Existing
+  // season-Top-5 prediction game lives under `submit` / `all` / `accuracy`.
+  const [tab, setTab] = useState('picks');
 
   useEffect(() => {
     Promise.all([getSeasons(), getLeaderboard(100)])
@@ -230,11 +512,16 @@ export default function Predictions() {
         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{predictions.length} prediction{predictions.length !== 1 ? 's' : ''} submitted</span>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0 }}>
-        <button onClick={() => setTab('submit')} style={tabStyle(tab === 'submit')}>📝 Submit Prediction</button>
-        <button onClick={() => setTab('all')} style={tabStyle(tab === 'all')}>👥 All Predictions ({predictions.length})</button>
-        <button onClick={() => setTab('accuracy')} style={tabStyle(tab === 'accuracy')}>🏆 Accuracy Scores</button>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0, flexWrap: 'wrap' }}>
+        <button onClick={() => setTab('picks')} style={tabStyle(tab === 'picks')}>🎯 Match Picks</button>
+        <button onClick={() => setTab('leaderboards')} style={tabStyle(tab === 'leaderboards')}>🏆 Leaderboards</button>
+        <button onClick={() => setTab('submit')} style={tabStyle(tab === 'submit')}>📝 Top-5 Prediction</button>
+        <button onClick={() => setTab('all')} style={tabStyle(tab === 'all')}>👥 Top-5 Submissions ({predictions.length})</button>
+        <button onClick={() => setTab('accuracy')} style={tabStyle(tab === 'accuracy')}>📊 Top-5 Accuracy</button>
       </div>
+
+      {tab === 'picks' && <MatchPickTab />}
+      {tab === 'leaderboards' && <MatchPickLeaderboards />}
 
       {tab === 'submit' && (
         <div className="stat-card" style={{ marginBottom: '2rem', maxWidth: 480 }}>

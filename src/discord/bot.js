@@ -107,12 +107,51 @@ class DiscordBot {
 
   setupLobbyEvents(lobbyManager) {
     this._lobbyManager = lobbyManager;
-    lobbyManager.on('matchIdCaptured', (matchId) => {
+    lobbyManager.on('matchIdCaptured', async (matchId) => {
       this._notifyChannel(`Match detected! Match ID: **${matchId}**. Stats will auto-record when the game ends.`);
+      // Task #449 — Open the match prediction window the moment a matchId
+      // is captured (post-draft, lobby locked). Capture the 10 player
+      // account_ids per team so the anti-cheat path can reject them.
+      try {
+        const db = require('../db');
+        if (typeof db.openMatchPredictionWindow !== 'function') return;
+        const lobby = this._lobbyManager?.currentLobby || {};
+        const radiant = [];
+        const dire = [];
+        for (const pl of (lobby.players || [])) {
+          if (pl.team !== 0 && pl.team !== 1) continue;
+          // Steam64 → account_id (32-bit). Lobby player rows use `accountId`
+          // when the GC supplies it, falling back to converting `steamId`.
+          let aid = pl.accountId || null;
+          if (!aid && pl.steamId) {
+            try { aid = Number(BigInt(pl.steamId) - 76561197960265728n); } catch (_) { aid = null; }
+          }
+          if (!aid) continue;
+          if (pl.team === 0) radiant.push(aid);
+          else dire.push(aid);
+        }
+        await db.openMatchPredictionWindow(matchId, {
+          lobbyName: lobby.name || null,
+          radiantAccountIds: radiant,
+          direAccountIds: dire,
+        });
+      } catch (e) {
+        console.warn('[Predictions] open-window hook failed:', e.message);
+      }
     });
 
     lobbyManager.on('matchStarted', async (lobby) => {
       this._notifyChannel(`Game is now **in progress** for lobby "${lobby.name}".`);
+      // Task #449 — Spec lock-point is **first-blood**. The live GC feed
+      // doesn't surface first-blood, so we poll OpenDota /matches/<id>
+      // every 30s until `first_blood_time` is present, then lock. Hard
+      // fallback at 15 min so the window can't stay open indefinitely if
+      // OpenDota never picks the match up.
+      try {
+        if (lobby?.matchId) this._schedulePredictionLockOnFirstBlood(lobby.matchId);
+      } catch (e) {
+        console.warn('[Predictions] first-blood lock scheduler failed:', e.message);
+      }
       // Move players into their team voice channels.
       await this._movePlayersToVoiceChannels(lobby).catch(e =>
         console.warn('[Discord] Voice channel move on matchStarted failed:', e.message)
@@ -2580,6 +2619,67 @@ class DiscordBot {
   //
   // We do NOT record basic GC stats before the replay parse because player_stats has no
   // unique constraint, so a pre-record + replay-parse would produce duplicate rows.
+  // Task #449 — Poll OpenDota /matches/<id> every 30s after a game starts
+  // looking for `first_blood_time`. As soon as it appears, lock the
+  // prediction window. Hard timeout at 15 minutes locks the window as a
+  // fallback so it can't stay open indefinitely if OpenDota never indexes
+  // the match (e.g. private lobby that never parses).
+  _schedulePredictionLockOnFirstBlood(matchId) {
+    if (!matchId) return;
+    if (!this._predictionLockTimers) this._predictionLockTimers = new Map();
+    if (this._predictionLockTimers.has(String(matchId))) return; // already scheduled
+    const db = require('../db');
+    if (typeof db.lockMatchPredictionWindow !== 'function') return;
+    const fetch = require('node-fetch');
+    const startedAt = Date.now();
+    const HARD_TIMEOUT_MS = 15 * 60 * 1000;
+    const POLL_INTERVAL_MS = 30 * 1000;
+    const url = `https://api.opendota.com/api/matches/${matchId}`;
+    const cancel = () => {
+      const t = this._predictionLockTimers.get(String(matchId));
+      if (t) { clearTimeout(t); this._predictionLockTimers.delete(String(matchId)); }
+    };
+    const lock = async (reason) => {
+      try {
+        await db.lockMatchPredictionWindow(matchId);
+        console.log(`[Predictions] locked window for match ${matchId} (${reason})`);
+      } catch (e) {
+        console.warn(`[Predictions] lock failed for match ${matchId}:`, e.message);
+      }
+      cancel();
+    };
+    const tick = async () => {
+      try {
+        const win = await db.getMatchPredictionWindow(matchId).catch(() => null);
+        if (!win) { cancel(); return; }
+        if (win.locked_at || win.graded_at) { cancel(); return; }
+        const res = await fetch(url, { timeout: 10000 }).catch(() => null);
+        if (res && res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data && Number.isFinite(data.first_blood_time) && data.first_blood_time > 0) {
+            await lock('first-blood');
+            return;
+          }
+        }
+        if (Date.now() - startedAt >= HARD_TIMEOUT_MS) {
+          await lock('15m fallback');
+          return;
+        }
+        const t = setTimeout(tick, POLL_INTERVAL_MS);
+        if (typeof t.unref === 'function') t.unref();
+        this._predictionLockTimers.set(String(matchId), t);
+      } catch (e) {
+        console.warn(`[Predictions] first-blood poll error for ${matchId}:`, e.message);
+        const t = setTimeout(tick, POLL_INTERVAL_MS);
+        if (typeof t.unref === 'function') t.unref();
+        this._predictionLockTimers.set(String(matchId), t);
+      }
+    };
+    const t = setTimeout(tick, POLL_INTERVAL_MS);
+    if (typeof t.unref === 'function') t.unref();
+    this._predictionLockTimers.set(String(matchId), t);
+  }
+
   _pollAndRecordMatch(matchId, lobbyName, attemptsLeft = 36) {
     if (attemptsLeft <= 0) {
       this._notifyChannel(`⏰ Auto-record gave up after 3 hours for match **${matchId}**. Use \`!record ${matchId}\` manually.`);
