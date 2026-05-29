@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "8.15",
+    "title": "Notification defaults trimmed to opt-in (Task #455)",
+    "published_at": "2026-05-29",
+    "notes": [
+      "**Why.** Most notification categories defaulted to ON, so new and existing players got a stream of DMs they never asked for. Defaults are now reserved for the genuinely transactional messages and two celebratory milestones — everything else is opt-in.",
+      "**Default-ON now.** MVP / teammate-attitude vote prompts, all coaching messages (booking confirmed, session reminder, review request, VOD delivered, group-session reminder), and the two milestones — anniversary shout-out and Season Wrapped recap (Discord only). Pro billing/dunning DMs stay on too, deliberately: silently muting \"your payment failed\" would let memberships lapse without warning.",
+      "**Default-OFF now (opt-in).** Post-match reports, hot-streak shoutouts, game-schedule reminders, weekly recap/summary, inhouse pick warnings, lobby invite / match-imminent push, tournament check-in, league/scrim accepted, season rollover, coach-of-the-month, quest completion, and match-prediction grading.",
+      "**No surprise opt-outs.** Anyone who has explicitly set a preference keeps it — only players with no saved row inherit the new defaults via the catalog fallback in `isEventEnabled` / `eventDefaultEnabled`.",
+      "**Settings UX.** `/me/notifications` now shows a \"(default on)\" / \"(default off)\" hint next to each toggle and a dismissable two-week banner explaining the change. A snapshot test (`tests/notificationDefaults.test.js`) locks the default matrix so future drift is caught in CI.",
+      "**Scope.** Full edition only. Catalog defaults flipped in both the v1 category list and the v2 per-channel event catalog in `src/db/index.js`; no schema change and no migration."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.14",
     "title": "Swiss engine regression tests + first-place payout remainder (Task #454)",
     "published_at": "2026-05-29",

@@ -14551,16 +14551,25 @@ async function recomputeSeasonPassFromHistory(seasonNumber = null) {
 }
 
 // ---------- F4: Notification preferences ----------
+// Task #455 — notification defaults rework. Only the genuinely
+// transactional categories (MVP / attitude voting, coaching) and the two
+// celebratory milestones (anniversary, season Wrapped — registered in the
+// v2 event catalog below) stay default-ON. Everything else is now opt-in
+// so new and existing users without an explicit pref row stop receiving a
+// stream of DMs they never asked for. `pro_billing_dm` is a deliberate
+// exception (see its note): silently muting "your payment failed" notices
+// would cause subscriptions to lapse without warning.
 const NOTIFICATION_CATEGORIES = [
-  { key: 'post_match_dm',     label: 'Post-match report DM',          default: true },
+  { key: 'post_match_dm',     label: 'Post-match report DM',          default: false },
   { key: 'mvp_vote',          label: 'MVP vote prompt',               default: true },
   { key: 'attitude_vote',     label: 'Teammate attitude vote prompt', default: true },
-  { key: 'hot_streak',        label: 'Hot streak announcement DM',    default: true },
-  { key: 'schedule_reminder', label: 'Game schedule reminder DM',     default: true },
-  { key: 'weekly_recap',      label: 'Weekly recap DM',               default: true },
+  { key: 'hot_streak',        label: 'Hot streak announcement DM',    default: false },
+  { key: 'schedule_reminder', label: 'Game schedule reminder DM',     default: false },
+  { key: 'weekly_recap',      label: 'Weekly recap DM',               default: false },
   // Coaching marketplace categories — only meaningful while
   // `coaching_marketplace` flag is on, but registered here so they show up
   // in the existing notification settings page once the flag flips.
+  // Transactional → default-ON (Task #455).
   { key: 'coaching_booking_confirmed', label: 'Coaching: booking confirmed DM', default: true },
   { key: 'coaching_session_reminder',  label: 'Coaching: 1-hour session reminder DM', default: true },
   { key: 'coaching_review_request',    label: 'Coaching: post-session review prompt DM', default: true },
@@ -14571,12 +14580,16 @@ const NOTIFICATION_CATEGORIES = [
   // notification when the user has opted out.
   // Task #189 — `value` extension: lead-time seconds before the per-pick
   // deadline at which the warning fires. Allowed: 5/10/15/20. Default 10.
-  { key: 'inhouse_pick_warning',       label: 'Inhouse: pick warning (on the clock)', default: true,
+  // Task #455 — now opt-in (was default-ON). The chime/browser warning
+  // only matters once you're actively captaining a draft, so don't enable
+  // it for everyone by default.
+  { key: 'inhouse_pick_warning',       label: 'Inhouse: pick warning (on the clock)', default: false,
     value_default: 10, value_options: [5, 10, 15, 20], value_unit: 's' },
   // Task #314 — opt-in public tier-up announcement. When enabled and the
   // player crosses a ladder threshold, `_sendMatchSummary` posts a brief
   // celebration line into the match's stats channel after the embed.
-  { key: 'tier_change_announce',       label: 'Public Discord announcement when you tier up/down', default: true },
+  // Task #455 — flipped to default-OFF (not a transactional/milestone DM).
+  { key: 'tier_change_announce',       label: 'Public Discord announcement when you tier up/down', default: false },
   // Task #316 — engagement loop opt-ins. Both default OFF (opt-in) per
   // product requirement so we don't spam new users; they enable from
   // /settings/notifications.
@@ -14585,6 +14598,9 @@ const NOTIFICATION_CATEGORIES = [
   // Task #318 — Pro billing DMs (dunning + winback). Default ON so paying
   // members get notified when their card fails, but listed in settings so
   // they can mute the marketing-flavoured winback nudges if they prefer.
+  // Task #455 — deliberately kept default-ON. A billing-failure DM is the
+  // most transactional notification we send; auto-opting members out would
+  // let subscriptions lapse silently, which is the opposite of the intent.
   { key: 'pro_billing_dm',             label: 'Pro billing & winback DMs', default: true },
   // Task #444 — controls the pre-match mood & form widget on /me and the
   // inhouse sign-in page. Default ON so the widget shows for everyone; flip
@@ -14646,6 +14662,9 @@ async function getNotificationPrefs(accountId) {
       category: c.key,
       label: c.label,
       enabled: row ? !!row.enabled : c.default,
+      // Task #455 — surface the catalog default so the settings UI can
+      // render a "(default on)" / "(default off)" hint next to each toggle.
+      default: c.default !== false,
     };
     if (Array.isArray(c.value_options)) {
       // Task #189 — surface tunable-value categories. The stored value
@@ -14705,24 +14724,35 @@ async function setNotificationPref(accountId, category, enabled, value) {
 // existing opt-outs continue to mute the Discord DM channel without the
 // user having to re-flip anything. The mapping is only consulted when no
 // v2 row exists.
+// Task #455 — notification defaults rework. Default-ON is now reserved for
+// genuinely transactional events (MVP voting, coaching) and the two
+// celebratory milestones (season Wrapped, anniversary). Everything else —
+// match results, hot streaks, lobby invites, tournament check-in, league/
+// scrim, season rollover, coach-of-the-month, quests, predictions — is
+// opt-in. Users with an explicit `user_notification_prefs` (or legacy
+// `notification_prefs`) row are untouched; only the no-row fallback changes.
 const NOTIFICATION_CHANNELS = ['discord', 'push'];
 const NOTIFICATION_EVENTS = [
-  { key: 'match_result',            label: 'Match result',                desc: 'Post-match report with your stats.',                         legacy: 'post_match_dm',              defaults: { discord: true,  push: false } },
+  { key: 'match_result',            label: 'Match result',                desc: 'Post-match report with your stats.',                         legacy: 'post_match_dm',              defaults: { discord: false, push: false } },
   { key: 'mvp_vote',                label: 'MVP vote prompt',             desc: 'DM asking you to nominate a teammate as MVP.',               legacy: 'mvp_vote',                   defaults: { discord: true,  push: false } },
-  { key: 'hot_streak',              label: 'Hot streak shoutout',         desc: 'When you hit a 5- or 10-game win streak.',                   legacy: 'tier_change_announce',       defaults: { discord: true,  push: true  } },
+  { key: 'hot_streak',              label: 'Hot streak shoutout',         desc: 'When you hit a 5- or 10-game win streak.',                   legacy: 'tier_change_announce',       defaults: { discord: false, push: false } },
+  // Coaching events are transactional → default-ON (Task #455).
   { key: 'vod_delivered',           label: 'VOD review delivered',        desc: 'When your coach finishes a VOD review for you.',             legacy: null,                         defaults: { discord: true,  push: true  } },
   { key: 'group_session_reminder',  label: 'Group session reminder',      desc: 'One-hour reminder before a group coaching session.',         legacy: 'schedule_reminder',          defaults: { discord: true,  push: true  } },
-  { key: 'lobby_invite',            label: 'Lobby invite / match ready',  desc: 'When an inhouse lobby is ready for you to accept.',          legacy: null,                         legacyPush: 'match_imminent_push',    defaults: { discord: true,  push: true  } },
+  { key: 'lobby_invite',            label: 'Lobby invite / match ready',  desc: 'When an inhouse lobby is ready for you to accept.',          legacy: null,                         legacyPush: 'match_imminent_push',    defaults: { discord: false, push: false } },
   { key: 'achievement_unlocked',    label: 'Achievement unlocked',        desc: 'New badge or milestone earned.',                             legacy: null,                         defaults: { discord: false, push: false } },
   { key: 'prize_pool_change',       label: 'Prize pool change',           desc: 'When a tournament prize pool you are entered in changes.',   legacy: null,                         defaults: { discord: false, push: false } },
   // Task #452 — tournament check-in window open + 5-min-before-close reminder.
-  { key: 'tournament_checkin',      label: 'Tournament check-in',         desc: 'When check-in opens for a tournament you are in, plus a reminder before it closes.', legacy: null, defaults: { discord: true,  push: true  } },
+  // Task #455 — opt-in (was default-ON).
+  { key: 'tournament_checkin',      label: 'Tournament check-in',         desc: 'When check-in opens for a tournament you are in, plus a reminder before it closes.', legacy: null, defaults: { discord: false, push: false } },
   { key: 'coach_booking_confirmed', label: 'Coach booking confirmed',     desc: 'When a coaching booking is paid and locked in.',             legacy: 'coaching_booking_confirmed', defaults: { discord: true,  push: true  } },
   { key: 'coach_booking_reminder',  label: 'Coach booking reminder',      desc: 'About one hour before a scheduled coaching session.',        legacy: 'coaching_session_reminder',  defaults: { discord: true,  push: true  } },
-  { key: 'league_scrim_accepted',   label: 'League / scrim accepted',     desc: 'When a league or scrim request you sent is accepted.',       legacy: null,                         defaults: { discord: true,  push: true  } },
-  { key: 'season_rollover',         label: 'Season rollover',             desc: 'When a season ends and new tier placements are issued.',     legacy: null,                         defaults: { discord: true,  push: false } },
-  { key: 'coach_of_the_month',      label: 'Coach of the Month win',      desc: 'When you win the monthly coach spotlight on /coaches.',      legacy: null,                         defaults: { discord: true,  push: false } },
-  { key: 'quest_completed',         label: 'Quest completed',             desc: 'When you finish a daily or weekly quest.',                   legacy: null,                         defaults: { discord: true,  push: true  } },
+  { key: 'league_scrim_accepted',   label: 'League / scrim accepted',     desc: 'When a league or scrim request you sent is accepted.',       legacy: null,                         defaults: { discord: false, push: false } },
+  { key: 'season_rollover',         label: 'Season rollover',             desc: 'When a season ends and new tier placements are issued.',     legacy: null,                         defaults: { discord: false, push: false } },
+  { key: 'coach_of_the_month',      label: 'Coach of the Month win',      desc: 'When you win the monthly coach spotlight on /coaches.',      legacy: null,                         defaults: { discord: false, push: false } },
+  { key: 'quest_completed',         label: 'Quest completed',             desc: 'When you finish a daily or weekly quest.',                   legacy: null,                         defaults: { discord: false, push: false } },
+  // Celebratory milestones — default-ON (Task #455). Discord-only so we
+  // don't add a new push stream nobody opted into.
   { key: 'season_wrapped',          label: 'Season Wrapped recap',        desc: 'Personal season-end retrospective DM after season rollover.', legacy: null,                        defaults: { discord: true,  push: false } },
   { key: 'anniversary_shoutout',    label: 'Anniversary shout-out',       desc: 'Yearly OCE-inhouse anniversary celebration in Discord.',    legacy: null,                         defaults: { discord: true,  push: false } },
   // Task #449 — match prediction game. Opt-in (defaults off) per product

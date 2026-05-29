@@ -48,6 +48,25 @@ export default function SettingsNotifications() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
+  // Task #455 — one-time "defaults trimmed" banner. Shows for two weeks
+  // after merge, then self-expires. Dismissal is remembered in
+  // localStorage so it doesn't reappear on the next visit. Follow-up
+  // cleanup task removes this block once the window closes.
+  const DEFAULTS_BANNER_DISMISS_KEY = 'notif_defaults_banner_dismissed_v1';
+  const DEFAULTS_BANNER_EXPIRY = Date.parse('2026-06-12T00:00:00Z');
+  const [showDefaultsBanner, setShowDefaultsBanner] = useState(false);
+  useEffect(() => {
+    if (Date.now() >= DEFAULTS_BANNER_EXPIRY) return;
+    try {
+      if (localStorage.getItem(DEFAULTS_BANNER_DISMISS_KEY) === '1') return;
+    } catch {}
+    setShowDefaultsBanner(true);
+  }, []);
+  const dismissDefaultsBanner = () => {
+    setShowDefaultsBanner(false);
+    try { localStorage.setItem(DEFAULTS_BANNER_DISMISS_KEY, '1'); } catch {}
+  };
+
   // Web push state
   const [pushSupported, setPushSupported] = useState(false);
   const [pushSub, setPushSub] = useState(null);
@@ -226,6 +245,30 @@ export default function SettingsNotifications() {
         Choose which messages you want to receive from the inhouse bot.
       </p>
 
+      {showDefaultsBanner && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+          margin: '12px 0', padding: '12px 14px', borderRadius: 8,
+          background: 'var(--bg-card)', border: '1px solid var(--brass, var(--border))',
+        }}>
+          <div style={{ minWidth: 0 }}>
+            <strong>We trimmed default notifications.</strong>{' '}
+            <span style={{ color: 'var(--text-muted)' }}>
+              Most messages are now opt-in. Turn on anything you want to keep getting.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="btn"
+            aria-label="Dismiss notification defaults notice"
+            onClick={dismissDefaultsBanner}
+            style={{ flex: '0 0 auto' }}
+          >
+            Got it
+          </button>
+        </div>
+      )}
+
       {error && <div className="error-state" style={{ margin: '12px 0' }}>{error}</div>}
       {loading && <div className="loading">Loading preferences\u2026</div>}
 
@@ -243,7 +286,18 @@ export default function SettingsNotifications() {
                 borderRadius: 8, gap: 12, flexWrap: 'wrap',
               }}>
                 <div style={{ minWidth: 0, flex: '1 1 240px' }}>
-                  <div style={{ fontWeight: 600 }}>{meta.title}</div>
+                  <div style={{ fontWeight: 600 }}>
+                    {meta.title}
+                    {/* Task #455 — show which toggles are on out of the box. */}
+                    {typeof p.default === 'boolean' && (
+                      <span style={{
+                        marginLeft: 8, fontSize: 11, fontWeight: 600, letterSpacing: 0.3,
+                        textTransform: 'uppercase', color: 'var(--text-muted)',
+                      }}>
+                        {p.default ? '(default on)' : '(default off)'}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>{meta.desc}</div>
                 </div>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
