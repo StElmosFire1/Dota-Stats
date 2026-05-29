@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.10",
+    "title": "AI agent owner alerts now report hit counts + timestamps",
+    "published_at": "2026-05-29",
+    "notes": [
+      "**Why.** With `BLOCK_AI_AGENTS=1` now live on prod, the owner DM only said \"first-seen\" — it never told you how many times an agent visited or when. This upgrades the alert into a rolling 24h digest that reports a hit count and a timestamp range.",
+      "**What changed (`src/security/agentClassifier.js`).** `_maybeAlertOwner` now accumulates every blockable hit per agent family in a `_pending` map (`count`, `firstTs`, `lastTs`, sample path/UA). The first sighting still fires an **immediate** DM (count 1); after that the family is suppressed for 24h while hits keep counting, then the next hit past the window flushes a digest: `N hits between <first> and <last> (Sydney time)`. Timestamps render via `toLocaleString('en-AU', { timeZone: 'Australia/Sydney' })`.",
+      "**Notifications still fire when blocking is on.** The DM is dispatched *before* the 403 block return, so turning on `BLOCK_AI_AGENTS=1` never silences alerts — blocked agents are still counted and reported.",
+      "**Unchanged.** Only `ai-crawler` / `app-builder` families are DM'd (`unknown-bot` stays observability-only via the admin card). The `/admin/agent-traffic-report` card already shows full per-family counts, unique IPs/paths, and recent-request timestamps.",
+      "**Scope.** Applied identically to both editions (full + community)."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.09",
     "title": "Inhouse coin betting — full markets (Task #450)",
     "published_at": "2026-05-29",
