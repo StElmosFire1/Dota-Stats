@@ -354,6 +354,57 @@ setInterval(() => {
   require('./opsState').captureHistorySnapshot(db).catch(() => {});
 }, 60_000).unref();
 
+// Task #452 — fan out tournament check-in notifications. Pulls the tournaments
+// whose "open" or "5-min reminder" signal is now due (claimed atomically in the
+// DB so each fires exactly once), then DMs / web-pushes each recipient through
+// the notify() helper, which applies the per-user `tournament_checkin`
+// preference. Best-effort: per-recipient failures are logged but never abort
+// the tick. Exported for tests.
+function _fmtMinutes(min) {
+  const m = Math.max(0, Math.round(Number(min) || 0));
+  if (m % 60 === 0 && m >= 60) {
+    const h = m / 60;
+    return `${h} hour${h === 1 ? '' : 's'}`;
+  }
+  return `${m} minute${m === 1 ? '' : 's'}`;
+}
+
+async function _runCheckinNotifyTick() {
+  const { opens, reminders } = await db.claimTournamentCheckinNotifications();
+  for (const t of opens) {
+    const url = `/tournaments/${t.tournament_id}`;
+    const window = _fmtMinutes(t.checkin_offset_min);
+    const title = 'Tournament check-in is open';
+    const body = `Check-in for "${t.name}" is now open — confirm your spot within the next ${window}.`;
+    for (const aid of (t.recipients || [])) {
+      try {
+        await notify(aid, 'tournament_checkin', {
+          discord: { content: `🏁 **${title}** — ${body}\nCheck in here: ${(process.env.SITE_URL || '')}${url}` },
+          push: { title, body, url, data: { kind: 'tournament_checkin_open', tournament_id: t.tournament_id } },
+        });
+      } catch (e) {
+        console.warn('[swiss] check-in open notify failed:', e.message);
+      }
+    }
+  }
+  for (const t of reminders) {
+    const url = `/tournaments/${t.tournament_id}`;
+    const title = 'Tournament check-in closing soon';
+    const body = `Check-in for "${t.name}" closes in 5 minutes — check in now or you'll be dropped from the bracket.`;
+    for (const aid of (t.recipients || [])) {
+      try {
+        await notify(aid, 'tournament_checkin', {
+          discord: { content: `⏰ **${title}** — ${body}\nCheck in here: ${(process.env.SITE_URL || '')}${url}` },
+          push: { title, body, url, data: { kind: 'tournament_checkin_reminder', tournament_id: t.tournament_id } },
+        });
+      } catch (e) {
+        console.warn('[swiss] check-in reminder notify failed:', e.message);
+      }
+    }
+  }
+  return { opens: opens.length, reminders: reminders.length };
+}
+
 // Replay store cleanup: runs every 12 hours, deletes expired files from disk.
 setInterval(async () => {
   try {
@@ -13467,6 +13518,20 @@ NOTES
     if (global.__t412_checkin_sweep.unref) global.__t412_checkin_sweep.unref();
   }
 
+  // Task #452 — notify registered players when their tournament check-in
+  // window opens, then send a 5-minute-before-close reminder to anyone who
+  // hasn't checked in. Both signals are one-shot per tournament (claimed
+  // atomically in the DB) and gated per-user by the `tournament_checkin`
+  // notification preference. Runs on the same 60s cadence as the DQ sweep.
+  if (!global.__t452_checkin_notify) {
+    global.__t452_checkin_notify = setInterval(() => {
+      _runCheckinNotifyTick().catch(err => {
+        console.error('[swiss] check-in notify tick:', err.message);
+      });
+    }, 60 * 1000);
+    if (global.__t452_checkin_notify.unref) global.__t452_checkin_notify.unref();
+  }
+
   // ---------- F6: MVP / attitude analytics ----------
   router.get('/player/:id/mvp-attitude-trends', async (req, res) => {
     try {
@@ -20122,4 +20187,4 @@ function processReplayInternal(filePath, source, opts = {}) {
   });
 }
 
-module.exports = { createServer, processReplayInternal, createApiRouter };
+module.exports = { createServer, processReplayInternal, createApiRouter, _runCheckinNotifyTick };

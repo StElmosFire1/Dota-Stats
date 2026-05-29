@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.12",
+    "title": "Tournament check-in window notifications (Task #452)",
+    "published_at": "2026-05-29",
+    "notes": [
+      "**Why.** Task #412 added a structured check-in window with auto-DQ for no-shows, but players only saw it if they happened to load the tournament page in time. Registered players now get a Discord DM + web/Expo push the moment check-in opens, plus a final reminder before it closes — dramatically cutting accidental DQs.",
+      "**Open + reminder signals.** A new per-minute cron (`__t452_checkin_notify`, alongside the existing `__t412_checkin_sweep`) calls `db.claimTournamentCheckinNotifications`: it fires a **check-in open** notice to every registered participant once `(starts_at - checkin_offset_min)` is reached, and a **5-minute-before-close** reminder to anyone who still hasn't checked in. Each tournament's two signals are one-shot — claimed atomically via `UPDATE ... WHERE <ts> IS NULL RETURNING` against new `tournaments.checkin_open_notified_at` / `checkin_reminder_notified_at` columns, so the sweep never double-DMs and survives restarts.",
+      "**Per-user opt-out.** Both notifications go through the `notify()` send-site gated by a new `tournament_checkin` event in the notification preference centre (defaults: Discord on, push on), so players can mute them from their notification settings.",
+      "**Scope.** Full edition only — server + DB layer; no community-edition wiring. Best-effort fan-out: per-recipient failures are logged but never abort the tick."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.11",
     "title": "Daily Dota mini-games suite (Task #451)",
     "published_at": "2026-05-29",

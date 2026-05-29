@@ -2588,6 +2588,11 @@ async function init() {
     // Permit a starts_at column for tournaments that don't currently set
     // start/end_date columns (the Swiss check-in window is offset from this).
     await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ`);
+    // Task #452 — one-shot timestamps tracking when the "check-in window
+    // opened" notification and the "5-min-before-close" reminder have been
+    // sent for each tournament, so the per-minute sweep never double-DMs.
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS checkin_open_notified_at TIMESTAMPTZ`);
+    await p.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS checkin_reminder_notified_at TIMESTAMPTZ`);
     await p.query(`
       CREATE TABLE IF NOT EXISTS tournament_checkins (
         tournament_id INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
@@ -14680,6 +14685,8 @@ const NOTIFICATION_EVENTS = [
   { key: 'lobby_invite',            label: 'Lobby invite / match ready',  desc: 'When an inhouse lobby is ready for you to accept.',          legacy: null,                         legacyPush: 'match_imminent_push',    defaults: { discord: true,  push: true  } },
   { key: 'achievement_unlocked',    label: 'Achievement unlocked',        desc: 'New badge or milestone earned.',                             legacy: null,                         defaults: { discord: false, push: false } },
   { key: 'prize_pool_change',       label: 'Prize pool change',           desc: 'When a tournament prize pool you are entered in changes.',   legacy: null,                         defaults: { discord: false, push: false } },
+  // Task #452 — tournament check-in window open + 5-min-before-close reminder.
+  { key: 'tournament_checkin',      label: 'Tournament check-in',         desc: 'When check-in opens for a tournament you are in, plus a reminder before it closes.', legacy: null, defaults: { discord: true,  push: true  } },
   { key: 'coach_booking_confirmed', label: 'Coach booking confirmed',     desc: 'When a coaching booking is paid and locked in.',             legacy: 'coaching_booking_confirmed', defaults: { discord: true,  push: true  } },
   { key: 'coach_booking_reminder',  label: 'Coach booking reminder',      desc: 'About one hour before a scheduled coaching session.',        legacy: 'coaching_session_reminder',  defaults: { discord: true,  push: true  } },
   { key: 'league_scrim_accepted',   label: 'League / scrim accepted',     desc: 'When a league or scrim request you sent is accepted.',       legacy: null,                         defaults: { discord: true,  push: true  } },
@@ -24950,6 +24957,7 @@ module.exports = {
   checkInTournamentParticipant,
   getTournamentCheckIns,
   sweepTournamentCheckInDqs,
+  claimTournamentCheckinNotifications,
   getTournamentPrizeSplits,
   setTournamentPrizeSplits,
   finalizeTournamentPayouts,
@@ -27173,6 +27181,77 @@ async function sweepTournamentCheckInDqs({ now = new Date() } = {}) {
     }
   }
   return summaries;
+}
+
+// Task #452 — Claim tournaments whose check-in notifications are now due and
+// return the recipient lists so the caller can fan out DMs / web-push. Two
+// independent one-shot signals, each guarded by its own timestamp column so a
+// per-minute cron never double-sends and the claim survives restarts:
+//
+//   • "open"     — fired once when (starts_at - checkin_offset_min) is reached.
+//                  Recipients = every registered participant.
+//   • "reminder" — fired once 5 minutes before starts_at to anyone who has
+//                  NOT yet checked in.
+//
+// Both UPDATEs atomically flip their timestamp WHERE it IS NULL and RETURNING
+// the claimed rows, so concurrent ticks can't both win the same tournament.
+// Only tournaments that are still 'upcoming', have a starts_at, and haven't
+// been DQ-swept are considered.
+async function claimTournamentCheckinNotifications({ now = new Date() } = {}) {
+  const p = getPool();
+  const opens = [];
+  const reminders = [];
+
+  // --- Open window notifications ---
+  const openRes = await p.query(
+    `UPDATE tournaments
+        SET checkin_open_notified_at = $1
+      WHERE status = 'upcoming'
+        AND checkin_dq_done = FALSE
+        AND starts_at IS NOT NULL
+        AND checkin_open_notified_at IS NULL
+        AND $1 >= starts_at - (checkin_offset_min * INTERVAL '1 minute')
+        AND $1 < starts_at
+      RETURNING id, name, starts_at, checkin_offset_min`, [now]);
+  for (const t of openRes.rows) {
+    const r = await p.query(
+      `SELECT account_id FROM tournament_participants WHERE tournament_id = $1`, [t.id]);
+    opens.push({
+      tournament_id: t.id,
+      name: t.name,
+      starts_at: t.starts_at,
+      checkin_offset_min: t.checkin_offset_min,
+      recipients: r.rows.map(row => String(row.account_id)),
+    });
+  }
+
+  // --- 5-minute reminders (only the not-yet-checked-in) ---
+  const remRes = await p.query(
+    `UPDATE tournaments
+        SET checkin_reminder_notified_at = $1
+      WHERE status = 'upcoming'
+        AND checkin_dq_done = FALSE
+        AND starts_at IS NOT NULL
+        AND checkin_reminder_notified_at IS NULL
+        AND $1 >= starts_at - INTERVAL '5 minutes'
+        AND $1 < starts_at
+      RETURNING id, name, starts_at`, [now]);
+  for (const t of remRes.rows) {
+    const r = await p.query(
+      `SELECT account_id FROM tournament_participants
+        WHERE tournament_id = $1
+          AND account_id NOT IN (
+            SELECT account_id FROM tournament_checkins WHERE tournament_id = $1
+          )`, [t.id]);
+    reminders.push({
+      tournament_id: t.id,
+      name: t.name,
+      starts_at: t.starts_at,
+      recipients: r.rows.map(row => String(row.account_id)),
+    });
+  }
+
+  return { opens, reminders };
 }
 
 // --- Per-place prize splits ---------------------------------------------
