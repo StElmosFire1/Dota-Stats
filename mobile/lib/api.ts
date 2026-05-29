@@ -193,4 +193,26 @@ export const api = {
   // Read-side helpers used by action screens for context (player names etc).
   getCoach: (coachId: string | number) =>
     request<any>(`/api/coaches/${coachId}`).catch(() => null),
+
+  // ---------- Task #459 — Inbox ----------
+  // Single fetch that aggregates every actionable item awaiting the signed-in
+  // account. Each row carries { kind, id } so the inbox screen can deep-link
+  // to the matching /action/<kind>/<id> screen built in #414.
+  getPendingActions: () =>
+    request<{ actions: PendingAction[]; count: number }>(`/api/me/pending-actions`),
+};
+
+export type PendingActionKind =
+  | 'ready-check'
+  | 'scrim'
+  | 'roster-transfer'
+  | 'mvp-vote'
+  | 'booking-reminder';
+
+export type PendingAction = {
+  kind: PendingActionKind;
+  id: string;
+  title: string;
+  subtitle?: string;
+  [extra: string]: any;
 };

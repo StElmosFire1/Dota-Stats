@@ -119,6 +119,7 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="index" options={{ title: 'OCE Inhouse' }} />
+        <Stack.Screen name="inbox" options={{ title: 'Inbox' }} />
         <Stack.Screen name="leaderboard" options={{ title: 'Leaderboard' }} />
         <Stack.Screen name="matches" options={{ title: 'Recent Matches' }} />
         <Stack.Screen name="match/[id]" options={{ title: 'Match Detail' }} />

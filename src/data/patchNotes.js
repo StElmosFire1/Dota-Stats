@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.16",
+    "title": "Mobile Inbox — every pending action in one place (Task #459)",
+    "published_at": "2026-05-29",
+    "notes": [
+      "**Why.** Task #414 shipped six deep-linked mobile action screens, but they only opened from a push or a shared link. Dismiss the push and there was no in-app way back to a pending ready-check, scrim/transfer proposal, open MVP vote, or coaching reminder. The new Inbox closes that loop.",
+      "**New screen.** `mobile/app/inbox.tsx` lists every item currently awaiting the signed-in account — pending ready-checks, scrim invites, roster-transfer approvals, open MVP-vote windows, and un-ack'd coaching booking reminders — each row deep-linking to the existing `/action/<kind>/<id>` screen. Re-fetches on focus so resolved items drop off when you return.",
+      "**One fetch.** New `GET /api/me/pending-actions` aggregates all five kinds via `db.getPendingActionsForAccount` — five independent, individually-guarded queries fanned out in parallel so a partial outage degrades one kind to empty rather than blanking the inbox. Anonymous callers get an empty list.",
+      "**Badge.** The home screen now shows an Inbox card with a live count badge matching the list length, refreshed on focus alongside the rest of the home data.",
+      "**Scope.** Full edition mobile companion + server/DB layer; no schema change. Read-only aggregation — the actual mutations still run through the Task #414 action endpoints."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.15",
     "title": "Notification defaults trimmed to opt-in (Task #455)",
     "published_at": "2026-05-29",

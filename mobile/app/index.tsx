@@ -8,7 +8,7 @@ import {
   Pressable,
   ActivityIndicator,
 } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { Link, useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../lib/theme';
 import { api } from '../lib/api';
@@ -25,6 +25,7 @@ export default function Home() {
   const [player, setPlayer] = useState<any | null>(null);
   const [streak, setStreak] = useState<any | null>(null);
   const [recent, setRecent] = useState<any[]>([]);
+  const [inboxCount, setInboxCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -32,31 +33,39 @@ export default function Home() {
     const a = await getAccountId();
     setAccount(a);
     if (a) {
-      // Signed in — fetch profile, streak, and the last 5 matches in
-      // parallel. Each .catch(() => …) is intentional: a partial outage
-      // on one endpoint must not blank the whole screen.
-      const [s, p, st, rm] = await Promise.all([
+      // Signed in — fetch profile, streak, the last 5 matches, and the
+      // pending-actions count in parallel. Each .catch(() => …) is
+      // intentional: a partial outage on one endpoint must not blank the
+      // whole screen.
+      const [s, p, st, rm, pa] = await Promise.all([
         api.getHomeStats().catch(() => null),
         api.getPlayer(a).catch(() => null),
         api.getPlayerStreak(a).catch(() => null),
         api.getPlayerRecentMatches(a, 5).catch(() => ({ matches: [] })),
+        api.getPendingActions().catch(() => ({ count: 0 })),
       ]);
       setStats(s);
       setPlayer(p);
       setStreak(st);
       setRecent(rm?.matches || []);
+      setInboxCount(typeof pa?.count === 'number' ? pa.count : 0);
     } else {
       const s = await api.getHomeStats().catch(() => null);
       setStats(s);
       setPlayer(null);
       setStreak(null);
       setRecent([]);
+      setInboxCount(0);
     }
     setLoading(false);
     setRefreshing(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  // Refresh the inbox badge (and the rest of the home data) whenever the
+  // screen regains focus — e.g. after the user resolves an inbox item and
+  // navigates back here.
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -81,6 +90,12 @@ export default function Home() {
             <ProfileCard player={player} streak={streak} accountId={accountId} />
             <RecentMatchesCard matches={recent} />
             <View style={s.nav}>
+              <NavCard
+                href="/inbox"
+                title="Inbox"
+                subtitle={inboxCount > 0 ? `${inboxCount} item${inboxCount === 1 ? '' : 's'} need your response` : "You're all caught up"}
+                badge={inboxCount}
+              />
               <NavCard href="/leaderboard" title="Leaderboard" subtitle="Top inhouse MMR" />
               <NavCard href="/matches" title="All Recent Matches" subtitle="Browse every game" />
               <NavCard href="/settings" title="Settings" subtitle={`Signed in as ${accountId}`} />
@@ -206,11 +221,23 @@ function StatTile({ label, value }: { label: string; value: any }) {
   );
 }
 
-function NavCard({ href, title, subtitle }: { href: any; title: string; subtitle: string }) {
+function NavCard({ href, title, subtitle, badge }: { href: any; title: string; subtitle: string; badge?: number }) {
+  const showBadge = typeof badge === 'number' && badge > 0;
   return (
     <Link href={href} asChild>
-      <Pressable style={({ pressed }) => [s.card, pressed && { opacity: 0.8 }]} accessibilityRole="button" accessibilityLabel={title}>
-        <Text style={s.cardTitle}>{title}</Text>
+      <Pressable
+        style={({ pressed }) => [s.card, pressed && { opacity: 0.8 }]}
+        accessibilityRole="button"
+        accessibilityLabel={showBadge ? `${title}, ${badge} pending` : title}
+      >
+        <View style={s.cardTitleRow}>
+          <Text style={s.cardTitle}>{title}</Text>
+          {showBadge ? (
+            <View style={s.cardBadge}>
+              <Text style={s.cardBadgeText}>{badge > 99 ? '99+' : String(badge)}</Text>
+            </View>
+          ) : null}
+        </View>
         <Text style={s.cardSub}>{subtitle}</Text>
       </Pressable>
     </Link>
@@ -242,7 +269,13 @@ const s = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
   },
-  cardTitle: { color: theme.text, fontSize: 16, fontWeight: '700' },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  cardTitle: { color: theme.text, fontSize: 16, fontWeight: '700', flexShrink: 1 },
+  cardBadge: {
+    minWidth: 24, height: 24, borderRadius: 12, paddingHorizontal: 7,
+    backgroundColor: theme.amber, justifyContent: 'center', alignItems: 'center',
+  },
+  cardBadgeText: { color: theme.inkNavy, fontSize: 12, fontWeight: '800' },
   cardSub: { color: theme.textMuted, marginTop: 4 },
   signIn: {
     backgroundColor: theme.accent,

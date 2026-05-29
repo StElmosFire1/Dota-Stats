@@ -19505,6 +19505,23 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // Task #459 — Mobile inbox. Aggregates every actionable item awaiting the
+  // signed-in account (pending ready-checks, scrim proposals, roster-transfer
+  // approvals, open MVP-vote windows, and un-ack'd coaching reminders) into a
+  // single fetch. Each row carries `kind` + `id` so the mobile app can
+  // deep-link to the matching /action/<kind>/<id> screen built in #414.
+  router.get('/me/pending-actions', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.json({ actions: [], count: 0 });
+      const result = await db.getPendingActionsForAccount(accountId);
+      res.json(result);
+    } catch (e) {
+      console.error('[API] me/pending-actions:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Task #383 — Leagues ──────────────────────────────────────────────────
   router.get('/leagues', async (req, res) => {
     try { res.json({ leagues: await db.listLeagues() }); }

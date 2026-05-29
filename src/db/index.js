@@ -24259,6 +24259,143 @@ async function getGameStats(accountId) {
   return r.rows;
 }
 
+// Task #459 — Mobile "Inbox" aggregate. Returns every item currently awaiting
+// the signed-in account's response, grouped by kind, so the mobile inbox can
+// render in a single fetch. Each kind is queried independently and guarded so
+// a partial failure (e.g. a missing optional table) degrades to an empty list
+// for that kind rather than blanking the whole inbox. Row shapes intentionally
+// carry just enough context for a list row + the deep-link id; the action
+// screens fetch their own detail.
+async function getPendingActionsForAccount(accountId) {
+  const p = getPool();
+  const acct = String(accountId);
+
+  // 1. Ready-checks — sessions in the timed accept phase where this account is
+  //    a registered player that hasn't accepted yet.
+  const readyChecks = (async () => {
+    const r = await p.query(
+      `SELECT s.id AS session_id, s.notes, s.captain_mode,
+              s.accept_phase_starts_at, s.accept_phase_seconds
+         FROM inhouse_session_players isp
+         JOIN inhouse_sessions s ON s.id = isp.session_id
+        WHERE isp.account_id = $1
+          AND s.status = 'accepting'
+          AND COALESCE(s.is_diagnostic, false) = false
+          AND isp.status = 'registered'
+          AND isp.accepted_at IS NULL
+        ORDER BY s.accept_phase_starts_at DESC NULLS LAST`,
+      [acct]
+    );
+    return r.rows.map(row => ({
+      kind: 'ready-check',
+      id: String(row.session_id),
+      title: 'Lobby ready check',
+      subtitle: row.notes ? String(row.notes).slice(0, 120) : 'Confirm you\'re ready to play.',
+      accept_phase_starts_at: row.accept_phase_starts_at,
+      accept_phase_seconds: row.accept_phase_seconds,
+    }));
+  })();
+
+  // 2. Scrim proposals — pending scrims where this account captains/owns the
+  //    opponent team that has to respond.
+  const scrims = (async () => {
+    const r = await p.query(
+      `SELECT ts.id, ts.scheduled_at, ts.note,
+              pt.name AS proposer_name, pt.tag AS proposer_tag
+         FROM team_scrims ts
+         JOIN team_members tm
+           ON tm.team_id = ts.opponent_team_id
+          AND tm.account_id = $1
+          AND tm.role IN ('owner','captain')
+         JOIN teams pt ON pt.id = ts.proposer_team_id
+        WHERE ts.status = 'pending'
+        ORDER BY ts.scheduled_at ASC NULLS LAST`,
+      [acct]
+    );
+    return r.rows.map(row => ({
+      kind: 'scrim',
+      id: String(row.id),
+      title: 'Scrim proposal',
+      subtitle: `${row.proposer_name || 'A team'}${row.proposer_tag ? ` [${row.proposer_tag}]` : ''} wants to scrim.`,
+      scheduled_at: row.scheduled_at,
+    }));
+  })();
+
+  // 3. Roster transfers awaiting this captain's approval (reuses the existing
+  //    two-captain confirm query).
+  const transfers = (async () => {
+    const rows = await getPendingTransfersForCaptain(acct);
+    return rows.map(row => ({
+      kind: 'roster-transfer',
+      id: String(row.id),
+      title: 'Roster transfer',
+      subtitle: `${row.nickname || 'A player'}: ${row.from_team_name || 'Free agent'} → ${row.to_team_name || 'team'}`,
+    }));
+  })();
+
+  // 4. MVP-vote windows still open — matches this account played in the last
+  //    24h where they haven't yet cast an MVP vote.
+  const mvpVotes = (async () => {
+    const r = await p.query(
+      `SELECT m.match_id, m.date
+         FROM player_stats ps
+         JOIN matches m ON m.match_id = ps.match_id
+        WHERE ps.account_id = $1
+          AND ps.account_id <> 0
+          AND m.date > NOW() - INTERVAL '24 hours'
+          AND NOT EXISTS (
+            SELECT 1 FROM match_ratings mr
+             WHERE mr.match_id = m.match_id
+               AND mr.rater_account_id = $1
+               AND mr.is_mvp_vote = TRUE
+          )
+        ORDER BY m.date DESC`,
+      [acct]
+    );
+    return r.rows.map(row => ({
+      kind: 'mvp-vote',
+      id: String(row.match_id),
+      title: 'Vote for MVP',
+      subtitle: `Pick the standout from match ${row.match_id}.`,
+      match_date: row.date,
+    }));
+  })();
+
+  // 5. Coaching booking reminders — sent but not yet acknowledged, still upcoming.
+  const bookingReminders = (async () => {
+    const r = await p.query(
+      `SELECT cb.id, cb.slot_start_at, cb.duration_minutes,
+              cb.coach_account_id, n.nickname AS coach_name
+         FROM coaching_bookings cb
+         LEFT JOIN nicknames n ON n.account_id = cb.coach_account_id
+        WHERE cb.student_account_id = $1
+          AND cb.status = 'paid'
+          AND cb.reminder_sent_at IS NOT NULL
+          AND cb.reminder_acked_at IS NULL
+        ORDER BY cb.slot_start_at ASC`,
+      [acct]
+    );
+    return r.rows.map(row => ({
+      kind: 'booking-reminder',
+      id: String(row.id),
+      title: 'Coaching session soon',
+      subtitle: `Session with ${row.coach_name || 'your coach'} is coming up.`,
+      slot_start_at: row.slot_start_at,
+    }));
+  })();
+
+  const results = await Promise.all([
+    readyChecks.catch((e) => { console.warn('[pending-actions] ready-checks failed:', e.message); return []; }),
+    scrims.catch((e) => { console.warn('[pending-actions] scrims failed:', e.message); return []; }),
+    transfers.catch((e) => { console.warn('[pending-actions] transfers failed:', e.message); return []; }),
+    mvpVotes.catch((e) => { console.warn('[pending-actions] mvp-votes failed:', e.message); return []; }),
+    bookingReminders.catch((e) => { console.warn('[pending-actions] booking-reminders failed:', e.message); return []; }),
+  ]);
+
+  const actions = results.flat();
+  return { actions, count: actions.length };
+}
+
 module.exports = {
   init,
   initSchema: init,
@@ -24272,6 +24409,8 @@ module.exports = {
   getGameLeaderboard,
   getStatlineCandidates,
   getGameStats,
+  // Task #459 — mobile inbox aggregate
+  getPendingActionsForAccount,
   // Task #446 — Discord Rich Presence opt-in
   upsertDiscordRpcConnection,
   getDiscordRpcConnection,
