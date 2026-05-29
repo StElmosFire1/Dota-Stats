@@ -1795,6 +1795,51 @@ export async function finalizeTournamentPayouts(tournamentId, superuserKey) {
   return d;
 }
 
+// Task #453 — pay tournament winners via Stripe Connect.
+export async function transferTournamentPayouts(tournamentId, superuserKey, includeFailed = false) {
+  const res = await superuserFetch(BASE + `/tournaments/${tournamentId}/payouts/transfer`, {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ includeFailed }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed to pay winners');
+  return d;
+}
+export async function retryTournamentPayout(tournamentId, payoutId, superuserKey) {
+  const res = await superuserFetch(BASE + `/tournaments/${tournamentId}/payouts/${payoutId}/retry`, {
+    method: 'POST', headers: { 'x-superuser-key': superuserKey },
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed to retry transfer');
+  return d;
+}
+export async function getMyPayoutAccount() {
+  return fetchJson('/me/payout-account');
+}
+export async function startPayoutOnboarding(country = 'AU') {
+  const res = await fetch(BASE + '/me/payout-account/onboard', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ country }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed to start onboarding');
+  return d;
+}
+export async function getFailedTournamentPayouts(superuserKey) {
+  return superuserJson('/admin/tournament-payouts/failed', { superuserKey });
+}
+export async function retryFailedTournamentPayout(payoutId, superuserKey) {
+  const res = await superuserFetch(BASE + `/admin/tournament-payouts/${payoutId}/retry`, {
+    method: 'POST', headers: { 'x-superuser-key': superuserKey },
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed to retry transfer');
+  return d;
+}
+
 export async function deleteTournament(id, superuserKey) {
   const res = await superuserFetch(BASE + `/tournaments/${id}`, {
     method: 'DELETE',

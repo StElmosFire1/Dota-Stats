@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "8.13",
+    "title": "Automatic tournament prize payouts via Stripe Connect (Task #453)",
+    "published_at": "2026-05-29",
+    "notes": [
+      "**Why.** Tournament payouts (Task #412) only snapshotted who-won-what into `tournament_payouts` — actually sending the prize money was a manual chore. Winners now get paid automatically via Stripe Connect Express the moment they have a connected account, with no manual transfer step.",
+      "**Per-row transfer tracking.** `tournament_payouts` gains `stripe_transfer_id`, `transfer_status` (`pending` / `paid` / `failed`), `transfer_error`, `transferred_at`, and `currency` (default `aud`). Re-running `finalizeTournamentPayouts` now preserves any in-flight / settled transfer for an unchanged winner instead of wiping it, so the snapshot stays idempotent without ever double-paying.",
+      "**Connect accounts for any winner.** A new `payout_accounts` table mirrors the coaching onboarding flow so non-coach winners can connect a Stripe Express account; existing coaches reuse their Connect account automatically (`resolvePayoutDestination` prefers a player's own account, then an active coach account, skipping synthetic test ids).",
+      "**Settlement paths.** Transfers fire (1) immediately when payouts are finalized, (2) on a per-tournament \"Pay winners\" admin button, and (3) from a background sweep (2 min after boot, then every 10 min) that pays winners who connect *after* the snapshot — also kicked by the `account.updated` webhook once KYC completes. Each transfer carries a `transfer_group` of `tournament_<id>` and an idempotency key to prevent accidental double-sends.",
+      "**Admin + winner UX.** The tournament payouts panel shows a status badge per row, a superuser \"Pay winners\" / \"Retry failed\" control, and a per-row Retry on failures. Winners with a pending, unconnected prize see a \"Connect payout account\" CTA that launches Stripe onboarding. The AdminPanel tournament section surfaces a cross-tournament \"Failed prize payouts\" table with one-click retry (hidden when nothing failed).",
+      "**Scope.** Full edition only — community edition stays paywall-free and untouched. Best-effort throughout: when Stripe isn't configured, rows simply stay `pending`."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.12",
     "title": "Tournament check-in window notifications (Task #452)",
     "published_at": "2026-05-29",

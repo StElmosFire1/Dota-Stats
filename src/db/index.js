@@ -2622,6 +2622,36 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_tournament_payouts_t ON tournament_payouts(tournament_id)`);
 
+    // Task #453 — auto-pay tournament winners via Stripe Connect. Each payout
+    // row tracks its own Stripe Transfer so the manual snapshot can settle into
+    // real money once the winner has a connected account. transfer_status:
+    //   'pending' — finalized but not yet sent (no connected account, or queued)
+    //   'paid'    — Stripe Transfer succeeded (stripe_transfer_id set)
+    //   'failed'  — Stripe rejected the transfer (transfer_error set; retryable)
+    await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS stripe_transfer_id TEXT`);
+    await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS transfer_status TEXT NOT NULL DEFAULT 'pending'`);
+    await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS transfer_error TEXT`);
+    await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS transferred_at TIMESTAMPTZ`);
+    await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'aud'`);
+
+    // Task #453 — generic Stripe Connect Express payout accounts for any
+    // player (tournament winners who aren't coaches). Mirrors the coaching
+    // onboarding flow; the coaching `coaches.stripe_account_id` is reused
+    // first when present so coaches never have to connect twice.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS payout_accounts (
+        account_id BIGINT PRIMARY KEY,
+        stripe_account_id TEXT UNIQUE,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'active', 'disabled')),
+        charges_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        payouts_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        country TEXT DEFAULT 'AU',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
     // Inhouse queue — persistent across restarts
     await p.query(`
       CREATE TABLE IF NOT EXISTS inhouse_queue (
@@ -24962,6 +24992,16 @@ module.exports = {
   setTournamentPrizeSplits,
   finalizeTournamentPayouts,
   getTournamentPayouts,
+  // Task #453 — auto-pay tournament winners via Stripe Connect
+  resolvePayoutDestination,
+  getPendingTournamentPayouts,
+  getTournamentPayoutRow,
+  setTournamentPayoutTransfer,
+  getTournamentsWithPendingPayouts,
+  listFailedTournamentPayouts,
+  getPayoutAccount,
+  upsertPayoutAccount,
+  setPayoutAccountKyc,
   // Task #479 — smoke-test runs
   createSmokeTestRun,
   getSmokeTestRun,
@@ -27320,12 +27360,30 @@ async function finalizeTournamentPayouts(tournamentId) {
     );
   }
   const payouts = _swissEngine.computePayouts(splits, standings, poolCents);
+  const currency = (t.currency || 'aud').toLowerCase();
+  // Task #453 — preserve any transfer that has already settled (or is in
+  // flight / failed) so re-running the snapshot never double-pays or wipes a
+  // Stripe Transfer id. We carry the prior transfer state forward when the
+  // winner for a given place is unchanged.
+  const prior = await p.query(
+    `SELECT account_id, place, stripe_transfer_id, transfer_status, transfer_error, transferred_at
+       FROM tournament_payouts WHERE tournament_id = $1`, [tid]);
+  const priorByPlace = new Map();
+  for (const row of prior.rows) priorByPlace.set(Number(row.place), row);
   await p.query(`DELETE FROM tournament_payouts WHERE tournament_id = $1`, [tid]);
   for (const row of payouts) {
+    const carry = priorByPlace.get(Number(row.place));
+    const sameWinner = carry && String(carry.account_id) === String(row.account_id);
     await p.query(
-      `INSERT INTO tournament_payouts (tournament_id, account_id, place, percent, amount_cents)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [tid, row.account_id, row.place, row.percent, row.cents]);
+      `INSERT INTO tournament_payouts
+         (tournament_id, account_id, place, percent, amount_cents, currency,
+          stripe_transfer_id, transfer_status, transfer_error, transferred_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [tid, row.account_id, row.place, row.percent, row.cents, currency,
+       sameWinner ? carry.stripe_transfer_id : null,
+       sameWinner ? carry.transfer_status : 'pending',
+       sameWinner ? carry.transfer_error : null,
+       sameWinner ? carry.transferred_at : null]);
   }
   await p.query(`UPDATE tournaments SET payouts_finalized_at = NOW() WHERE id = $1`, [tid]);
   return payouts;
@@ -27334,15 +27392,159 @@ async function finalizeTournamentPayouts(tournamentId) {
 async function getTournamentPayouts(tournamentId) {
   const p = getPool();
   const r = await p.query(
-    `SELECT tp.account_id, tp.place, tp.percent::float8 AS percent, tp.amount_cents,
+    `SELECT tp.id, tp.account_id::text AS account_id, tp.place,
+            tp.percent::float8 AS percent, tp.amount_cents, tp.currency,
+            tp.stripe_transfer_id, tp.transfer_status, tp.transfer_error,
+            tp.transferred_at,
             COALESCE(n.nickname,
               (SELECT ps.persona_name FROM player_stats ps WHERE ps.account_id = tp.account_id ORDER BY ps.id DESC LIMIT 1),
-              tp.account_id::text) AS display_name
+              tp.account_id::text) AS display_name,
+            -- True when this winner has a Connect account that Stripe can pay
+            -- out to (their own payout_accounts row, or an active coach row).
+            (
+              EXISTS (SELECT 1 FROM payout_accounts pa
+                       WHERE pa.account_id = tp.account_id AND pa.payouts_enabled = TRUE)
+              OR EXISTS (SELECT 1 FROM coaches c
+                          WHERE c.account_id = tp.account_id
+                            AND c.status = 'active' AND c.stripe_account_id IS NOT NULL
+                            AND c.stripe_account_id NOT LIKE 'acct_test_%')
+            ) AS payout_connected
      FROM tournament_payouts tp
      LEFT JOIN nicknames n ON n.account_id = tp.account_id
      WHERE tp.tournament_id = $1 ORDER BY tp.place ASC`,
     [parseInt(tournamentId)]);
   return r.rows;
+}
+
+// Task #453 — resolve a Stripe Connect destination for a winner. Prefers the
+// player's own payout_accounts row; falls back to an active coach Connect
+// account. Returns { stripe_account_id, payouts_enabled } or null. Synthetic
+// test coach ids (acct_test_…) are excluded — they can't receive a Transfer.
+async function resolvePayoutDestination(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const pa = await p.query(
+    `SELECT stripe_account_id, payouts_enabled FROM payout_accounts
+      WHERE account_id = $1 AND stripe_account_id IS NOT NULL`, [accountId]);
+  if (pa.rows[0]?.stripe_account_id && pa.rows[0].payouts_enabled) {
+    return { stripe_account_id: pa.rows[0].stripe_account_id, payouts_enabled: true };
+  }
+  const co = await p.query(
+    `SELECT stripe_account_id FROM coaches
+      WHERE account_id = $1 AND status = 'active' AND stripe_account_id IS NOT NULL
+        AND stripe_account_id NOT LIKE 'acct_test_%'`, [accountId]);
+  if (co.rows[0]?.stripe_account_id) {
+    return { stripe_account_id: co.rows[0].stripe_account_id, payouts_enabled: true };
+  }
+  // A pending own-account (not yet payouts_enabled) still counts as "not ready".
+  if (pa.rows[0]?.stripe_account_id) {
+    return { stripe_account_id: pa.rows[0].stripe_account_id, payouts_enabled: false };
+  }
+  return null;
+}
+
+// Task #453 — pending payout rows for a finalized tournament that still need a
+// Stripe Transfer. Used by the per-tournament "Pay winners" action and the
+// background settlement sweep.
+async function getPendingTournamentPayouts(tournamentId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, tournament_id, account_id::text AS account_id, place,
+            amount_cents, currency, transfer_status, stripe_transfer_id
+       FROM tournament_payouts
+      WHERE tournament_id = $1 AND transfer_status IN ('pending', 'failed')
+        AND amount_cents > 0
+      ORDER BY place ASC`,
+    [parseInt(tournamentId)]);
+  return r.rows;
+}
+
+async function getTournamentPayoutRow(payoutId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, tournament_id, account_id::text AS account_id, place,
+            amount_cents, currency, transfer_status, stripe_transfer_id
+       FROM tournament_payouts WHERE id = $1`, [parseInt(payoutId)]);
+  return r.rows[0] || null;
+}
+
+// Mark a payout's Stripe Transfer outcome. status ∈ pending|paid|failed.
+async function setTournamentPayoutTransfer(payoutId, { status, stripeTransferId = null, error = null }) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE tournament_payouts
+        SET transfer_status = $2,
+            stripe_transfer_id = COALESCE($3, stripe_transfer_id),
+            transfer_error = $4,
+            transferred_at = CASE WHEN $2 = 'paid' THEN NOW() ELSE transferred_at END
+      WHERE id = $1 RETURNING *`,
+    [parseInt(payoutId), status, stripeTransferId, error]);
+  return r.rows[0] || null;
+}
+
+// Tournaments that have finalized payouts with at least one row still awaiting
+// a successful transfer. Drives the background settlement sweep.
+async function getTournamentsWithPendingPayouts() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT DISTINCT tp.tournament_id
+       FROM tournament_payouts tp
+       JOIN tournaments t ON t.id = tp.tournament_id
+      WHERE t.payouts_finalized_at IS NOT NULL
+        AND tp.transfer_status = 'pending'
+        AND tp.amount_cents > 0`);
+  return r.rows.map(x => x.tournament_id);
+}
+
+// All failed payout transfers across every tournament — admin retry surface.
+async function listFailedTournamentPayouts() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT tp.id, tp.tournament_id, t.name AS tournament_name,
+            tp.account_id::text AS account_id, tp.place, tp.amount_cents,
+            tp.currency, tp.transfer_status, tp.transfer_error, tp.stripe_transfer_id,
+            COALESCE(n.nickname,
+              (SELECT ps.persona_name FROM player_stats ps WHERE ps.account_id = tp.account_id ORDER BY ps.id DESC LIMIT 1),
+              tp.account_id::text) AS display_name
+       FROM tournament_payouts tp
+       JOIN tournaments t ON t.id = tp.tournament_id
+       LEFT JOIN nicknames n ON n.account_id = tp.account_id
+      WHERE tp.transfer_status = 'failed'
+      ORDER BY tp.tournament_id DESC, tp.place ASC`);
+  return r.rows;
+}
+
+// ─── Payout accounts (generic Stripe Connect Express for any player) ─────────
+async function getPayoutAccount(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const r = await p.query(`SELECT * FROM payout_accounts WHERE account_id = $1`, [accountId]);
+  return r.rows[0] || null;
+}
+
+async function upsertPayoutAccount({ accountId, stripeAccountId, country = 'AU' }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO payout_accounts (account_id, stripe_account_id, country)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (account_id) DO UPDATE
+       SET stripe_account_id = COALESCE(payout_accounts.stripe_account_id, EXCLUDED.stripe_account_id),
+           country = EXCLUDED.country,
+           updated_at = NOW()
+     RETURNING *`,
+    [accountId, stripeAccountId || null, country]);
+  return r.rows[0];
+}
+
+async function setPayoutAccountKyc(stripeAccountId, { chargesEnabled, payoutsEnabled }) {
+  const p = getPool();
+  const status = (chargesEnabled && payoutsEnabled) ? 'active' : 'pending';
+  const r = await p.query(
+    `UPDATE payout_accounts
+        SET charges_enabled = $2, payouts_enabled = $3, status = $4, updated_at = NOW()
+      WHERE stripe_account_id = $1 RETURNING *`,
+    [stripeAccountId, Boolean(chargesEnabled), Boolean(payoutsEnabled), status]);
+  return r.rows[0] || null;
 }
 
 // ─── Weekend / Special Event Tournaments ───────────────────────────────────

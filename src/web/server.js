@@ -405,6 +405,161 @@ async function _runCheckinNotifyTick() {
   return { opens: opens.length, reminders: reminders.length };
 }
 
+// Task #453 — auto-pay tournament winners via Stripe Connect Express.
+//
+// `tournament_payouts` (Task #412) snapshots per-place amounts when an event
+// completes; this turns each pending row into a real Stripe Transfer once the
+// winner has a Connect account that can receive payouts. Best-effort and
+// idempotent: rows already 'paid' are skipped, and a failed transfer is left
+// retryable (status 'failed' with the Stripe error stored).
+function _stripeForPayouts() {
+  if (!process.env.STRIPE_SECRET_KEY) return null;
+  try { return require('../observability/stripeClient').getStripe(); } catch (_) { return null; }
+}
+
+// Reconciliation guard: find any Stripe Transfer that was already created for
+// this payout row. We tag every transfer with metadata.payout_id and a
+// transfer_group of `tournament_<id>`, so we can look it up before ever
+// creating another one. This is the definitive defence against double-paying:
+// if a previous attempt succeeded at Stripe but failed to persist locally (or
+// the idempotency window expired), we find the real transfer here instead of
+// sending a second one.
+async function _findExistingPayoutTransfer(stripe, row) {
+  try {
+    const list = await stripe.transfers.list({
+      transfer_group: `tournament_${row.tournament_id}`,
+      limit: 100,
+    });
+    return list.data.find(t => t.metadata?.payout_id === String(row.id)) || null;
+  } catch (e) {
+    // If we can't confirm, fail safe: signal "unknown" so the caller does NOT
+    // create a new transfer (avoids double-pay when the list call is flaky).
+    console.warn(`[TournamentPayout] reconciliation lookup failed for payout ${row.id}:`, e.message);
+    return undefined;
+  }
+}
+
+// Attempt a single payout row's transfer. Returns the updated row (or the
+// original when nothing could be done).
+//
+// Financial-correctness invariants:
+//  - A transfer that succeeds at Stripe is NEVER downgraded to 'failed' — a
+//    local DB write failure leaves the row 'pending' so the sweep reconciles
+//    it (and marks it 'paid') on the next pass, never re-sending money.
+//  - Before creating any transfer we reconcile against Stripe; an existing
+//    transfer for this payout id is reused rather than duplicated, so a retry
+//    can never double-pay even if the prior attempt's DB write was lost.
+async function _transferTournamentPayoutRow(row) {
+  if (!row) return null;
+  if (row.transfer_status === 'paid') return row;
+  if (!(row.amount_cents > 0)) return row;
+  const stripe = _stripeForPayouts();
+  if (!stripe) return row; // payments not configured — leave pending
+
+  const dest = await db.resolvePayoutDestination(row.account_id);
+  if (!dest || !dest.payouts_enabled) {
+    // Winner hasn't connected (or KYC incomplete) — leave pending so the
+    // sweep retries automatically once they connect.
+    return row;
+  }
+
+  // Reconcile first: never create a second transfer for a payout that Stripe
+  // already paid. `undefined` means the lookup itself failed — bail without
+  // creating, to stay fail-safe.
+  const existing = await _findExistingPayoutTransfer(stripe, row);
+  if (existing === undefined) return row;
+  if (existing) {
+    try {
+      return await db.setTournamentPayoutTransfer(row.id, {
+        status: 'paid', stripeTransferId: existing.id, error: null,
+      });
+    } catch (dbErr) {
+      console.error(`[TournamentPayout] payout ${row.id} already transferred (${existing.id}) but DB write failed — will reconcile:`, dbErr.message);
+      return row;
+    }
+  }
+
+  // Step 1 — create the transfer (money movement). Stable idempotency key per
+  // payout id guards against concurrent duplicate sends; the reconciliation
+  // above guards against the cross-window / lost-write cases.
+  let transfer;
+  try {
+    transfer = await stripe.transfers.create({
+      amount: row.amount_cents,
+      currency: (row.currency || 'aud').toLowerCase(),
+      destination: dest.stripe_account_id,
+      transfer_group: `tournament_${row.tournament_id}`,
+      metadata: {
+        purpose: 'tournament_payout',
+        tournament_id: String(row.tournament_id),
+        payout_id: String(row.id),
+        account_id: String(row.account_id),
+        place: String(row.place),
+      },
+    }, { idempotencyKey: `tourpay_${row.id}` });
+  } catch (err) {
+    // Genuine failure — no money moved. Safe to mark 'failed' for retry.
+    const msg = err?.message || String(err);
+    console.warn(`[TournamentPayout] transfer failed for payout ${row.id}:`, msg);
+    try {
+      return await db.setTournamentPayoutTransfer(row.id, { status: 'failed', error: msg.slice(0, 500) });
+    } catch (_) {
+      return row;
+    }
+  }
+
+  // Step 2 — money has moved. From here we must NEVER report 'failed'. If the
+  // DB write fails, leave the row 'pending'; the next sweep's reconciliation
+  // will find this transfer and mark it 'paid'.
+  try {
+    return await db.setTournamentPayoutTransfer(row.id, {
+      status: 'paid', stripeTransferId: transfer.id, error: null,
+    });
+  } catch (dbErr) {
+    console.error(`[TournamentPayout] transfer ${transfer.id} succeeded but DB write failed for payout ${row.id} — will reconcile on next sweep:`, dbErr.message);
+    return row;
+  }
+}
+
+// Settle every pending/failed payout for a tournament that can be paid now.
+async function _settleTournamentPayouts(tournamentId, { includeFailed = false } = {}) {
+  const rows = await db.getPendingTournamentPayouts(tournamentId);
+  const out = { attempted: 0, paid: 0, failed: 0, awaiting: 0 };
+  for (const row of rows) {
+    if (row.transfer_status === 'failed' && !includeFailed) { out.awaiting++; continue; }
+    out.attempted++;
+    const updated = await _transferTournamentPayoutRow(row);
+    if (updated?.transfer_status === 'paid') out.paid++;
+    else if (updated?.transfer_status === 'failed') out.failed++;
+    else out.awaiting++;
+  }
+  return out;
+}
+
+// Background settlement sweep — pays winners who connected an account after
+// the snapshot was taken. Pending-only (never auto-retries a hard failure, to
+// avoid hammering Stripe with a doomed transfer); admins retry failures
+// explicitly. First run 2 min after boot, then every 10 min.
+let _tournamentPayoutSweepInFlight = false;
+async function _runTournamentPayoutSweep(reason = 'cron') {
+  if (_tournamentPayoutSweepInFlight) return;
+  if (!process.env.STRIPE_SECRET_KEY) return;
+  _tournamentPayoutSweepInFlight = true;
+  try {
+    const ids = await db.getTournamentsWithPendingPayouts();
+    for (const tid of ids) {
+      try { await _settleTournamentPayouts(tid, { includeFailed: false }); }
+      catch (e) { console.warn(`[TournamentPayout] sweep failed for ${tid}:`, e.message); }
+    }
+  } catch (e) {
+    console.warn('[TournamentPayout] sweep error:', e.message);
+  } finally {
+    _tournamentPayoutSweepInFlight = false;
+  }
+}
+setTimeout(() => { _runTournamentPayoutSweep('boot').catch(() => {}); }, 2 * 60_000).unref();
+setInterval(() => { _runTournamentPayoutSweep('cron').catch(() => {}); }, 10 * 60 * 1000).unref();
+
 // Replay store cleanup: runs every 12 hours, deletes expired files from disk.
 setInterval(async () => {
   try {
@@ -2166,6 +2321,17 @@ function createServer(startupStatus = {}) {
           if (updated) {
             console.log('[Stripe] Coach KYC active', updated.account_id, 'stripe_account', acct.id);
           }
+        }
+        // Task #453 — keep generic payout_accounts (tournament winners) in
+        // sync too. Self-heals KYC state; once payouts are enabled the next
+        // settlement sweep can pay any pending tournament rows for them.
+        const pa = await db.setPayoutAccountKyc(acct.id, {
+          chargesEnabled: Boolean(acct.charges_enabled),
+          payoutsEnabled: Boolean(acct.payouts_enabled),
+        }).catch(() => null);
+        if (pa && acct.payouts_enabled) {
+          console.log('[Stripe] Payout account active', pa.account_id, 'stripe_account', acct.id);
+          _runTournamentPayoutSweep('account.updated').catch(() => {});
         }
       } else if (event.type === 'checkout.session.expired') {
         // Student opened checkout and walked away. Stripe expires the
@@ -4983,6 +5149,31 @@ function createApiRouter(startupStatus = {}, _app = null) {
       res.json({ index: indexStatus });
     } catch (err) {
       res.status(500).json({ error: err.message || 'Failed to enforce index' });
+    }
+  });
+
+  // Task #453 — admin surface for failed tournament payout transfers across
+  // every tournament, with a per-row retry.
+  router.get('/admin/tournament-payouts/failed', requireSuperuser, async (req, res) => {
+    try {
+      const payouts = await db.listFailedTournamentPayouts();
+      res.json({ payouts });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to fetch failed payouts' });
+    }
+  });
+
+  router.post('/admin/tournament-payouts/:payoutId/retry', requireSuperuser, async (req, res) => {
+    try {
+      const row = await db.getTournamentPayoutRow(req.params.payoutId);
+      if (!row) return res.status(404).json({ error: 'Payout not found' });
+      if (row.transfer_status === 'paid') {
+        return res.json({ ok: true, alreadyPaid: true, payout: row });
+      }
+      const updated = await _transferTournamentPayoutRow(row);
+      res.json({ ok: updated?.transfer_status === 'paid', payout: updated });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
     }
   });
 
@@ -13502,7 +13693,45 @@ NOTES
     try {
       if (!(await _t412RequireScopedTournament(req, res))) return;
       const payouts = await db.finalizeTournamentPayouts(req.params.id);
-      res.json({ ok: true, payouts });
+      // Task #453 — immediately attempt to pay any winners who already have a
+      // connected account; the rest stay pending for the background sweep.
+      let settlement = null;
+      try { settlement = await _settleTournamentPayouts(req.params.id, { includeFailed: false }); }
+      catch (e) { console.warn('[TournamentPayout] settle-on-finalize:', e.message); }
+      const updated = await db.getTournamentPayouts(req.params.id);
+      res.json({ ok: true, payouts: updated, settlement });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Task #453 — settle all pending (and optionally failed) transfers for a
+  // tournament. Superuser-only; drives the "Pay winners" button.
+  router.post('/tournaments/:id/payouts/transfer', requireSuperuser, async (req, res) => {
+    try {
+      if (!(await _t412RequireScopedTournament(req, res))) return;
+      const includeFailed = req.body?.includeFailed === true || req.body?.includeFailed === 'true';
+      const settlement = await _settleTournamentPayouts(req.params.id, { includeFailed });
+      const payouts = await db.getTournamentPayouts(req.params.id);
+      res.json({ ok: true, settlement, payouts });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Task #453 — retry a single failed payout transfer. Superuser-only.
+  router.post('/tournaments/:id/payouts/:payoutId/retry', requireSuperuser, async (req, res) => {
+    try {
+      if (!(await _t412RequireScopedTournament(req, res))) return;
+      const row = await db.getTournamentPayoutRow(req.params.payoutId);
+      if (!row || String(row.tournament_id) !== String(parseInt(req.params.id))) {
+        return res.status(404).json({ error: 'Payout not found' });
+      }
+      if (row.transfer_status === 'paid') {
+        return res.json({ ok: true, alreadyPaid: true, payout: row });
+      }
+      const updated = await _transferTournamentPayoutRow(row);
+      res.json({ ok: updated?.transfer_status === 'paid', payout: updated });
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
@@ -15832,6 +16061,99 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       res.json({ url: link.url, status: coach.status });
     } catch (err) {
       console.error('[API] coach/onboard:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to start onboarding' });
+    }
+  });
+
+  // ─── Task #453 — generic payout account (tournament winners) ──────────────
+  // A winner who isn't a coach connects a Stripe Express account here so the
+  // tournament settlement sweep can transfer their prize money. Coaches reuse
+  // their existing Connect account automatically (resolvePayoutDestination),
+  // so this is only needed for non-coach winners.
+  router.get('/me/payout-account', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const pa = await db.getPayoutAccount(accountId);
+      // A connected coach account also counts as payout-ready.
+      const dest = await db.resolvePayoutDestination(accountId);
+      const out = {
+        has_account: Boolean(pa) || Boolean(dest),
+        status: pa?.status || (dest?.payouts_enabled ? 'active' : null),
+        charges_enabled: Boolean(pa?.charges_enabled),
+        payouts_enabled: Boolean(pa?.payouts_enabled) || Boolean(dest?.payouts_enabled),
+        via_coach: !pa && Boolean(dest),
+      };
+      // Self-heal from Stripe if we have an own-account that isn't active yet.
+      const stripe = _stripe();
+      if (stripe && pa?.stripe_account_id && pa.status !== 'active') {
+        try {
+          const acct = await stripe.accounts.retrieve(pa.stripe_account_id);
+          out.charges_enabled = Boolean(acct.charges_enabled);
+          out.payouts_enabled = Boolean(acct.payouts_enabled) || out.payouts_enabled;
+          if (acct.charges_enabled && acct.payouts_enabled) {
+            const healed = await db.setPayoutAccountKyc(pa.stripe_account_id, {
+              chargesEnabled: true, payoutsEnabled: true,
+            }).catch(() => null);
+            if (healed) {
+              out.status = 'active';
+              _runTournamentPayoutSweep('payout-account-status').catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.warn('[me/payout-account] stripe lookup failed:', e.message);
+        }
+      }
+      res.json(out);
+    } catch (err) {
+      console.error('[API] me/payout-account:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Begin (or resume) Stripe Connect Express onboarding for prize payouts.
+  // Idempotent — reuses an existing account when present.
+  router.post('/me/payout-account/onboard', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const stripe = _stripe();
+      if (!stripe) return res.status(503).json({ error: 'Payments are not configured. Please try again later.' });
+
+      const country = ['AU', 'NZ'].includes(String(req.body?.country || '').toUpperCase())
+        ? String(req.body.country).toUpperCase() : 'AU';
+
+      let pa = await db.getPayoutAccount(accountId);
+      let stripeAccountId = pa?.stripe_account_id || null;
+      // Reuse a coach Connect account if the winner already has one.
+      if (!stripeAccountId) {
+        const coach = await db.getCoach(accountId).catch(() => null);
+        if (coach?.stripe_account_id && !String(coach.stripe_account_id).startsWith('acct_test_')) {
+          stripeAccountId = coach.stripe_account_id;
+        }
+      }
+      if (!stripeAccountId) {
+        const acct = await stripe.accounts.create({
+          type: 'express',
+          country,
+          capabilities: { transfers: { requested: true } },
+          business_type: 'individual',
+          metadata: { purpose: 'tournament_payout', account_id: String(accountId) },
+        });
+        stripeAccountId = acct.id;
+      }
+      pa = await db.upsertPayoutAccount({ accountId, stripeAccountId, country });
+
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const link = await stripe.accountLinks.create({
+        account: stripeAccountId,
+        refresh_url: `${baseUrl}/tournaments?payout_refresh=1`,
+        return_url: `${baseUrl}/tournaments?payout_onboarded=1`,
+        type: 'account_onboarding',
+      });
+      res.json({ url: link.url, status: pa.status });
+    } catch (err) {
+      console.error('[API] me/payout-account/onboard:', err.message);
       res.status(500).json({ error: err.message || 'Failed to start onboarding' });
     }
   });

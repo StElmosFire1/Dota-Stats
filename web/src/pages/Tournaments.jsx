@@ -12,6 +12,9 @@ import {
   getTournamentStandings, getTournamentCheckIns, checkInToTournament,
   advanceSwissRound, getTournamentPrizeSplits, setTournamentPrizeSplits,
   getTournamentPayouts, finalizeTournamentPayouts,
+  // Task #453 — auto-pay winners via Stripe Connect
+  transferTournamentPayouts, retryTournamentPayout,
+  getMyPayoutAccount, startPayoutOnboarding,
 } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { useSuperuser } from '../context/SuperuserContext';
@@ -540,7 +543,7 @@ function TournamentDetail() {
         <PrizeSplitsEditor tournament={tournament} superuserKey={superuserKey} onChanged={load} />
       )}
 
-      <TournamentPayoutsPanel tournament={tournament} />
+      <TournamentPayoutsPanel tournament={tournament} isAdmin={isAdmin} superuserKey={superuserKey} />
 
       {isAdmin && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 20, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1015,17 +1018,123 @@ function PrizeSplitsEditor({ tournament, superuserKey, onChanged }) {
   );
 }
 
-function TournamentPayoutsPanel({ tournament }) {
+function PayoutStatusBadge({ status }) {
+  const map = {
+    paid: { bg: 'rgba(16,185,129,0.15)', fg: '#10b981', label: 'Paid' },
+    pending: { bg: 'rgba(245,158,11,0.15)', fg: 'var(--amber)', label: 'Pending' },
+    failed: { bg: 'rgba(239,68,68,0.15)', fg: '#ef4444', label: 'Failed' },
+  };
+  const s = map[status] || map.pending;
+  return (
+    <span style={{ background: s.bg, color: s.fg, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>
+      {s.label}
+    </span>
+  );
+}
+
+function TournamentPayoutsPanel({ tournament, isAdmin, superuserKey }) {
+  const { steamUser } = useSteamAuth();
+  const myAccountId = steamUser?.accountId;
   const [payouts, setPayouts] = useState([]);
-  useEffect(() => {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [payAccount, setPayAccount] = useState(null);
+  const [connecting, setConnecting] = useState(false);
+
+  const load = useCallback(() => {
     getTournamentPayouts(tournament.id)
       .then(d => setPayouts(d?.payouts || []))
       .catch(() => setPayouts([]));
-  }, [tournament.id, tournament.status, tournament.payouts_finalized_at]);
+  }, [tournament.id]);
+
+  useEffect(() => { load(); }, [load, tournament.status, tournament.payouts_finalized_at]);
+
+  // Does the signed-in viewer have a pending payout in this tournament that
+  // isn't payout-connected? If so we show a "connect to get paid" CTA.
+  const myUnconnectedPayout = payouts.find(p =>
+    myAccountId && String(p.account_id) === String(myAccountId) &&
+    p.transfer_status !== 'paid' && !p.payout_connected && p.amount_cents > 0);
+
+  useEffect(() => {
+    if (myUnconnectedPayout) {
+      getMyPayoutAccount().then(setPayAccount).catch(() => setPayAccount(null));
+    }
+  }, [myUnconnectedPayout]);
+
   if (payouts.length === 0) return null;
+
+  const anyPayable = payouts.some(p => p.transfer_status !== 'paid' && p.payout_connected && p.amount_cents > 0);
+  const anyFailed = payouts.some(p => p.transfer_status === 'failed');
+
+  const handlePayAll = async (includeFailed = false) => {
+    setBusy(true); setMsg(null);
+    try {
+      const d = await transferTournamentPayouts(tournament.id, superuserKey, includeFailed);
+      const s = d.settlement || {};
+      setMsg(`Paid ${s.paid || 0}, failed ${s.failed || 0}, awaiting ${s.awaiting || 0}.`);
+      setPayouts(d.payouts || []);
+    } catch (e) { setMsg(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const handleRetry = async (payoutId) => {
+    setBusy(true); setMsg(null);
+    try {
+      await retryTournamentPayout(tournament.id, payoutId, superuserKey);
+      load();
+    } catch (e) { setMsg(e.message); }
+    finally { setBusy(false); }
+  };
+
+  const handleConnect = async () => {
+    setConnecting(true); setMsg(null);
+    try {
+      const d = await startPayoutOnboarding('AU');
+      if (d.url) window.location.href = d.url;
+    } catch (e) { setMsg(e.message); setConnecting(false); }
+  };
+
+  const btn = (bg) => ({ background: bg, color: '#fff', border: 'none', borderRadius: 7, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 600 });
+
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>🏆 Payouts</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>🏆 Payouts</div>
+        {isAdmin && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" disabled={busy || !anyPayable} onClick={() => handlePayAll(false)}
+              style={{ ...btn('var(--accent-blue)'), opacity: (busy || !anyPayable) ? 0.5 : 1 }}>
+              {busy ? 'Working…' : 'Pay winners'}
+            </button>
+            {anyFailed && (
+              <button type="button" disabled={busy} onClick={() => handlePayAll(true)}
+                style={{ ...btn('#ef4444'), opacity: busy ? 0.5 : 1 }}>
+                Retry failed
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {msg && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>{msg}</div>}
+
+      {myUnconnectedPayout && (
+        <div style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid var(--amber)', borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13 }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>💰 You've won a prize!</div>
+          <div style={{ color: 'var(--text-muted)', marginBottom: 8 }}>
+            Connect a payout account so we can send your ${(myUnconnectedPayout.amount_cents / 100).toFixed(2)} prize via Stripe.
+          </div>
+          {payAccount?.payouts_enabled ? (
+            <div style={{ color: '#10b981', fontWeight: 600 }}>✓ Account connected — payment will arrive shortly.</div>
+          ) : (
+            <button type="button" disabled={connecting} onClick={handleConnect}
+              style={{ ...btn('var(--amber)'), color: 'var(--ink-navy)', opacity: connecting ? 0.5 : 1 }}>
+              {connecting ? 'Redirecting…' : (payAccount?.has_account ? 'Finish connecting payout account' : 'Connect payout account')}
+            </button>
+          )}
+        </div>
+      )}
+
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
           <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
@@ -1033,15 +1142,36 @@ function TournamentPayoutsPanel({ tournament }) {
             <th style={{ padding: '6px 8px' }}>Player</th>
             <th style={{ padding: '6px 8px', textAlign: 'right' }}>%</th>
             <th style={{ padding: '6px 8px', textAlign: 'right' }}>Amount</th>
+            <th style={{ padding: '6px 8px' }}>Status</th>
+            {isAdmin && <th style={{ padding: '6px 8px' }} />}
           </tr>
         </thead>
         <tbody>
           {payouts.map(p => (
-            <tr key={p.place} style={{ borderTop: '1px solid var(--border)' }}>
+            <tr key={p.id || p.place} style={{ borderTop: '1px solid var(--border)' }}>
               <td style={{ padding: '6px 8px', fontWeight: 700 }}>#{p.place}</td>
               <td style={{ padding: '6px 8px' }}>{p.display_name}</td>
               <td style={{ padding: '6px 8px', textAlign: 'right' }}>{p.percent}%</td>
               <td style={{ padding: '6px 8px', textAlign: 'right' }}>${(p.amount_cents / 100).toFixed(2)}</td>
+              <td style={{ padding: '6px 8px' }}>
+                <PayoutStatusBadge status={p.transfer_status} />
+                {p.transfer_status !== 'paid' && p.amount_cents > 0 && !p.payout_connected && (
+                  <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-muted)' }}>not connected</span>
+                )}
+                {p.transfer_status === 'failed' && p.transfer_error && (
+                  <div style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>{p.transfer_error}</div>
+                )}
+              </td>
+              {isAdmin && (
+                <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                  {p.transfer_status === 'failed' && (
+                    <button type="button" disabled={busy} onClick={() => handleRetry(p.id)}
+                      style={{ ...btn('#ef4444'), padding: '4px 10px', opacity: busy ? 0.5 : 1 }}>
+                      Retry
+                    </button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
