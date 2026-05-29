@@ -163,7 +163,7 @@ test('buildPlayerStatsFromMatches surfaces opponents + wins', () => {
   assert.deepEqual(a.opponents, ['2']);
 });
 
-test('computePayouts: rounding remainder goes to last place', () => {
+test('computePayouts: rounding remainder goes to first place', () => {
   const standings = [
     { account_id: 'A', rank: 1 }, { account_id: 'B', rank: 2 }, { account_id: 'C', rank: 3 },
   ];
@@ -172,4 +172,111 @@ test('computePayouts: rounding remainder goes to last place', () => {
   assert.equal(r.length, 3);
   const total = r.reduce((acc, x) => acc + x.cents, 0);
   assert.equal(total, 12345, 'no cents lost to rounding');
+});
+
+// Task #454 — Extra coverage layered on top of the Task #412 invariants:
+// score-group integrity, a Buchholz-vs-Sonneborn–Berger case where the two
+// metrics actually disagree, and explicit remainder placement in payouts.
+
+test('pairNextRound: score-group integrity — same-score players pair together when possible', () => {
+  // 6 players, fresh opponents. 4 on 1 win, 2 on 0 wins. With no rematch
+  // constraints every pair must be within the same win-bucket (no floats).
+  const players = [
+    { account_id: 1, seed: 1, wins: 1, byes: 0, opponents: [] },
+    { account_id: 2, seed: 2, wins: 1, byes: 0, opponents: [] },
+    { account_id: 3, seed: 3, wins: 1, byes: 0, opponents: [] },
+    { account_id: 4, seed: 4, wins: 1, byes: 0, opponents: [] },
+    { account_id: 5, seed: 5, wins: 0, byes: 0, opponents: [] },
+    { account_id: 6, seed: 6, wins: 0, byes: 0, opponents: [] },
+  ];
+  const winsOf = new Map(players.map(p => [p.account_id, p.wins]));
+  const r = pairNextRound(players);
+  assert.equal(r.pairs.length, 3);
+  assert.equal(r.bye, null);
+  assertNoDuplicates(r, 'score-group');
+  for (const [a, b] of r.pairs) {
+    assert.equal(
+      winsOf.get(a.account_id), winsOf.get(b.account_id),
+      `cross-score-group pairing ${a.account_id}(w${winsOf.get(a.account_id)}) vs ${b.account_id}(w${winsOf.get(b.account_id)})`,
+    );
+  }
+});
+
+test('pairNextRound: odd score group floats exactly one player down', () => {
+  // 3 on 2 wins, 2 on 0 wins, fresh opponents. The 2-win bucket is odd, so
+  // exactly one of its players must float down and pair with a 0-win player;
+  // everyone else stays in-bucket and no player is duplicated.
+  const players = [
+    { account_id: 1, seed: 1, wins: 2, byes: 0, opponents: [] },
+    { account_id: 2, seed: 2, wins: 2, byes: 0, opponents: [] },
+    { account_id: 3, seed: 3, wins: 2, byes: 0, opponents: [] },
+    { account_id: 4, seed: 4, wins: 0, byes: 0, opponents: [] },
+    { account_id: 5, seed: 5, wins: 0, byes: 0, opponents: [] },
+  ];
+  // Even field (5 is odd → one bye). Add a 6th to keep it even so we isolate
+  // the float behaviour rather than the bye behaviour.
+  players.push({ account_id: 6, seed: 6, wins: 0, byes: 0, opponents: [] });
+  const winsOf = new Map(players.map(p => [p.account_id, p.wins]));
+  const r = pairNextRound(players);
+  assert.equal(r.pairs.length, 3);
+  assert.equal(r.bye, null);
+  assertNoDuplicates(r, 'float-down');
+  const crossGroup = r.pairs.filter(([a, b]) => winsOf.get(a.account_id) !== winsOf.get(b.account_id));
+  assert.equal(crossGroup.length, 1, 'exactly one cross-group float pair expected');
+});
+
+test('computeStandings: Buchholz and Sonneborn–Berger disagree on tied players', () => {
+  // X and Y are both 1-1. Constructed so:
+  //   Buchholz(X)=3 > Buchholz(Y)=2  (X beat a 0-win, lost to a 3-win)
+  //   SB(X)=0      < SB(Y)=1         (X's beaten opp had 0 wins, Y's had 1)
+  // So the two tie-break metrics rank X and Y in opposite order.
+  const participants = ['X', 'Y', 'A', 'B', 'C', 'D', 'E', 'F', 'G']
+    .map((id, i) => ({ account_id: id, display_name: id, seed: i + 1 }));
+  const w = (p1, p2, winner) => ({ round: 1, p1_id: p1, p2_id: p2, winner_id: winner });
+  const matches = [
+    w('X', 'A', 'X'), // X beats A (A: 0 wins)
+    w('B', 'X', 'B'), // B beats X (B strong)
+    w('B', 'E', 'B'),
+    w('B', 'F', 'B'), // B: 3 wins
+    w('Y', 'C', 'Y'), // Y beats C (C: 1 win)
+    w('C', 'G', 'C'), // C: 1 win
+    w('D', 'Y', 'D'), // D beats Y (D: 1 win)
+  ];
+
+  const byBuch = computeStandings(participants, matches, { tieBreak: 'buchholz' });
+  const bySB = computeStandings(participants, matches, { tieBreak: 'sonneborn_berger' });
+
+  const idx = (rows, id) => rows.findIndex(r => r.account_id === id);
+  assert.ok(idx(byBuch, 'X') < idx(byBuch, 'Y'), 'Buchholz ranks X above Y');
+  assert.ok(idx(bySB, 'Y') < idx(bySB, 'X'), 'Sonneborn–Berger ranks Y above X');
+
+  // Sanity on the underlying metrics.
+  const xRow = byBuch.find(r => r.account_id === 'X');
+  const yRow = byBuch.find(r => r.account_id === 'Y');
+  assert.equal(xRow.buchholz, 3);
+  assert.equal(yRow.buchholz, 2);
+  assert.equal(xRow.sonnebornBerger, 0);
+  assert.equal(yRow.sonnebornBerger, 1);
+});
+
+test('computePayouts: first place absorbs the rounding remainder exactly', () => {
+  const standings = [
+    { account_id: 'A', rank: 1 }, { account_id: 'B', rank: 2 }, { account_id: 'C', rank: 3 },
+  ];
+  const splits = [{ place: 1, percent: 50 }, { place: 2, percent: 30 }, { place: 3, percent: 20 }];
+  const r = computePayouts(splits, standings, 12345);
+  const byPlace = new Map(r.map(x => [x.place, x.cents]));
+  // Lower places are exact rounds of their share.
+  assert.equal(byPlace.get(2), Math.round(12345 * 0.30)); // 3704
+  assert.equal(byPlace.get(3), Math.round(12345 * 0.20)); // 2469
+  // First place takes whatever is left so the pool reconciles to the cent.
+  assert.equal(byPlace.get(1), 12345 - byPlace.get(2) - byPlace.get(3)); // 6172
+  assert.notEqual(byPlace.get(1), Math.round(12345 * 0.50), 'first place differs from naive round by the remainder');
+});
+
+test('computePayouts: guards against empty splits and non-positive pools', () => {
+  const standings = [{ account_id: 'A', rank: 1 }];
+  assert.deepEqual(computePayouts([], standings, 1000), []);
+  assert.deepEqual(computePayouts([{ place: 1, percent: 100 }], standings, 0), []);
+  assert.deepEqual(computePayouts([{ place: 1, percent: 100 }], standings, -5), []);
 });

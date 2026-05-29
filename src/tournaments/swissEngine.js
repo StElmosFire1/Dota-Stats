@@ -223,20 +223,26 @@ function computePayouts(splits, standings, poolCents) {
   if (!Array.isArray(splits) || splits.length === 0) return [];
   if (!Number.isFinite(poolCents) || poolCents <= 0) return [];
   const ordered = splits.slice().sort((a, b) => a.place - b.place);
-  const out = [];
-  let assigned = 0;
-  for (let i = 0; i < ordered.length; i++) {
-    const s = ordered[i];
+  // Resolve splits to actual winners first, preserving place order.
+  const resolved = [];
+  for (const s of ordered) {
     const winner = standings.find(r => r.rank === s.place);
     if (!winner) continue;
-    const isLast = i === ordered.length - 1;
-    const cents = isLast
-      ? Math.max(0, poolCents - assigned)  // remainder absorbs rounding
-      : Math.round(poolCents * (s.percent / 100));
-    assigned += cents;
-    out.push({ account_id: winner.account_id, place: s.place, percent: s.percent, cents });
+    resolved.push({ s, winner });
   }
-  return out;
+  if (resolved.length === 0) return [];
+  // Every place except first gets the naive rounded share; first place absorbs
+  // the rounding remainder so the pool always reconciles to the cent and the
+  // leftover lands on the top finisher rather than the lowest paid place.
+  let assignedToRest = 0;
+  for (let i = 1; i < resolved.length; i++) {
+    resolved[i].cents = Math.round(poolCents * (resolved[i].s.percent / 100));
+    assignedToRest += resolved[i].cents;
+  }
+  resolved[0].cents = Math.max(0, poolCents - assignedToRest);
+  return resolved.map(({ s, winner, cents }) => ({
+    account_id: winner.account_id, place: s.place, percent: s.percent, cents,
+  }));
 }
 
 module.exports = {

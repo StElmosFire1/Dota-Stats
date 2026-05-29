@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.14",
+    "title": "Swiss engine regression tests + first-place payout remainder (Task #454)",
+    "published_at": "2026-05-29",
+    "notes": [
+      "**Why.** The Swiss pairing engine (`src/tournaments/swissEngine.js`) drives live tournament pairings but had thin automated coverage — a regression in no-repeat pairing, bye selection, tiebreak math, or payout rounding could silently corrupt a real event.",
+      "**Tests.** `tests/swissEngine.test.js` now covers `pairRound1` (even + odd fields), `pairNextRound` (no rematches across rounds, single bye per player, score-group integrity + single float-down), `computeStandings` (a constructed field where Buchholz and Sonneborn–Berger rank tied players in *opposite* order), `computePayouts` (remainder placement + guards), and the `recommendedSwissRounds` boundary table — all via the existing `node --test` harness.",
+      "**Payout fix.** `computePayouts` now routes the cents-rounding remainder to **first place** (was previously absorbed by the lowest paid place), so the top finisher gets the leftover and the pool still reconciles exactly to the cent.",
+      "**Scope.** Pure-function tests + one engine behaviour change; no schema or route changes. Output shape and signature unchanged, so the DB caller in `src/db/index.js` is unaffected."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.13",
     "title": "Automatic tournament prize payouts via Stripe Connect (Task #453)",
     "published_at": "2026-05-29",
