@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, superuserFetch } from '../api';
+import { getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getAdminFeatureFlags, setFeatureFlag as apiSetFeatureFlag, launchSeason10, getSeasons, superuserFetch, getAgentTrafficReport } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
+import SortableTh from '../components/SortableTh';
 
 const POSITIONS = ['', 'Pos 1', 'Pos 2', 'Pos 3', 'Pos 4', 'Pos 5'];
 
@@ -19,6 +20,175 @@ function OverviewCard({ label, value, sub }) {
       <div className="stat-label">{label}</div>
       {sub && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
     </div>
+  );
+}
+
+// Task #537 — AI agent traffic card (superuser). Mirrors the full edition's
+// AgentTrafficCard but is wired to the community edition's own endpoint.
+function AgentTrafficCard({ superuserKey }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [days, setDays] = useState(7);
+  const [sortKey, setSortKey] = useState('hits');
+  const [sortDir, setSortDir] = useState('desc');
+  const [showRecent, setShowRecent] = useState(false);
+
+  const load = useCallback(() => {
+    if (!superuserKey) return;
+    setLoading(true); setError('');
+    getAgentTrafficReport(superuserKey, days)
+      .then(setData)
+      .catch(e => setError(e.message || 'Failed to load report'))
+      .finally(() => setLoading(false));
+  }, [superuserKey, days]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const sort = (k) => {
+    if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(k); setSortDir('desc'); }
+  };
+
+  const rows = React.useMemo(() => {
+    const list = [...(data?.families || [])];
+    list.sort((a, b) => {
+      const av = a[sortKey]; const bv = b[sortKey];
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av ?? '').localeCompare(String(bv ?? ''));
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return list;
+  }, [data, sortKey, sortDir]);
+
+  const fmtTs = (t) => t ? new Date(t).toLocaleString() : '—';
+  const kindBadge = (k) => {
+    const color = k === 'ai-crawler' ? '#c084fc'
+      : k === 'app-builder' ? '#f59e0b'
+      : '#6b7280';
+    return (
+      <span style={{
+        display: 'inline-block', padding: '2px 6px', borderRadius: 4,
+        background: `${color}22`, color, fontSize: 11, fontWeight: 600,
+      }}>{k || 'unknown'}</span>
+    );
+  };
+
+  return (
+    <section style={{ marginBottom: 36 }} aria-labelledby="ap-agent-traffic-h">
+      <div className="card" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+          <h2 id="ap-agent-traffic-h" style={{ margin: 0, fontSize: '1.05rem' }}>
+            🕷️ AI agent traffic
+          </h2>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <label style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              Window:&nbsp;
+              <select
+                value={days}
+                onChange={(e) => setDays(parseInt(e.target.value, 10))}
+                aria-label="Report time window"
+                style={{ fontSize: 13 }}
+              >
+                <option value={1}>24h</option>
+                <option value={7}>7d</option>
+                <option value={30}>30d</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn"
+              onClick={load}
+              disabled={loading}
+              aria-label="Refresh agent traffic report"
+            >
+              {loading ? '…' : '↻ Refresh'}
+            </button>
+          </div>
+        </div>
+        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 0, marginBottom: 12 }}>
+          Aggregated from the in-process ring buffer ({data ? `${data.ringBufferSize}/${data.ringBufferMax}` : '…'} entries).
+          Hard block is <strong>{data?.blockOn ? 'ON' : 'OFF'}</strong> (toggle via <code>BLOCK_AI_AGENTS=1</code>).
+          See <code>src/security/agentUaList.js</code> for the classification list.
+        </p>
+        {error && (
+          <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 10 }}>{error}</div>
+        )}
+        {!data && !error && <div style={{ fontSize: 13 }}>Loading…</div>}
+        {data && rows.length === 0 && (
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            No agent UA hits in the selected window. (Either the deterrent is working
+            or the bot just rebooted — the buffer is in-process only.)
+          </div>
+        )}
+        {data && rows.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--border, #2a2f3a)' }}>
+                  <SortableTh onSort={() => sort('family')}    active={sortKey === 'family'}    direction={sortDir}>UA family</SortableTh>
+                  <SortableTh onSort={() => sort('kind')}      active={sortKey === 'kind'}      direction={sortDir}>Kind</SortableTh>
+                  <SortableTh onSort={() => sort('hits')}      active={sortKey === 'hits'}      direction={sortDir} style={{ textAlign: 'right' }}>Hits</SortableTh>
+                  <SortableTh onSort={() => sort('blocked')}   active={sortKey === 'blocked'}   direction={sortDir} style={{ textAlign: 'right' }}>Blocked</SortableTh>
+                  <SortableTh onSort={() => sort('throttled')} active={sortKey === 'throttled'} direction={sortDir} style={{ textAlign: 'right' }}>Throttled</SortableTh>
+                  <SortableTh onSort={() => sort('logged')}    active={sortKey === 'logged'}    direction={sortDir} style={{ textAlign: 'right' }}>Logged</SortableTh>
+                  <SortableTh onSort={() => sort('unique_ips')}   active={sortKey === 'unique_ips'}   direction={sortDir} style={{ textAlign: 'right' }}>Uniq IPs</SortableTh>
+                  <SortableTh onSort={() => sort('unique_paths')} active={sortKey === 'unique_paths'} direction={sortDir} style={{ textAlign: 'right' }}>Uniq paths</SortableTh>
+                  <SortableTh onSort={() => sort('last_seen')} active={sortKey === 'last_seen'} direction={sortDir}>Last seen</SortableTh>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.family} style={{ borderBottom: '1px solid var(--border, #2a2f3a)' }}>
+                    <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{r.family}</td>
+                    <td style={{ padding: '6px 8px' }}>{kindBadge(r.kind)}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.hits}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: r.blocked ? '#ef4444' : 'inherit' }}>{r.blocked || 0}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: r.throttled ? '#f59e0b' : 'inherit' }}>{r.throttled || 0}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.logged || 0}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.unique_ips}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>{r.unique_paths}</td>
+                    <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>{fmtTs(r.last_seen)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {data && data.recent && data.recent.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setShowRecent(s => !s)}
+              aria-expanded={showRecent}
+              aria-controls="ap-agent-traffic-recent"
+              aria-label={showRecent ? 'Hide recent agent requests' : 'Show recent agent requests'}
+              style={{ fontSize: 12 }}
+            >
+              {showRecent ? '▾ Hide recent requests' : `▸ Show recent requests (${data.recent.length})`}
+            </button>
+            {showRecent && (
+              <div id="ap-agent-traffic-recent" style={{ marginTop: 10, maxHeight: 260, overflowY: 'auto', fontSize: 12, fontFamily: 'monospace' }}>
+                {data.recent.map((r, i) => (
+                  <div key={i} style={{ padding: '4px 0', borderBottom: '1px solid var(--border, #2a2f3a)' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>{fmtTs(r.ts)}</span>
+                    {' · '}
+                    <span style={{ color: r.decision === 'blocked' ? '#ef4444' : '#9ca3af' }}>{r.decision}</span>
+                    {' · '}
+                    <strong>{r.family}</strong>
+                    {' · '}
+                    {r.method} {r.path}
+                    <div style={{ color: 'var(--text-muted)', wordBreak: 'break-all' }}>{r.ua}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -1247,6 +1417,9 @@ export default function AdminPanel() {
           />
         </div>
       </section>
+
+      {/* Task #537 — AI agent traffic */}
+      <AgentTrafficCard superuserKey={superuserKey} />
 
       {/* Manual Match Entry — moved to its own page */}
       <section style={{ marginBottom: 36 }}>

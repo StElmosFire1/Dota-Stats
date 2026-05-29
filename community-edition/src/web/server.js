@@ -117,6 +117,16 @@ function createServer(startupStatus = {}) {
     crossOriginEmbedderPolicy: false,
   }));
 
+  // Task #537 — AI scraper / app-builder classifier. Mounted as early as
+  // possible so the X-Robots-Tag header is added to every response and a
+  // hard block (when BLOCK_AI_AGENTS=1) skips the rest of the stack.
+  try {
+    const { classifierMiddleware } = require('../security/agentClassifier');
+    app.use(classifierMiddleware);
+  } catch (e) {
+    console.warn('[AgentClassifier] failed to mount:', e.message);
+  }
+
   // CORS: same-origin only by default. Set CORS_ALLOWED_ORIGINS as a
   // comma-separated allowlist to permit cross-origin browsers (e.g. a staging
   // dashboard). The previous `app.use(cors())` accepted *any* Origin header,
@@ -450,6 +460,22 @@ function createApiRouter(startupStatus = {}) {
     }
     return res.status(403).json({ error: 'Invalid superuser key' });
   }
+
+  // Task #537 — AI agent traffic report. Aggregates the in-memory ring
+  // buffer maintained by community-edition/src/security/agentClassifier.js
+  // by UA family for the last N days (default 7, capped at 30 since the
+  // ring buffer holds at most ~5000 entries anyway).
+  router.get('/admin/agent-traffic-report', requireSuperuser, (req, res) => {
+    try {
+      const { buildReport } = require('../security/agentClassifier');
+      const days = Math.max(1, Math.min(30, parseInt(req.query.days, 10) || 7));
+      const report = buildReport({ windowMs: days * 24 * 60 * 60 * 1000 });
+      res.set('Cache-Control', 'no-store');
+      res.json({ days, ...report });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   router.put('/matches/:matchId/player-stats', express.json(), requireSuperuser, async (req, res) => {
     try {

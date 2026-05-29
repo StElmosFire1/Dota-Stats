@@ -343,6 +343,19 @@ class DiscordBot {
     }
   }
 
+  // Task #537 — owner DM path, mirroring the full edition's _dmOwner.
+  // Used by the AI-agent classifier to alert the owner on first-seen
+  // agent families. Best-effort: a Discord outage must never break callers.
+  async _dmOwner(message) {
+    try {
+      const user = await this.client.users.fetch(OWNER_DISCORD_ID);
+      if (!user) return;
+      await user.send(String(message));
+    } catch (e) {
+      console.warn('[Owner DM] failed:', e.message);
+    }
+  }
+
   async _getAnnounceChannel() {
     const ids = config.discord.statsChannelIds;
     const fallbackId = config.discord.announceChannelId || this.lobbyChannelId;

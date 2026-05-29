@@ -73,6 +73,17 @@ export async function getAdminFeatureFlags(superuserKey) {
   return data;
 }
 
+// Task #537 — AI agent traffic report (superuser).
+export async function getAgentTrafficReport(superuserKey, days = 7) {
+  const qs = days ? `?days=${encodeURIComponent(days)}` : '';
+  const res = await superuserFetch(BASE + `/admin/agent-traffic-report${qs}`, {
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed');
+  return data;
+}
+
 export async function setFeatureFlag({ key, state, description }, superuserKey) {
   const res = await superuserFetch(BASE + '/admin/feature-flags', {
     method: 'POST',
