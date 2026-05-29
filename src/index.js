@@ -329,6 +329,32 @@ async function main() {
       }
     }
 
+    // Task #451 — Daily mini-games puzzle pre-generation. Hourly cron keeps
+    // today's + tomorrow's deterministic puzzles cached (statline in particular
+    // needs a stable DB snapshot per day). Also runs once at startup so the
+    // first visitor never waits on generation. Best-effort.
+    if (startupStatus.database) {
+      try {
+        const cron = require('node-cron');
+        const db = require('./db');
+        const { pregenerateDailyPuzzles } = require('./games/routes');
+        pregenerateDailyPuzzles(db)
+          .then(n => { if (n) console.log(`[Games] pre-generated ${n} daily puzzle(s) at startup`); })
+          .catch(err => console.warn('[Games] startup pregen error:', err.message));
+        cron.schedule('0 * * * *', async () => {
+          try {
+            const made = await pregenerateDailyPuzzles(db);
+            if (made) console.log(`[Games] hourly cron generated ${made} daily puzzle(s)`);
+          } catch (err) {
+            console.warn('[Games] hourly cron error:', err.message);
+          }
+        }, { timezone: 'Australia/Sydney' });
+        console.log('[Startup] Mini-games puzzle cron scheduled (hourly, Australia/Sydney)');
+      } catch (err) {
+        console.warn('[Startup] Mini-games cron failed to register:', err.message);
+      }
+    }
+
     // Task #446 — Discord Rich Presence pusher. Subscribes to presenceService
     // events + ticks periodically; gated by feature flag at publish time, so
     // safe to start unconditionally when the DB is up.

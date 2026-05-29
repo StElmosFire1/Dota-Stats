@@ -50,6 +50,7 @@
     "crypto": "^1.0.1",
     "discord.js": "^14.18.0",
     "dota2-user": "^2.1.1",
+    "dotaconstants": "^8.13.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",

@@ -3277,6 +3277,39 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_str_started_at ON smoke_test_runs(started_at DESC)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_str_submitted_at ON smoke_test_runs(submitted_at DESC NULLS FIRST)`);
 
+    // Task #451 — Daily Dota mini-games suite. `game_daily_puzzles` caches the
+    // deterministic puzzle for a (game, date) so statline's DB snapshot stays
+    // stable for the whole day and every player sees the same board.
+    // `game_results` records one row per player per daily puzzle (unique), plus
+    // endless results for stats; daily uniqueness powers streaks + leaderboards.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS game_daily_puzzles (
+        game TEXT NOT NULL,
+        puzzle_date DATE NOT NULL,
+        number INTEGER,
+        payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        answer JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (game, puzzle_date)
+      )
+    `);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS game_results (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        game TEXT NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'daily',
+        puzzle_date DATE,
+        guesses INTEGER NOT NULL DEFAULT 0,
+        won BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_game_results_daily
+      ON game_results(account_id, game, puzzle_date) WHERE mode = 'daily'`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_game_results_lb
+      ON game_results(game, puzzle_date) WHERE mode = 'daily'`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -23986,10 +24019,192 @@ async function listDiscordRpcConnectionsForAdmin(limit = 200) {
   return r.rows;
 }
 
+// ── Task #451 — Daily Dota mini-games suite ────────────────────────────────
+async function getDailyPuzzleRow(game, dateStr) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT game, puzzle_date::text AS puzzle_date, number, payload, answer
+       FROM game_daily_puzzles WHERE game = $1 AND puzzle_date = $2`,
+    [game, dateStr]
+  );
+  return r.rows[0] || null;
+}
+
+async function upsertDailyPuzzle(game, dateStr, number, payload, answer) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO game_daily_puzzles (game, puzzle_date, number, payload, answer)
+       VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (game, puzzle_date) DO NOTHING
+     RETURNING game, puzzle_date::text AS puzzle_date, number, payload, answer`,
+    [game, dateStr, number, JSON.stringify(payload), JSON.stringify(answer)]
+  );
+  if (r.rows[0]) return r.rows[0];
+  return getDailyPuzzleRow(game, dateStr);
+}
+
+// Records a daily result once per (account, game, date). Returns false if the
+// player already has a result for today (so the API can reject double-submits).
+async function recordGameResult({ accountId, game, mode = 'daily', dateStr = null, guesses, won }) {
+  const p = getPool();
+  if (mode === 'daily') {
+    const r = await p.query(
+      `INSERT INTO game_results (account_id, game, mode, puzzle_date, guesses, won)
+         VALUES ($1, $2, 'daily', $3, $4, $5)
+       ON CONFLICT (account_id, game, puzzle_date) WHERE mode = 'daily'
+       DO NOTHING
+       RETURNING id`,
+      [accountId, game, dateStr, guesses, won]
+    );
+    return r.rows.length > 0;
+  }
+  await p.query(
+    `INSERT INTO game_results (account_id, game, mode, puzzle_date, guesses, won)
+       VALUES ($1, $2, $3, NULL, $4, $5)`,
+    [accountId, game, mode, guesses, won]
+  );
+  return true;
+}
+
+async function getGameDailyResult(accountId, game, dateStr) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT guesses, won, created_at FROM game_results
+       WHERE account_id = $1 AND game = $2 AND mode = 'daily' AND puzzle_date = $3`,
+    [accountId, game, dateStr]
+  );
+  return r.rows[0] || null;
+}
+
+// Current + best daily win streak for a player on a game. A streak counts
+// consecutive solved (won) days up to and including the most recent solved day;
+// any unsolved/missing day before `todayStr` breaks it.
+async function getGameStreak(accountId, game) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT puzzle_date::text AS d, won FROM game_results
+       WHERE account_id = $1 AND game = $2 AND mode = 'daily'
+       ORDER BY puzzle_date DESC`,
+    [accountId, game]
+  );
+  let current = 0;
+  let best = 0;
+  let run = 0;
+  let prev = null;
+  // Walk ascending for best-run computation.
+  const rowsAsc = r.rows.slice().reverse();
+  for (const row of rowsAsc) {
+    if (row.won) { run += 1; best = Math.max(best, run); }
+    else { run = 0; }
+    prev = row;
+  }
+  // Current streak: count consecutive won days from the newest backwards,
+  // requiring each step to be exactly one calendar day apart.
+  let expect = null;
+  for (const row of r.rows) {
+    if (!row.won) break;
+    const d = row.d;
+    if (expect && d !== expect) break;
+    current += 1;
+    const dt = new Date(`${d}T00:00:00Z`);
+    dt.setUTCDate(dt.getUTCDate() - 1);
+    expect = dt.toISOString().slice(0, 10);
+  }
+  return { current, best };
+}
+
+// Today's leaderboard (fewest guesses, then earliest solve) + all-time average
+// guesses per player for a game.
+async function getGameLeaderboard(game, dateStr, limit = 25) {
+  const p = getPool();
+  const today = await p.query(
+    `SELECT gr.account_id::text AS account_id, gr.guesses, gr.won, gr.created_at,
+            COALESCE(n.nickname, ps.persona_name) AS name
+       FROM game_results gr
+       LEFT JOIN nicknames n ON n.account_id::text = gr.account_id::text
+       LEFT JOIN LATERAL (
+         SELECT persona_name FROM player_stats
+          WHERE account_id::text = gr.account_id::text ORDER BY id DESC LIMIT 1
+       ) ps ON TRUE
+      WHERE gr.game = $1 AND gr.mode = 'daily' AND gr.puzzle_date = $2 AND gr.won = true
+      ORDER BY gr.guesses ASC, gr.created_at ASC
+      LIMIT $3`,
+    [game, dateStr, Math.max(1, Math.min(100, limit))]
+  );
+  const allTime = await p.query(
+    `SELECT gr.account_id::text AS account_id,
+            COUNT(*) FILTER (WHERE gr.won)::int AS solved,
+            ROUND(AVG(gr.guesses) FILTER (WHERE gr.won), 2)::float AS avg_guesses,
+            COALESCE(n.nickname, ps.persona_name) AS name
+       FROM game_results gr
+       LEFT JOIN nicknames n ON n.account_id::text = gr.account_id::text
+       LEFT JOIN LATERAL (
+         SELECT persona_name FROM player_stats
+          WHERE account_id::text = gr.account_id::text ORDER BY id DESC LIMIT 1
+       ) ps ON TRUE
+      WHERE gr.game = $1 AND gr.mode = 'daily'
+      GROUP BY gr.account_id, n.nickname, ps.persona_name
+      HAVING COUNT(*) FILTER (WHERE gr.won) > 0
+      ORDER BY solved DESC, avg_guesses ASC
+      LIMIT $2`,
+    [game, Math.max(1, Math.min(100, limit))]
+  );
+  return { today: today.rows, allTime: allTime.rows };
+}
+
+// Candidate scoreboard rows for the Statline mini-game. Pulls real inhouse
+// player_stats lines (account-linked, non-trivial games) joined to match
+// duration + win. The caller deterministically picks one per day.
+async function getStatlineCandidates(limit = 400) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT ps.hero_id, ps.kills, ps.deaths, ps.assists, ps.gpm, ps.xpm,
+            ps.last_hits, ps.denies, ps.net_worth, ps.level,
+            ps.hero_damage, ps.tower_damage, ps.hero_healing,
+            m.duration,
+            (CASE WHEN ps.team = 'radiant' THEN m.radiant_win ELSE NOT m.radiant_win END) AS win
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+      WHERE ps.hero_id > 0
+        AND m.duration > 600
+        AND (ps.kills + ps.assists) > 0
+        AND ps.gpm > 0
+      ORDER BY m.date DESC
+      LIMIT $1`,
+    [Math.max(1, Math.min(2000, limit))]
+  );
+  return r.rows;
+}
+
+// Per-player summary across all games for the hub + profile widget.
+async function getGameStats(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT game,
+            COUNT(*) FILTER (WHERE mode = 'daily')::int AS daily_played,
+            COUNT(*) FILTER (WHERE mode = 'daily' AND won)::int AS daily_won,
+            ROUND(AVG(guesses) FILTER (WHERE mode = 'daily' AND won), 2)::float AS avg_guesses
+       FROM game_results
+      WHERE account_id = $1
+      GROUP BY game`,
+    [accountId]
+  );
+  return r.rows;
+}
+
 module.exports = {
   init,
   initSchema: init,
   getPool,
+  // Task #451 — mini-games
+  getDailyPuzzleRow,
+  upsertDailyPuzzle,
+  recordGameResult,
+  getGameDailyResult,
+  getGameStreak,
+  getGameLeaderboard,
+  getStatlineCandidates,
+  getGameStats,
   // Task #446 — Discord Rich Presence opt-in
   upsertDiscordRpcConnection,
   getDiscordRpcConnection,

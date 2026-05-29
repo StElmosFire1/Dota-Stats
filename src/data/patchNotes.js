@@ -1,5 +1,21 @@
 module.exports = [
   {
+    "version": "8.11",
+    "title": "Daily Dota mini-games suite (Task #451)",
+    "published_at": "2026-05-29",
+    "notes": [
+      "**Why.** A new `/games` hub of bite-sized daily Dota puzzles to pull players back every day. Each game has a **Daily** mode (the same puzzle for everyone, AEST-seeded, resets at Sydney midnight, with a shareable Wordle-style result string) plus an endless **Endless** mode, and a per-game leaderboard (today's solvers + all-time average guesses).",
+      "**Games shipped.** *Heroguessr* (guess the hero from progressive hint reveals — primary attribute, attack type, roles, legs, ability icons, first letter), *Item-zoom* (identify an item from an 800%-zoomed icon that zooms out with each wrong guess), *Statline* (name the hero from a real inhouse scoreboard line pulled from `player_stats`), and *Talent guesser* (name the hero from its talent tree). *Voiceline daily* ships as a **\"coming soon\"** placeholder — we don't yet host the audio clips.",
+      "**Determinism + secrecy.** New `src/games/` module: `seed.js` (Australia/Sydney date, FNV-1a + mulberry32 PRNG seeded from `game:YYYY-MM-DD`, puzzle numbering, and an HMAC token signer keyed off `SESSION_SECRET`), `heroData.js` / `itemData.js` (metadata sourced from the `dotaconstants` package — talents, abilities, attributes, a ~125-item shortlist), and `puzzles.js` (per-game payload builders, guess-checking, share strings). Answers never leave the server until the player finishes; CDN icon URLs are proxied through `/api/games/image?t=<HMAC token>` so the answer slug never appears in a client-readable URL.",
+      "**Backend.** New `game_daily_puzzles` (deterministic puzzle cache, statline snapshots the DB once per day) and `game_results` (one row per player per daily puzzle, unique — powers streaks + leaderboards) tables with helpers in `src/db/index.js`: `getDailyPuzzleRow` / `upsertDailyPuzzle` / `recordGameResult` / `getGameDailyResult` / `getGameStreak` / `getGameLeaderboard` / `getStatlineCandidates` / `getGameStats`. Routes live in `src/games/routes.js` (mounted into `createApiRouter`): hub, daily, endless, guess, leaderboard, image proxy. An hourly `node-cron` job (Australia/Sydney) pre-generates today's + tomorrow's puzzles, and a one-shot pregeneration runs at startup.",
+      "**Frontend.** New `/games` hub (`Games.jsx`) listing each game with streak + record, a shared play surface (`GamePlay.jsx`) with daily/endless toggle, keyboard-navigable guess autocomplete, per-game clue renderers, share-result copy, and an inline leaderboard, plus a `GamesProfileWidget` on your own profile (self-hides until you've played). API helpers added to `web/src/api.js`; `Daily Mini-Games` link added to the Tools nav.",
+      "**XP hookup.** Best-effort no-op against the quests system (Task #440) — wired to call `db.awardQuestXp` when present, silently skipped while that task isn't merged.",
+      "**A11y.** Every clickable is a real `<button>`; mode toggle uses `aria-pressed`; the guess box is a labelled `role=\"combobox\"` with arrow-key navigation; icon emojis are `aria-hidden`; no `<div onClick>`, no hover-only reveals.",
+      "**Scope.** Full edition only — no `community-edition/` wiring. No cash/coin rewards, no player-authored puzzles, no multiplayer."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.10",
     "title": "AI agent owner alerts now report hit counts + timestamps",
     "published_at": "2026-05-29",

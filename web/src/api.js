@@ -2478,3 +2478,25 @@ export const adminSubmitSmokeTestRun = (superuserKey, id) =>
   superuserJson(`/admin/smoke-test/runs/${id}/submit`, { method: 'POST', superuserKey });
 export const adminSmokeTestRunExportUrl = (id) =>
   `/api/admin/smoke-test/runs/${id}/export.md`;
+
+// ── Task #451 — Daily Dota mini-games suite ────────────────────────────────
+export const getGamesHub = () => _getJson('/games');
+export const getGameDaily = (game) => _getJson(`/games/${game}/daily`);
+export const getGameEndless = (game) => _getJson(`/games/${game}/endless`);
+export const getGameLeaderboard = (game) => _getJson(`/games/${game}/leaderboard`);
+export async function submitGameGuess(game, payload) {
+  const res = await fetch(`${BASE}/games/${game}/guess`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data?.error || `Request failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+export const gameImageUrl = (token) => `${BASE}/games/image?t=${encodeURIComponent(token)}`;

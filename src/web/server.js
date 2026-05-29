@@ -19552,6 +19552,14 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     }
   });
 
+  // Task #451 — Daily Dota mini-games suite (full edition only).
+  try {
+    const { mountGamesRoutes } = require('../games/routes');
+    mountGamesRoutes({ router, express, db });
+  } catch (e) {
+    console.error('[games] route mount failed:', e && e.stack || e && e.message || e);
+  }
+
   try {
     const { mountMagazineV3Routes } = require('../monetization/magazineV3');
     mountMagazineV3Routes({

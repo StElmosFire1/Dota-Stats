@@ -98,6 +98,8 @@ const TeamProfile = lazy(() => import('./pages/TeamProfile'));
 const Leagues = lazy(() => import('./pages/Leagues'));
 const LeagueProfile = lazy(() => import('./pages/LeagueProfile'));
 const WrappedSlideshow = lazy(() => import('./pages/WrappedSlideshow'));
+const Games = lazy(() => import('./pages/Games'));
+const GamePlay = lazy(() => import('./pages/GamePlay'));
 const ProfileDemo = lazy(() => import('./pages/ProfileDemo'));
 const PudgeStats = lazy(() => import('./pages/PudgeStats'));
 const Schedule = lazy(() => import('./pages/Schedule'));
@@ -776,6 +778,7 @@ function Nav() {
           <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
           <DropdownItem to="/pudge-stats">Pudge Hook Stats</DropdownItem>
           <DropdownItem to="/schedule">Game Schedule</DropdownItem>
+          <DropdownItem to="/games">Daily Mini-Games</DropdownItem>
           <DropdownItem to="/inhouse">Inhouse Lobby</DropdownItem>
           <DropdownItem to="/tournaments">Tournaments</DropdownItem>
           <DropdownItem to="/leagues">Leagues</DropdownItem>
@@ -1246,6 +1249,8 @@ function AppRoutes() {
                 <Route path="/wrapped/:seasonId/:accountId" element={<WrappedSlideshow />} />
                 <Route path="/wrapped/:accountId" element={<WrappedSlideshow />} />
                 <Route path="/heroes" element={<Heroes />} />
+                <Route path="/games" element={<Games />} />
+                <Route path="/games/:game" element={<GamePlay />} />
                 <Route path="/players" element={<Players />} />
                 <Route path="/stats" element={<OverallStats />} />
                 <Route path="/positions" element={<PositionStats />} />
