@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "8.21",
+    "title": "Browser-smoke: fix the inhouse false-failure + easier access (Task #487)",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** Capturing the first browser-smoke baselines on prod surfaced a deterministic false failure on the anonymous `/inhouse` journey (`expected selector not found: \".inhouse, h1\"`). The page renders an `<h1>` only after a brief `Loading…` state and has no `.inhouse` class at all, so the runner's fallback — which waited on only the *first* listed selector — sat waiting for a class that never exists and timed out.",
+      "**Selector fix.** The inhouse journeys now lead with selectors that actually render (`h1, main` / `h1, button`) instead of the non-existent `.inhouse` class.",
+      "**Runner robustness.** When the initial check misses (it races SPA hydration), the runner now waits up to 5s for *any* of a journey's listed selectors, not just the first — so selector order can no longer turn a slow-rendering page into a false failure.",
+      "**Modal suppression.** The runner starts from a fresh browser context, so the site-wide WelcomeModal (\"what's new\") was overlaying every screenshot. The runner now reports the version-stamped `welcome_modal_dismissed_v<n>` flag as already-dismissed (and pre-seeds the onboarding nudge) before each navigation, so baselines capture the actual page, not the popup.",
+      "**Easier access.** Added a \"📸 Browser smoke\" link to the Admin Panel Quick Links so the suite no longer has to be reached by typing the URL.",
+      "**Scope.** Full edition smoke harness + admin UI only; no schema, payment, or community-edition changes."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.20",
     "title": "Billable API rate-limit quota tiers (Task #463)",
     "published_at": "2026-05-30",

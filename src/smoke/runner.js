@@ -87,6 +87,22 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
       ignoreHTTPSErrors: true,
     });
 
+    // Suppress site-wide modals that would otherwise overlay every screenshot.
+    // The runner starts from a fresh context (no prior "dismissed" flags), so
+    // the WelcomeModal ("what's new") and the onboarding nudge pop on every
+    // page. The WelcomeModal's dismiss key is version-stamped
+    // (`welcome_modal_dismissed_v<n>`) and that version is fetched at runtime,
+    // so rather than guess it we intercept getItem to report any such key as
+    // already-dismissed. Runs before any page script on every navigation.
+    await context.addInitScript(() => {
+      try {
+        const orig = window.localStorage.getItem.bind(window.localStorage);
+        window.localStorage.getItem = (key) =>
+          (typeof key === 'string' && key.indexOf('welcome_modal_dismissed_v') === 0) ? '1' : orig(key);
+        window.localStorage.setItem('onboarding_modal_seen', '1');
+      } catch (_) { /* storage unavailable — nothing to suppress */ }
+    });
+
     // Synthetic Steam login for authenticated journeys. POSTs the shared
     // bearer + an allow-listed accountId to /auth/steam/test-login, which
     // sets the session cookie on the Playwright context. When either env
@@ -148,8 +164,15 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
                 if (found > 0) { matched = true; break; }
               }
               if (!matched) {
-                try { await page.waitForSelector(selectors[0], { timeout: 5_000 }); matched = true; }
-                catch (_) {}
+                // The count() pass above races SPA hydration — a page that
+                // shows a "Loading…" state first (e.g. /inhouse) may not have
+                // mounted its real content yet. Wait (up to 5s) for ANY of the
+                // listed selectors, not just the first, so selector order can't
+                // turn a slow render into a false failure.
+                try {
+                  await Promise.any(selectors.map(sel => page.waitForSelector(sel, { timeout: 5_000 })));
+                  matched = true;
+                } catch (_) { /* AggregateError — none appeared in time */ }
               }
               if (!matched) throw new Error(`expected selector not found: "${j.expect}"`);
             }

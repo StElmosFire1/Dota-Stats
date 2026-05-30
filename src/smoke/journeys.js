@@ -36,13 +36,13 @@ const JOURNEYS = [
   { key: 'coach_detail', path: `/coaches/${SAMPLE_COACH}`,         label: 'Coach profile',       expect: '.coach, h1, h2' },
   { key: 'tournaments',  path: '/tournaments',                     label: 'Tournaments index',   expect: '.tournaments, .tournament, h1' },
   { key: 'tournament_detail', path: `/tournaments/${SAMPLE_TOURNAMENT}`, label: 'Tournament detail', expect: '.tournament, h1, h2' },
-  { key: 'inhouse',      path: '/inhouse',                         label: 'Inhouse lobby (anon)',expect: '.inhouse, h1' },
+  { key: 'inhouse',      path: '/inhouse',                         label: 'Inhouse lobby (anon)',expect: 'h1, main, .inhouse' },
   { key: 'patch_notes',  path: '/patch-notes',                     label: 'Patch notes',         expect: '.patch-notes, h1, article' },
   { key: 'health_json',  path: '/api/health',                      label: '/v1/health endpoint', expect: null, asJson: true },
 
   // ── Authenticated journeys (require SMOKE_TEST_LOGIN_TOKEN) ────────────
   { key: 'auth_profile',  path: '/profile',                  label: 'Signed-in profile',     expect: '.profile, h1, h2', auth: true },
-  { key: 'auth_inhouse',  path: '/inhouse',                  label: 'Inhouse lobby (signed-in)', expect: '.inhouse, h1, button', auth: true },
+  { key: 'auth_inhouse',  path: '/inhouse',                  label: 'Inhouse lobby (signed-in)', expect: 'h1, button, .inhouse', auth: true },
 ];
 
 // Pixel-diff tolerance: a step fails if the proportion of differing pixels

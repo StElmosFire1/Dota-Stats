@@ -5226,6 +5226,7 @@ export default function AdminPanel() {
             { to: '/patch-notes', label: '📋 Patch Notes' },
             { to: '/matches', label: '📊 Match List' },
             { to: '/admin/smoke-test', label: '🧪 Smoke-test runs' },
+            { to: '/admin/browser-smoke', label: '📸 Browser smoke' },
           ].map(({ to, label }) => (
             <Link key={to} to={to} className="btn" style={{ textDecoration: 'none' }}>{label}</Link>
           ))}
