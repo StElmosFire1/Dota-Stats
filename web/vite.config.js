@@ -10,9 +10,9 @@ export default defineConfig({
     host: '0.0.0.0',
     allowedHosts: true,
     proxy: {
-      '/api': 'http://localhost:5000',
-      '/scouting': 'http://localhost:5000',
-      '/auth': 'http://localhost:5000',
+      '/api': 'http://127.0.0.1:3000',
+      '/scouting': 'http://127.0.0.1:3000',
+      '/auth': 'http://127.0.0.1:3000',
     },
   },
 });

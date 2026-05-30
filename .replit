@@ -37,12 +37,13 @@ args = "Start application"
 name = "Dota2 Inhouse Bot"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "node src/index.js"
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=3000 node src/index.js"
+waitForPort = 3000
 
 [[workflows.workflow]]
 name = "Start application"
@@ -72,10 +73,6 @@ DISABLE_STEAM = "true"
 [[ports]]
 localPort = 3000
 externalPort = 3000
-
-[[ports]]
-localPort = 5000
-externalPort = 80
 
 [[ports]]
 localPort = 5001

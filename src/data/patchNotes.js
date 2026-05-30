@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.26",
+    "title": "Fix dev preview: games (and all /api) failing to load",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** In the Replit dev preview every `/api` call (the mini-games' \"Failed to load daily puzzle\" being the most visible symptom) was failing. Both the Vite frontend dev server and the backend (`src/index.js`) were configured for port 5000, so the backend never bound a port and Vite's `/api` proxy had nothing to reach.",
+      "**Fix.** The backend dev workflow now runs on port 3000 (the port already reserved for it in `.replit`), and `web/vite.config.js` proxies `/api`, `/auth`, and `/scouting` to `http://127.0.0.1:3000`. The frontend stays on port 5000.",
+      "**Scope.** Local dev/preview environment only — production serves the built frontend from the backend on a single port and was never affected. No schema, payment, runtime, or community-edition changes."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.25",
     "title": "Block hotlinking of our logo & branded assets (Task #491)",
     "published_at": "2026-05-30",
