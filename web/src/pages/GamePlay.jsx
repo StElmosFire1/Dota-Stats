@@ -576,25 +576,11 @@ export default function GamePlay() {
       {puzzle && !loading && !puzzle.notReady && puzzle.available !== false && (
         <>
           <div className="gp-panel">
-            {isHeroguessr ? (
-              <HeroCompareGrid guessed={guessed} />
-            ) : (
-              <>
-                <ClueArea game={game} clue={puzzle.clue} guessCount={guessed.length} />
-                {guessed.length > 0 && (
-                  <ul className="gp-history">
-                    {guessed.slice().reverse().map((g, i) => (
-                      <li key={i} className={`gp-history__item ${g.correct ? 'gp-history__item--right' : 'gp-history__item--wrong'}`}>
-                        {heroPortraits && (
-                          <img className="gp-history__img" src={getHeroImageUrl(g.id, g.name)} alt="" loading="lazy" />
-                        )}
-                        <span className="gp-history__name">{g.name}</span>
-                        <span aria-hidden="true">{g.correct ? '✅' : '❌'}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
+            {/* Clue (non-heroguessr) + progress + input stay anchored at the top
+                so the input bar never shifts as guesses accumulate. Guesses
+                render below the input. */}
+            {!isHeroguessr && (
+              <ClueArea game={game} clue={puzzle.clue} guessCount={guessed.length} />
             )}
 
             {!finished && (
@@ -611,6 +597,24 @@ export default function GamePlay() {
                   showPortraits={heroPortraits}
                 />
               </>
+            )}
+
+            {isHeroguessr ? (
+              <HeroCompareGrid guessed={guessed} />
+            ) : (
+              guessed.length > 0 && (
+                <ul className="gp-history">
+                  {guessed.slice().reverse().map((g, i) => (
+                    <li key={i} className={`gp-history__item ${g.correct ? 'gp-history__item--right' : 'gp-history__item--wrong'}`}>
+                      {heroPortraits && (
+                        <img className="gp-history__img" src={getHeroImageUrl(g.id, g.name)} alt="" loading="lazy" />
+                      )}
+                      <span className="gp-history__name">{g.name}</span>
+                      <span aria-hidden="true">{g.correct ? '✅' : '❌'}</span>
+                    </li>
+                  ))}
+                </ul>
+              )
             )}
           </div>
 
