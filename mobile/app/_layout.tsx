@@ -9,6 +9,7 @@ import {
   clearSession, getAccountId, setAccountId, setSessionFromSetCookieHeader,
 } from '../lib/session';
 import { registerForPushNotificationsAsync } from '../lib/push';
+import { parseDeepLink, resolvePushRoute } from '../lib/deepLink';
 import { theme } from '../lib/theme';
 
 export default function RootLayout() {
@@ -53,11 +54,9 @@ export default function RootLayout() {
       if (!url) return;
       try {
         const parsed = Linking.parse(url);
-        const token =
-          (parsed.queryParams?.t as string | undefined) ||
-          (parsed.queryParams?.token as string | undefined);
-        if (token) {
-          const { setCookie } = await api.authComplete(token);
+        const decision = parseDeepLink(parsed);
+        if (decision.kind === 'auth') {
+          const { setCookie } = await api.authComplete(decision.token);
           if (setCookie) await setSessionFromSetCookieHeader(setCookie);
           try {
             const me = await api.authMe();
@@ -71,11 +70,8 @@ export default function RootLayout() {
         // Action deep link — `oceinhouse:///action/ready-check/123` parses
         // with `path = action/ready-check/123`. Forward into the router
         // verbatim so Expo Router picks up the matching dynamic segment.
-        if (parsed.path && parsed.path.startsWith('action/')) {
-          const qs = Object.entries(parsed.queryParams || {})
-            .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v ?? ''))}`)
-            .join('&');
-          router.push(`/${parsed.path}${qs ? `?${qs}` : ''}`);
+        if (decision.kind === 'action') {
+          router.push(decision.route as any);
         }
       } catch (err) {
         console.warn('[deep-link] handle failed:', (err as Error).message);
@@ -93,11 +89,9 @@ export default function RootLayout() {
     const sub = Notifications.addNotificationResponseReceivedListener((resp) => {
       try {
         const data: any = resp?.notification?.request?.content?.data || {};
-        const url: string | undefined = data.url;
-        if (url && url.startsWith('/action/')) {
-          router.push(url as any);
-        } else if (url && url.startsWith('/')) {
-          router.push(url as any);
+        const route = resolvePushRoute(data);
+        if (route) {
+          router.push(route as any);
         }
       } catch (err) {
         console.warn('[push-tap] route failed:', (err as Error).message);

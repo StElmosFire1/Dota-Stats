@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.18",
+    "title": "Regression tests for the mobile action endpoints + deep-link router (Task #461)",
+    "published_at": "2026-05-29",
+    "notes": [
+      "**Why.** The two Task #414 mobile write endpoints (`POST /api/matches/:id/mvp-vote`, `POST /api/bookings/:id/reminder-ack`) and the deep-link router in `mobile/app/_layout.tsx` shipped without automated coverage. A refactor of session auth, the coaching feature gate, or the push-data shape could silently break the mobile happy path and we'd only learn from user reports.",
+      "**Endpoint tests.** `tests/mobileActionEndpoints.test.js` exercises the MVP-vote route (sign-in gate, invalid/missing ids, self-vote guard, match-not-found, the 24h voting window, voter/candidate participation, the same-team rule, happy path, and re-vote idempotency) and the booking-reminder-ack route (coaching-disabled 404, sign-in gate, invalid id, not-yours/not-ackable 404, happy path bound to the session account, and COALESCE idempotency) — all via the shared `node --test` server harness, no real DB/Stripe/Discord touched.",
+      "**Deep-link helper.** Extracted the pure routing decisions out of `_layout.tsx` into `mobile/lib/deepLink.js` (`parseDeepLink` + `resolvePushRoute`). `tests/mobileDeepLink.test.js` covers the Steam OpenID `?t=token` hand-off, `oceinhouse:///action/<kind>/<id>?slot=…` action links (query-encoding + empty values), token-wins precedence, and the push `data.url` shapes.",
+      "**Scope.** Tests + a no-behaviour-change refactor of the mobile deep-link handler. No server, schema, or route changes; full edition mobile companion only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.17",
     "title": "Mobile: don't lose an action when the network drops mid-tap (Task #460)",
     "published_at": "2026-05-29",
