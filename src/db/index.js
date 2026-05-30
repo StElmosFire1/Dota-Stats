@@ -5335,7 +5335,44 @@ async function listSmurfScores({ threshold, includeAcknowledged = false, limit =
     ORDER BY s.score DESC, s.computed_at DESC
     LIMIT $2
   `, params);
+  await _attachFingerprintPartnerNicknames(p, r.rows);
   return r.rows;
+}
+
+// Resolve nicknames for the accounts named in each row's fingerprint signal
+// `partners` array so the admin UI can render friendly link-through chips
+// instead of bare numeric IDs. Mutates `partners[].nickname` in place.
+// Batches one query across every partner ID found in the supplied rows.
+async function _attachFingerprintPartnerNicknames(p, rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const ids = new Set();
+  for (const row of rows) {
+    const partners = row?.signals?.fingerprint?.partners;
+    if (!Array.isArray(partners)) continue;
+    for (const partner of partners) {
+      if (partner?.accountId != null) ids.add(String(partner.accountId));
+    }
+  }
+  if (ids.size === 0) return;
+  let nameById = new Map();
+  try {
+    const nr = await p.query(
+      `SELECT account_id, nickname FROM nicknames WHERE account_id = ANY($1::bigint[])`,
+      [Array.from(ids)]
+    );
+    nameById = new Map(nr.rows.map(x => [String(x.account_id), x.nickname]));
+  } catch (_) {
+    return;
+  }
+  for (const row of rows) {
+    const partners = row?.signals?.fingerprint?.partners;
+    if (!Array.isArray(partners)) continue;
+    for (const partner of partners) {
+      if (partner?.accountId != null) {
+        partner.nickname = nameById.get(String(partner.accountId)) || null;
+      }
+    }
+  }
 }
 
 async function getSmurfScore(accountId) {
@@ -5344,7 +5381,9 @@ async function getSmurfScore(accountId) {
     SELECT account_id, score, signals, computed_at
     FROM smurf_scores WHERE account_id = $1
   `, [accountId]);
-  return r.rows[0] || null;
+  const row = r.rows[0] || null;
+  if (row) await _attachFingerprintPartnerNicknames(p, [row]);
+  return row;
 }
 
 async function acknowledgeSmurfScore(accountId, { operatorAccountId, operatorLabel, note } = {}) {

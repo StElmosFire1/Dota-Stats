@@ -270,18 +270,25 @@ async function _fingerprintSignal(pool, accountId, sessionFingerprintIndex) {
     if (hits > 0) overlaps.push({ otherId, hits });
   }
   if (overlaps.length === 0) {
-    return { value: 0, weight: SIGNAL_WEIGHTS.fingerprint, contribution: 0, detail: 'no overlapping fingerprints' };
+    return { value: 0, weight: SIGNAL_WEIGHTS.fingerprint, contribution: 0, detail: 'no overlapping fingerprints', partners: [] };
   }
   overlaps.sort((a, b) => b.hits - a.hits);
   const top = overlaps[0];
   // Any overlap is meaningful; multiple overlaps with the same account caps weight.
   const value = clamp(top.hits / 3, 0, 1);
   const contribution = value * SIGNAL_WEIGHTS.fingerprint;
+  // Surface every account this player shares a fingerprint with (capped so a
+  // pathological shared-machine cluster can't bloat the stored signals JSON).
+  // The admin UI renders these as clickable link-throughs to each profile.
+  const partners = overlaps
+    .slice(0, 10)
+    .map(o => ({ accountId: o.otherId, hits: o.hits }));
   return {
     value: Number(value.toFixed(3)),
     weight: SIGNAL_WEIGHTS.fingerprint,
     contribution: Math.round(contribution * 10) / 10,
     detail: `shares fingerprint with account ${top.otherId} (${top.hits} overlap${top.hits === 1 ? '' : 's'})`,
+    partners,
   };
 }
 

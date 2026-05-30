@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.28",
+    "title": "Smurf Watch: see which accounts share a fingerprint with the suspect",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** The smurf scorer's fingerprint signal already detects when two accounts sign in from the same machine, but the admin Smurf Watch detail card only showed the aggregate score and a plaintext 'shares fingerprint with account X' line. The single most useful thing for a reviewing admin — *which* other account(s) — wasn't clickable.",
+      "**Partner chips.** The fingerprint signal now returns a structured `partners` list (every overlapping account, capped at 10, with overlap counts), and the Smurf Watch signal breakdown renders them as clickable chips that link straight through to each player's profile. Partner nicknames are resolved server-side so chips show names instead of bare IDs where available.",
+      "**Scope.** Full edition only — community edition has no Smurf Watch. Advisory-only, no automatic action; stored scores pick up the partner list on the next recompute."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.27",
     "title": "See who tried to reach the site while the lockdown gate was on",
     "published_at": "2026-05-30",

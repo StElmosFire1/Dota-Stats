@@ -8,8 +8,36 @@ import {
   acknowledgeSmurfAccount,
 } from '../api';
 
+function FingerprintPartners({ partners }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+      <span style={{ color: 'var(--text-muted)', alignSelf: 'center' }}>shares fingerprint with:</span>
+      {partners.map(p => (
+        <Link
+          key={p.accountId}
+          to={`/player/${p.accountId}`}
+          title={`${p.hits} overlapping fingerprint${p.hits === 1 ? '' : 's'}`}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            padding: '1px 8px', borderRadius: 999, fontSize: 12,
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            color: 'var(--accent)', textDecoration: 'none', fontWeight: 600,
+          }}
+        >
+          {p.nickname || `#${p.accountId}`}
+          <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontVariantNumeric: 'tabular-nums' }}>
+            ×{p.hits}
+          </span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 function SignalRow({ k, sig }) {
   const noData = sig?.value == null;
+  const partners = Array.isArray(sig?.partners) ? sig.partners : [];
+  const hasPartners = k === 'fingerprint' && partners.length > 0;
   return (
     <tr>
       <td style={{ fontFamily: 'monospace', fontSize: 12, padding: '4px 8px' }}>{k}</td>
@@ -19,7 +47,9 @@ function SignalRow({ k, sig }) {
       <td style={{ padding: '4px 8px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
         {noData ? '—' : `${sig.contribution} / ${sig.weight}`}
       </td>
-      <td style={{ padding: '4px 8px', color: 'var(--text-muted)', fontSize: 12 }}>{sig?.detail || ''}</td>
+      <td style={{ padding: '4px 8px', color: 'var(--text-muted)', fontSize: 12 }}>
+        {hasPartners ? <FingerprintPartners partners={partners} /> : (sig?.detail || '')}
+      </td>
     </tr>
   );
 }
