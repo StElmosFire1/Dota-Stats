@@ -565,6 +565,46 @@ async function _settleTournamentPayouts(tournamentId, { includeFailed = false } 
   return out;
 }
 
+// Task #545 — proactively nudge winners with an unclaimed prize to connect a
+// payout account. A pending payout whose winner has no payout-ready Connect
+// account would otherwise sit forever unless they happen to open the
+// tournament page (where the "Connect payout account" CTA lives). We DM /
+// web-push each such winner exactly once (the DB stamp `connect_notified_at`
+// is the one-shot guard) and gate it per-user by the `tournament_payout_pending`
+// preference. Best-effort: per-recipient failures are logged but never abort
+// the sweep, and we only stamp after a successful send so a transient failure
+// is retried on the next sweep. Exported for tests.
+async function _notifyUnconnectedPayoutWinners() {
+  let notified = 0;
+  let rows;
+  try {
+    rows = await db.getPayoutsNeedingConnectNotification();
+  } catch (e) {
+    console.warn('[TournamentPayout] connect-nudge query failed:', e.message);
+    return { notified: 0 };
+  }
+  for (const row of (rows || [])) {
+    const url = `/tournaments/${row.tournament_id}`;
+    const amount = (Number(row.amount_cents) || 0) / 100;
+    const ccy = (row.currency || 'aud').toUpperCase();
+    const prize = `${ccy} $${amount.toFixed(2)}`;
+    const title = 'Connect a payout account to claim your prize';
+    const body = `You won ${prize} in "${row.tournament_name}" but we can't pay you yet — connect a payout account to receive it.`;
+    try {
+      await notify(row.account_id, 'tournament_payout_pending', {
+        discord: { content: `💰 **${title}** — ${body}\nConnect here: ${(process.env.SITE_URL || '')}${url}` },
+        push: { title, body, url, data: { kind: 'tournament_payout_pending', tournament_id: row.tournament_id } },
+      });
+      // Stamp only after a successful send so a transient failure retries.
+      await db.markTournamentPayoutConnectNotified(row.id);
+      notified++;
+    } catch (e) {
+      console.warn('[TournamentPayout] connect-nudge notify failed:', e.message);
+    }
+  }
+  return { notified };
+}
+
 // Background settlement sweep — pays winners who connected an account after
 // the snapshot was taken. Pending-only (never auto-retries a hard failure, to
 // avoid hammering Stripe with a doomed transfer); admins retry failures
@@ -580,6 +620,10 @@ async function _runTournamentPayoutSweep(reason = 'cron') {
       try { await _settleTournamentPayouts(tid, { includeFailed: false }); }
       catch (e) { console.warn(`[TournamentPayout] sweep failed for ${tid}:`, e.message); }
     }
+    // After settling, any payout still pending belongs to a winner without a
+    // payout-ready account — prompt them (one-shot) to connect one.
+    try { await _notifyUnconnectedPayoutWinners(); }
+    catch (e) { console.warn('[TournamentPayout] connect-nudge sweep error:', e.message); }
   } catch (e) {
     console.warn('[TournamentPayout] sweep error:', e.message);
   } finally {
@@ -20807,4 +20851,4 @@ function processReplayInternal(filePath, source, opts = {}) {
   });
 }
 
-module.exports = { createServer, processReplayInternal, createApiRouter, _runCheckinNotifyTick, _runCheckinDqSweepTick };
+module.exports = { createServer, processReplayInternal, createApiRouter, _runCheckinNotifyTick, _runCheckinDqSweepTick, _notifyUnconnectedPayoutWinners };

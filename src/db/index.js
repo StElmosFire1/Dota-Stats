@@ -2674,6 +2674,11 @@ async function init() {
     await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS transfer_error TEXT`);
     await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS transferred_at TIMESTAMPTZ`);
     await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'aud'`);
+    // Task #545 — one-shot stamp set when we DM/push a winner whose prize is
+    // 'pending' but who has no payout-ready Connect account, prompting them to
+    // connect one. NULL = never nudged; the settlement sweep notifies each
+    // such winner exactly once and stamps this so later sweeps don't repeat.
+    await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS connect_notified_at TIMESTAMPTZ`);
 
     // Task #453 — generic Stripe Connect Express payout accounts for any
     // player (tournament winners who aren't coaches). Mirrors the coaching
@@ -14886,6 +14891,10 @@ const NOTIFICATION_EVENTS = [
   // Task #452 — tournament check-in window open + 5-min-before-close reminder.
   // Task #455 — opt-in (was default-ON).
   { key: 'tournament_checkin',      label: 'Tournament check-in',         desc: 'When check-in opens for a tournament you are in, plus a reminder before it closes.', legacy: null, defaults: { discord: false, push: false } },
+  // Task #545 — nudge a winner with an unclaimed prize to connect a payout
+  // account. Transactional (real money owed) → default-ON, matching the
+  // tournament_checkin event as it shipped in Task #452.
+  { key: 'tournament_payout_pending', label: 'Unclaimed prize payout',     desc: 'When you win prize money but need to connect a payout account to receive it.', legacy: null, defaults: { discord: true,  push: true  } },
   { key: 'coach_booking_confirmed', label: 'Coach booking confirmed',     desc: 'When a coaching booking is paid and locked in.',             legacy: 'coaching_booking_confirmed', defaults: { discord: true,  push: true  } },
   { key: 'coach_booking_reminder',  label: 'Coach booking reminder',      desc: 'About one hour before a scheduled coaching session.',        legacy: 'coaching_session_reminder',  defaults: { discord: true,  push: true  } },
   { key: 'league_scrim_accepted',   label: 'League / scrim accepted',     desc: 'When a league or scrim request you sent is accepted.',       legacy: null,                         defaults: { discord: false, push: false } },
@@ -25442,6 +25451,8 @@ module.exports = {
   resolvePayoutDestination,
   getPendingTournamentPayouts,
   getTournamentPayoutRow,
+  getPayoutsNeedingConnectNotification,
+  markTournamentPayoutConnectNotified,
   setTournamentPayoutTransfer,
   getTournamentsWithPendingPayouts,
   listFailedTournamentPayouts,
@@ -27916,6 +27927,48 @@ async function getTournamentPayoutRow(payoutId) {
     `SELECT id, tournament_id, account_id::text AS account_id, place,
             amount_cents, currency, transfer_status, stripe_transfer_id
        FROM tournament_payouts WHERE id = $1`, [parseInt(payoutId)]);
+  return r.rows[0] || null;
+}
+
+// Task #545 — pending payout rows whose winner has no payout-ready Connect
+// account and who has not yet been nudged to connect one. Drives the one-shot
+// "connect your payout account" DM/push from the settlement sweep. The
+// NOT EXISTS pair mirrors `getTournamentPayouts.payout_connected` /
+// `resolvePayoutDestination`: a winner is "connected" when they have a
+// payouts_enabled own account OR an active, non-synthetic coach account.
+async function getPayoutsNeedingConnectNotification() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT tp.id, tp.tournament_id, tp.account_id::text AS account_id, tp.place,
+            tp.amount_cents, tp.currency, t.name AS tournament_name,
+            COALESCE(n.nickname,
+              (SELECT ps.persona_name FROM player_stats ps WHERE ps.account_id = tp.account_id ORDER BY ps.id DESC LIMIT 1),
+              tp.account_id::text) AS display_name
+       FROM tournament_payouts tp
+       JOIN tournaments t ON t.id = tp.tournament_id
+       LEFT JOIN nicknames n ON n.account_id = tp.account_id
+      WHERE t.payouts_finalized_at IS NOT NULL
+        AND tp.transfer_status = 'pending'
+        AND tp.amount_cents > 0
+        AND tp.connect_notified_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM payout_accounts pa
+                         WHERE pa.account_id = tp.account_id AND pa.payouts_enabled = TRUE)
+        AND NOT EXISTS (SELECT 1 FROM coaches c
+                         WHERE c.account_id = tp.account_id
+                           AND c.status = 'active' AND c.stripe_account_id IS NOT NULL
+                           AND c.stripe_account_id NOT LIKE 'acct_test_%')
+      ORDER BY tp.tournament_id DESC, tp.place ASC`);
+  return r.rows;
+}
+
+// Task #545 — stamp the one-shot connect-nudge marker so a winner is only
+// prompted once. Best-effort: returns the updated row (or null).
+async function markTournamentPayoutConnectNotified(payoutId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE tournament_payouts SET connect_notified_at = NOW()
+      WHERE id = $1 AND connect_notified_at IS NULL RETURNING id`,
+    [parseInt(payoutId)]);
   return r.rows[0] || null;
 }
 

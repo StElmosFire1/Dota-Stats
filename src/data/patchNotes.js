@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.37",
+    "title": "Win prize money? You'll be told to connect a payout account",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** Tournament winners are paid automatically once they've connected a Stripe payout account — but a winner who hadn't connected one only found out if they happened to open the tournament page (where the \"Connect payout account\" button lives). Plenty of prizes sat stuck in 'pending' as a result.",
+      "**What.** When the settlement sweep finds a prize that's still pending because the winner has no payout-ready account, it now sends them a Discord DM / web-push telling them how much they won, in which tournament, and linking straight to where they can connect an account.",
+      "**One-shot.** Each winner is nudged exactly once (we stamp a `connect_notified_at` marker on the payout row), so repeated sweeps never re-spam — and we only stamp after a successful send, so a transient failure is retried next sweep.",
+      "**Opt-outs honoured.** The nudge goes through a new `tournament_payout_pending` notification preference. Because it's about real money owed to you, it's on by default (like coaching and billing alerts), but you can mute it from your notification settings.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.36",
     "title": "You're now told when a missed check-in drops you from a tournament",
     "published_at": "2026-05-30",
