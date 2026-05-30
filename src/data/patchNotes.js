@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.24",
+    "title": "Browser-smoke: fix match/tournament not-found false-failures (Task #489)",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** Three smoke journeys were false-failing with `expected selector not found`. The `match_detail` (`/match/:id`) and `tournament_detail` (`/tournaments/:id`) journeys default their sample id to `1`, which doesn't exist on prod — so both pages render their terminal `.error-state` (\"Match not found\" / \"Tournament not found.\"), and the old selectors (`.match, table, h1, h2` / `.tournament, h1, h2`) only matched the *loaded* state, never the not-found one.",
+      "**Selector fix.** `match_detail` now accepts `.match-detail-header, .error-state, table, h1, h2` and `tournament_detail` accepts `.tournament-layout, .page-title, .error-state, h1, h2`, so both pass whether the sample record exists (loaded view) or not (deterministic not-found view) — and the perceptual diff still catches regressions against whichever state the baseline was captured from.",
+      "**Inhouse cleanup.** Dropped the dead `.inhouse` class from the anon `/inhouse` journey selector (no element ever carried it); it now leads with `h1, main`, which always render once the SPA mounts.",
+      "**Note for prod.** For a stronger canary, set `SMOKE_MATCH_ID` / `SMOKE_TOURNAMENT_ID` to ids that exist on prod so these journeys exercise the real loaded view, then re-approve their baselines.",
+      "**Scope.** Full edition smoke harness only; no schema, payment, runtime, or community-edition changes."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.23",
     "title": "Unit tests for the browser-smoke diff + failure paths (Task #489)",
     "published_at": "2026-05-30",
