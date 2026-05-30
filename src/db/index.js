@@ -1234,7 +1234,31 @@ async function init() {
     await p.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS owner_was_superuser BOOLEAN NOT NULL DEFAULT false`);
     // Task #415 — per-key custom rate limit (req/min). NULL = use tier default.
     await p.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS rate_per_min INTEGER`);
+    // Task #463 — billable rate-limit tiers. A key with an *active* quota
+    // subscription gets its per-minute ceiling bumped to the purchased tier's
+    // limit. When the subscription lapses these are cleared (auto-degrade) and
+    // the key falls back to its tier default / manual rate_per_min override.
+    await p.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS api_quota_tier TEXT`);
+    await p.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS api_quota_status TEXT`);
+    await p.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS api_quota_sub_id TEXT`);
+    await p.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS api_quota_customer_id TEXT`);
+    await p.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS api_quota_period_end TIMESTAMPTZ`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_api_keys_account ON api_keys (account_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_api_keys_quota_sub ON api_keys (api_quota_sub_id) WHERE api_quota_sub_id IS NOT NULL`);
+
+    // Task #463 — durable per-key monthly request counter, rolled up from the
+    // in-process minute/day counters in src/web/publicApiRouter.js. `month` is
+    // a 'YYYY-MM' UTC bucket so the "usage this month" tile and quota-overage
+    // analytics survive a restart.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS api_key_usage_monthly (
+        key_id BIGINT NOT NULL,
+        month TEXT NOT NULL,
+        request_count BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (key_id, month)
+      )
+    `);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS webhook_subscriptions (
@@ -23538,7 +23562,8 @@ async function createApiKey({ accountId, label = null, tier = 'free', ownerWasSu
   const r = await p.query(
     `INSERT INTO api_keys (account_id, token_hash, prefix, label, tier, owner_was_superuser, scopes, rate_per_min)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING id, account_id, prefix, label, tier, scopes, rate_per_min, usage_count, last_used_at, created_at, revoked_at, owner_was_superuser`,
+     RETURNING id, account_id, prefix, label, tier, scopes, rate_per_min, usage_count, last_used_at, created_at, revoked_at, owner_was_superuser,
+               api_quota_tier, api_quota_status, api_quota_period_end`,
     [accountId, tokenHash, prefix, label, safeTier, !!ownerWasSuperuser, safeScopes, safeRate]
   );
   return { ...r.rows[0], token: raw };
@@ -23546,11 +23571,25 @@ async function createApiKey({ accountId, label = null, tier = 'free', ownerWasSu
 async function listApiKeysForAccount(accountId) {
   const p = getPool();
   const r = await p.query(
-    `SELECT id, account_id, prefix, label, tier, scopes, rate_per_min, usage_count, last_used_at, created_at, revoked_at
+    `SELECT id, account_id, prefix, label, tier, scopes, rate_per_min, usage_count, last_used_at, created_at, revoked_at,
+            api_quota_tier, api_quota_status, api_quota_sub_id, api_quota_period_end
      FROM api_keys WHERE account_id = $1 ORDER BY created_at DESC`,
     [accountId]
   );
   return r.rows;
+}
+// Task #463 — single-key lookup scoped to the owning account, for the
+// quota-checkout / quota-cancel routes. Returns null if not owned or revoked.
+async function findApiKeyForAccount({ accountId, keyId }) {
+  if (!accountId || !keyId) return null;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, account_id, prefix, label, tier, scopes, rate_per_min, usage_count, last_used_at, created_at, revoked_at,
+            api_quota_tier, api_quota_status, api_quota_sub_id, api_quota_customer_id, api_quota_period_end
+     FROM api_keys WHERE id = $1 AND account_id = $2`,
+    [keyId, accountId]
+  );
+  return r.rows[0] || null;
 }
 async function revokeApiKey({ accountId, keyId }) {
   const p = getPool();
@@ -23585,6 +23624,7 @@ async function findApiKeyByToken(rawToken) {
   const r = await p.query(
     `SELECT id, account_id, prefix, label, tier, scopes, rate_per_min,
             usage_count, last_used_at, created_at, revoked_at,
+            api_quota_tier, api_quota_status, api_quota_period_end,
             owner_was_superuser AS is_owner_superuser
      FROM api_keys WHERE token_hash = $1`,
     [hash]
@@ -23597,6 +23637,118 @@ async function touchApiKeyUsage(keyId) {
     `UPDATE api_keys SET usage_count = usage_count + 1, last_used_at = NOW() WHERE id = $1`,
     [keyId]
   );
+}
+
+// Task #463 — durable monthly request counter. Called from the periodic
+// in-process flusher in src/web/publicApiRouter.js with the accumulated delta
+// since the last flush. UPSERT-adds so concurrent flushers (multiple workers)
+// stay consistent. `month` is a 'YYYY-MM' UTC bucket.
+async function incrementApiKeyMonthlyUsage(keyId, month, delta) {
+  const d = parseInt(delta, 10);
+  if (!keyId || !month || !Number.isFinite(d) || d <= 0) return;
+  const p = getPool();
+  await p.query(
+    `INSERT INTO api_key_usage_monthly (key_id, month, request_count, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (key_id, month) DO UPDATE
+       SET request_count = api_key_usage_monthly.request_count + EXCLUDED.request_count,
+           updated_at = NOW()`,
+    [keyId, month, d]
+  );
+}
+
+// Task #463 — batch read of the current-month request counts for a set of
+// keys. Returns a Map<keyId(string), count(number)>.
+async function getApiKeysMonthlyUsage(keyIds, month) {
+  const ids = (Array.isArray(keyIds) ? keyIds : []).filter(Boolean);
+  if (!ids.length || !month) return new Map();
+  const p = getPool();
+  const r = await p.query(
+    `SELECT key_id, request_count
+       FROM api_key_usage_monthly
+      WHERE month = $1 AND key_id = ANY($2::bigint[])`,
+    [month, ids]
+  );
+  const out = new Map();
+  for (const row of r.rows) out.set(String(row.key_id), Number(row.request_count) || 0);
+  return out;
+}
+
+// Task #463 — apply a billable quota subscription state to a key. Activates,
+// holds (past_due), or auto-degrades (clears the bump) based on Stripe status.
+// Idempotent; matches on key_id (preferred) or stripe subscription id.
+async function applyApiQuotaSubscriptionEvent({
+  keyId = null,
+  stripeSubscriptionId = null,
+  stripeCustomerId = null,
+  quotaTier = null,
+  status,                   // raw Stripe status
+  currentPeriodEnd = null,  // epoch seconds
+}) {
+  if (!keyId && !stripeSubscriptionId) return null;
+  const p = getPool();
+  let mapped;
+  switch (status) {
+    case 'active':
+    case 'trialing':           mapped = 'active'; break;
+    case 'past_due':
+    case 'unpaid':             mapped = 'past_due'; break;
+    case 'canceled':
+    case 'incomplete_expired': mapped = 'cancelled'; break;
+    case 'incomplete':         mapped = 'pending'; break;
+    default:                   mapped = 'active';
+  }
+  const cpe = currentPeriodEnd ? new Date(currentPeriodEnd * 1000) : null;
+  // On a terminal cancel we auto-degrade: wipe every quota field so the key
+  // falls back to its tier default / manual override on the next request.
+  const degrade = mapped === 'cancelled';
+  const where = keyId ? 'id = $1' : 'api_quota_sub_id = $1';
+  const whereVal = keyId || stripeSubscriptionId;
+  const r = await p.query(
+    degrade
+      ? `UPDATE api_keys
+            SET api_quota_tier = NULL,
+                api_quota_status = NULL,
+                api_quota_sub_id = NULL,
+                api_quota_period_end = NULL
+          WHERE ${where}
+          RETURNING id, account_id, api_quota_tier, api_quota_status`
+      : `UPDATE api_keys
+            SET api_quota_tier = COALESCE($2, api_quota_tier),
+                api_quota_status = $3,
+                api_quota_sub_id = COALESCE($4, api_quota_sub_id),
+                api_quota_customer_id = COALESCE($5, api_quota_customer_id),
+                api_quota_period_end = COALESCE($6, api_quota_period_end)
+          WHERE ${where}
+          RETURNING id, account_id, api_quota_tier, api_quota_status`,
+    degrade ? [whereVal] : [whereVal, quotaTier, mapped, stripeSubscriptionId, stripeCustomerId, cpe]
+  );
+  return r.rows[0] || null;
+}
+
+// Task #463 — safety-net sweep: degrade keys whose quota subscription has
+// lapsed (cancelled, or a non-active status past its period end + a small
+// grace). Mirrors what the Stripe webhook does, but catches missed events.
+// Returns the number of keys degraded.
+async function degradeLapsedApiQuotas({ graceHours = 26 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE api_keys
+        SET api_quota_tier = NULL,
+            api_quota_status = NULL,
+            api_quota_sub_id = NULL,
+            api_quota_period_end = NULL
+      WHERE api_quota_tier IS NOT NULL
+        AND (
+          api_quota_status = 'cancelled'
+          OR (api_quota_status IS DISTINCT FROM 'active'
+              AND api_quota_period_end IS NOT NULL
+              AND api_quota_period_end < NOW() - ($1 || ' hours')::interval)
+        )
+      RETURNING id`,
+    [String(graceHours)]
+  );
+  return r.rowCount;
 }
 
 const _WEBHOOK_EVENTS = new Set([
@@ -24449,9 +24601,14 @@ module.exports = {
   updateApiKey,
   listKnownApiScopes,
   listApiKeysForAccount,
+  findApiKeyForAccount,
   revokeApiKey,
   findApiKeyByToken,
   touchApiKeyUsage,
+  incrementApiKeyMonthlyUsage,
+  getApiKeysMonthlyUsage,
+  applyApiQuotaSubscriptionEvent,
+  degradeLapsedApiQuotas,
   listKnownWebhookEvents,
   createWebhookSubscription,
   listWebhookSubscriptionsForAccount,

@@ -15,6 +15,65 @@ const TIER_LIMITS = {
   pro:  { perMinute: DEFAULTS.proPerMinute, perDay: 50000 },
 };
 
+// Task #463 — billable rate-limit tiers. A key with an *active* quota
+// subscription gets its per-minute ceiling (and a scaled daily cap) bumped to
+// the purchased tier. Prices default here but a Stripe Dashboard-managed Price
+// can be wired via STRIPE_API_QUOTA_<KEY>_PRICE_ID (see server.js). Currency is
+// AUD to match the rest of the monetisation stack. priceCents is the monthly
+// recurring charge used for the inline price_data fallback + the UI catalog.
+const API_QUOTA_TIERS = {
+  boost_2k: {
+    id: 'boost_2k',
+    label: '2,000 req/min',
+    perMinute: 2000,
+    perDay: 500000,
+    priceCents: 2900,
+    envPriceId: 'STRIPE_API_QUOTA_2K_PRICE_ID',
+  },
+  boost_10k: {
+    id: 'boost_10k',
+    label: '10,000 req/min',
+    perMinute: 10000,
+    perDay: 2000000,
+    priceCents: 9900,
+    envPriceId: 'STRIPE_API_QUOTA_10K_PRICE_ID',
+  },
+};
+
+// A quota bump only counts when the subscription is healthy. We honour the
+// 'past_due' grace window (Stripe is still retrying the card) but stop the
+// moment the billing period has clearly lapsed, so a missed cancel webhook
+// can't keep granting paid throughput forever. The cron sweep + webhook are
+// the durable degrade paths; this is the per-request safety net.
+function _quotaActive(keyRow) {
+  const tier = keyRow?.api_quota_tier;
+  if (!tier || !API_QUOTA_TIERS[tier]) return false;
+  const status = keyRow.api_quota_status;
+  if (status === 'cancelled' || status === 'pending') return false;
+  const periodEnd = keyRow.api_quota_period_end ? new Date(keyRow.api_quota_period_end).getTime() : null;
+  if (status !== 'active') {
+    // past_due / unknown: keep serving only inside a ~26h grace past period end.
+    if (periodEnd != null && Date.now() > periodEnd + 26 * 3600 * 1000) return false;
+  }
+  return true;
+}
+
+// Resolve the effective per-minute + per-day limits for a key. Precedence:
+//   active billable quota  >  manual rate_per_min override  >  tier default.
+function _effectiveLimits(keyRow, tier) {
+  const tierLimits = TIER_LIMITS[tier];
+  let perMinute = tierLimits.perMinute;
+  let perDay = tierLimits.perDay;
+  const override = Number(keyRow?.rate_per_min);
+  if (Number.isFinite(override) && override > 0) perMinute = override;
+  if (_quotaActive(keyRow)) {
+    const q = API_QUOTA_TIERS[keyRow.api_quota_tier];
+    perMinute = Math.max(perMinute, q.perMinute);
+    perDay = Math.max(perDay, q.perDay);
+  }
+  return { perMinute, perDay };
+}
+
 // Task #415 — scope required to call each endpoint. Endpoints not listed
 // here are key-but-scope-free (any non-revoked key works). The legacy
 // `read` scope from Task #371 implies every `read:*` scope so older keys
@@ -117,11 +176,8 @@ async function _requireApiKey(req, res, next) {
       });
     }
     const tier = keyRow.tier === 'pro' ? 'pro' : 'free';
-    const tierLimits = TIER_LIMITS[tier];
-    const perMinute = Number.isFinite(Number(keyRow.rate_per_min)) && Number(keyRow.rate_per_min) > 0
-      ? Number(keyRow.rate_per_min)
-      : tierLimits.perMinute;
-    const perDay = tierLimits.perDay;
+    // Task #463 — effective limits fold in any active billable quota bump.
+    const { perMinute, perDay } = _effectiveLimits(keyRow, tier);
 
     const now = Date.now();
     const minuteBucket = Math.floor(now / 60_000);
@@ -149,6 +205,12 @@ async function _requireApiKey(req, res, next) {
     }
     mBucket.count += 1;
     dBucket.count += 1;
+    // Task #463 — accumulate the durable monthly counter in-process; a periodic
+    // flusher rolls the deltas into api_key_usage_monthly so the Settings tile
+    // and quota-overage analytics survive restarts without a DB write per call.
+    const monthBucket = new Date(now).toISOString().slice(0, 7); // YYYY-MM (UTC)
+    const monthKey = `${keyRow.id}:${monthBucket}`;
+    _requireApiKey._monthly.set(monthKey, (_requireApiKey._monthly.get(monthKey) || 0) + 1);
     res.set('X-RateLimit-Limit', String(perMinute));
     res.set('X-RateLimit-Remaining', String(Math.max(0, perMinute - mBucket.count)));
     res.set('X-RateLimit-Tier', tier);
@@ -183,8 +245,48 @@ async function _requireApiKey(req, res, next) {
   }
 }
 _requireApiKey._counters = new Map();
+// Task #463 — pending (un-flushed) monthly request deltas. `${keyId}:${YYYY-MM}` -> count.
+_requireApiKey._monthly = new Map();
+
+// Drain the in-process monthly accumulator into api_key_usage_monthly. Snapshots
+// then clears the pending map so concurrent requests keep counting cleanly; on a
+// DB write failure the un-written delta is folded back in so nothing is lost.
+let _flushInFlight = false;
+async function flushMonthlyUsage() {
+  if (_flushInFlight) return;
+  _flushInFlight = true;
+  const pending = _requireApiKey._monthly;
+  _requireApiKey._monthly = new Map();
+  try {
+    for (const [monthKey, count] of pending) {
+      if (!count) continue;
+      const idx = monthKey.lastIndexOf(':');
+      const keyId = monthKey.slice(0, idx);
+      const month = monthKey.slice(idx + 1);
+      try {
+        await db.incrementApiKeyMonthlyUsage(keyId, month, count);
+      } catch (err) {
+        // Re-queue the delta for the next flush attempt.
+        _requireApiKey._monthly.set(monthKey, (_requireApiKey._monthly.get(monthKey) || 0) + count);
+      }
+    }
+  } finally {
+    _flushInFlight = false;
+  }
+}
+
+// Start the periodic flusher exactly once per process. Mounted from
+// createPublicApiRouter so it only runs when the public API is actually wired up.
+let _flusherTimer = null;
+function startMonthlyUsageFlusher(intervalMs = 60_000) {
+  if (_flusherTimer) return _flusherTimer;
+  _flusherTimer = setInterval(() => { flushMonthlyUsage().catch(() => {}); }, intervalMs);
+  if (_flusherTimer.unref) _flusherTimer.unref();
+  return _flusherTimer;
+}
 
 function createPublicApiRouter() {
+  startMonthlyUsageFlusher();
   const router = express.Router();
 
   router.use((req, res, next) => {
@@ -231,6 +333,8 @@ function createPublicApiRouter() {
 
   router.get('/me', (req, res) => {
     const k = req.apiKey;
+    const { perMinute, perDay } = _effectiveLimits(k, req.apiKeyTier);
+    const quotaActive = _quotaActive(k);
     res.json({
       key_id: k.id,
       label: k.label,
@@ -238,6 +342,9 @@ function createPublicApiRouter() {
       account_id: k.account_id,
       scopes: k.scopes || [],
       rate_per_min: k.rate_per_min ?? null,
+      quota_tier: quotaActive ? k.api_quota_tier : null,
+      effective_per_minute: perMinute,
+      effective_per_day: perDay,
       created_at: k.created_at,
       last_used_at: k.last_used_at,
     });
@@ -579,4 +686,14 @@ function createPublicApiRouter() {
   return router;
 }
 
-module.exports = { createPublicApiRouter, TIER_LIMITS, DEFAULTS, ENDPOINT_SCOPES };
+module.exports = {
+  createPublicApiRouter,
+  TIER_LIMITS,
+  DEFAULTS,
+  ENDPOINT_SCOPES,
+  API_QUOTA_TIERS,
+  flushMonthlyUsage,
+  startMonthlyUsageFlusher,
+  _effectiveLimits,
+  _quotaActive,
+};

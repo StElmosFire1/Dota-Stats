@@ -25,6 +25,18 @@ function fmtDate(s) {
   try { return new Date(s).toLocaleString(); } catch { return s; }
 }
 
+function fmtPrice(cents, currency = 'aud') {
+  const n = (Number(cents) || 0) / 100;
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency: (currency || 'aud').toUpperCase() }).format(n);
+  } catch {
+    return `$${n.toFixed(2)}`;
+  }
+}
+
+const QUOTA_TIER_LABELS = { boost_2k: '2,000 req/min', boost_10k: '10,000 req/min' };
+function quotaTierLabel(id) { return QUOTA_TIER_LABELS[id] || id; }
+
 function copyToClipboard(value) {
   try {
     if (navigator?.clipboard?.writeText) {
@@ -138,6 +150,35 @@ export default function SettingsApi() {
     load();
   };
 
+  const buyQuota = async (keyId, tierId) => {
+    try {
+      const r = await fetch(`/api/me/api-keys/${keyId}/quota-checkout`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: tierId }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || 'Failed to start checkout');
+      if (data.url) window.location.href = data.url;
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const cancelQuota = async (keyId) => {
+    if (!confirm('Cancel this key\u2019s quota bump? Its rate limit will drop back to the tier default at the end of the billing period.')) return;
+    try {
+      const r = await fetch(`/api/me/api-keys/${keyId}/quota-cancel`, {
+        method: 'POST', credentials: 'include',
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data?.error || 'Failed to cancel');
+      load();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
   const createWebhook = async () => {
     setCreatingWh(true);
     try {
@@ -182,6 +223,13 @@ export default function SettingsApi() {
   const isPro = !!keysData?.is_pro;
   const keys = keysData?.keys || [];
   const knownScopes = keysData?.known_scopes || Object.keys(SCOPE_DESCRIPTIONS);
+  const quotaTiers = keysData?.quota_tiers || [];
+  const quotaPaymentsEnabled = !!keysData?.quota_payments_enabled;
+  const usageMonth = keysData?.usage_month || new Date().toISOString().slice(0, 7);
+  const tierDefaultPerMin = keysData?.tier_default_per_minute ?? (isPro ? 600 : 60);
+  const activeKeys = keys.filter(k => !k.revoked_at);
+  const totalMonthUsage = activeKeys.reduce((sum, k) => sum + (Number(k.usage_month) || 0), 0);
+  const boostedKeys = activeKeys.filter(k => k.quota_tier).length;
   const subs = webhooksData?.subscriptions || [];
   const deliveries = webhooksData?.deliveries || [];
   const knownEvents = webhooksData?.known_events || Object.keys(EVENT_DESCRIPTIONS);
@@ -231,11 +279,55 @@ export default function SettingsApi() {
         <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
           Tier: <strong>{isPro ? 'Pro' : 'Free'}</strong>
           {' · '}
-          Default rate: {isPro ? '600 req/min' : '60 req/min'} (set a per-key override below)
+          Default rate: {tierDefaultPerMin.toLocaleString()} req/min (set a per-key override below)
           {!isPro && (
             <> · <Link to="/pro">Upgrade to Pro</Link> for higher default quotas and webhooks.</>
           )}
         </div>
+
+        <div style={{
+          display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14,
+        }}>
+          <div style={{
+            flex: 1, minWidth: 160, padding: 12, borderRadius: 8,
+            background: 'var(--bg-hover)', border: '1px solid var(--border)',
+          }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Usage this month ({usageMonth})</div>
+            <div style={{ fontSize: 24, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+              {totalMonthUsage.toLocaleString()}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              requests across {activeKeys.length} active key{activeKeys.length === 1 ? '' : 's'}
+            </div>
+          </div>
+          <div style={{
+            flex: 1, minWidth: 160, padding: 12, borderRadius: 8,
+            background: 'var(--bg-hover)', border: '1px solid var(--border)',
+          }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Quota bumps active</div>
+            <div style={{ fontSize: 24, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+              {boostedKeys}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              {quotaPaymentsEnabled
+                ? 'Bump a key\u2019s rate limit from its row below.'
+                : 'Paid quota bumps are unavailable on this deployment.'}
+            </div>
+          </div>
+        </div>
+
+        {quotaPaymentsEnabled && quotaTiers.length > 0 && (
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+            Need more throughput? Paid quota tiers:{' '}
+            {quotaTiers.map((t, i) => (
+              <span key={t.id}>
+                {i > 0 && ' · '}
+                <strong>{t.label}</strong> for {fmtPrice(t.price_cents, t.currency)}/mo
+              </span>
+            ))}
+            . Billed monthly, cancel any time — applies per key.
+          </div>
+        )}
 
         {newKey && (
           <div role="alert" aria-label="New API key created" style={{
@@ -312,7 +404,8 @@ export default function SettingsApi() {
                 <th style={{ padding: 6 }}>Tier</th>
                 <th style={{ padding: 6 }}>Scopes</th>
                 <th style={{ padding: 6 }}>Rate/min</th>
-                <th style={{ padding: 6 }}>Usage</th>
+                <th style={{ padding: 6 }}>This month</th>
+                <th style={{ padding: 6 }}>Quota</th>
                 <th style={{ padding: 6 }}>Last used</th>
                 <th style={{ padding: 6 }}>Status</th>
                 <th style={{ padding: 6 }} />
@@ -364,7 +457,45 @@ export default function SettingsApi() {
                         k.rate_per_min ?? <span style={{ color: 'var(--text-muted)' }}>default</span>
                       )}
                     </td>
-                    <td style={{ padding: 6, fontVariantNumeric: 'tabular-nums' }}>{k.usage_count}</td>
+                    <td style={{ padding: 6, fontVariantNumeric: 'tabular-nums' }}>
+                      {(k.usage_month ?? 0).toLocaleString()}
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {(k.effective_per_minute ?? (isPro ? 600 : 60)).toLocaleString()}/min cap
+                      </div>
+                    </td>
+                    <td style={{ padding: 6, fontSize: 12 }}>
+                      {k.quota_tier ? (
+                        <div>
+                          <span style={{ color: 'var(--amber)', fontWeight: 600 }}>
+                            {quotaTierLabel(k.quota_tier)}
+                          </span>
+                          {k.quota_status && k.quota_status !== 'active' && (
+                            <span style={{ color: 'var(--rose)', marginLeft: 4 }}>({k.quota_status})</span>
+                          )}
+                          {!k.revoked_at && (
+                            <div style={{ marginTop: 4 }}>
+                              <button type="button" className="btn" style={{ fontSize: 11, padding: '2px 6px' }}
+                                      aria-label={`Cancel quota bump for key ${k.label || k.id}`}
+                                      onClick={() => cancelQuota(k.id)}>Cancel</button>
+                            </div>
+                          )}
+                        </div>
+                      ) : k.revoked_at ? (
+                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      ) : !quotaPaymentsEnabled ? (
+                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {quotaTiers.map(t => (
+                            <button key={t.id} type="button" className="btn" style={{ fontSize: 11, padding: '2px 6px' }}
+                                    aria-label={`Buy ${t.label} quota for key ${k.label || k.id} at ${fmtPrice(t.price_cents, t.currency)} per month`}
+                                    onClick={() => buyQuota(k.id, t.id)}>
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </td>
                     <td style={{ padding: 6 }}>{fmtDate(k.last_used_at)}</td>
                     <td style={{ padding: 6 }}>
                       {k.revoked_at

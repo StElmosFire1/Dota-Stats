@@ -355,6 +355,28 @@ async function main() {
       }
     }
 
+    // Task #463 — hourly safety-net sweep degrading API keys whose billable
+    // rate-limit quota has lapsed. The Stripe webhook is the primary degrade
+    // path; this catches missed/late cancel events so a key can never keep
+    // paid throughput after its subscription ends. Best-effort.
+    if (startupStatus.database) {
+      try {
+        const cron = require('node-cron');
+        const db = require('./db');
+        cron.schedule('15 * * * *', async () => {
+          try {
+            const n = await db.degradeLapsedApiQuotas({});
+            if (n) console.log(`[ApiQuota] hourly sweep degraded ${n} lapsed key(s)`);
+          } catch (err) {
+            console.warn('[ApiQuota] hourly sweep error:', err.message);
+          }
+        });
+        console.log('[Startup] API quota lapse sweep scheduled (hourly)');
+      } catch (err) {
+        console.warn('[Startup] API quota sweep failed to register:', err.message);
+      }
+    }
+
     // Task #446 — Discord Rich Presence pusher. Subscribes to presenceService
     // events + ticks periodically; gated by feature flag at publish time, so
     // safe to start unconditionally when the DB is up.

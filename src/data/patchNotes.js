@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "8.20",
+    "title": "Billable API rate-limit quota tiers (Task #463)",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** Heavy API consumers were capped at the free/Pro per-key defaults (60 / 600 req/min) with no paid path to more throughput. Task #463 plumbs API usage into Stripe Billing so a key can buy a higher rate-limit ceiling, and adds the per-key monthly usage visibility that was missing.",
+      "**Paid quota tiers.** Two monthly subscription tiers raise a single key's ceiling: **2,000 req/min** (AUD $29/mo) and **10,000 req/min** (AUD $99/mo). Bought per key from Settings → API & webhooks via Stripe Checkout; fulfilment is webhook-driven (the bump only applies once payment is confirmed) and a key can hold one bump at a time. Optionally wire dashboard-managed Prices via `STRIPE_API_QUOTA_2K_PRICE_ID` / `STRIPE_API_QUOTA_10K_PRICE_ID`; otherwise an inline AUD recurring price is used.",
+      "**Monthly usage counter.** Per-key request counts now roll up from the in-process rate-limiter into a durable `api_key_usage_monthly` table via a 60s flusher (swap-and-upsert; un-written deltas are re-queued on DB failure so nothing is lost across restarts).",
+      "**Usage tile.** Settings → API & webhooks shows a \"Usage this month\" summary plus per-key this-month request count, the effective per-minute cap, and the active quota tier — with inline buy / cancel controls.",
+      "**Auto-degrade on lapse.** A cancelled or lapsed subscription degrades the key back to its tier default through three layers: the Stripe `customer.subscription.deleted`/`updated` webhook, an immediate local degrade on user-initiated cancel, and an hourly safety-net sweep (`degradeLapsedApiQuotas`) for missed events. A per-request grace window keeps `past_due` keys serving briefly while Stripe retries the card.",
+      "**Scope.** Full edition only — the public API is full-edition-only, so the community edition is untouched."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.19",
     "title": "Official client libraries for the public API (Task #462)",
     "published_at": "2026-05-30",

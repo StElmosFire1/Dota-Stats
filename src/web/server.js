@@ -2445,6 +2445,26 @@ function createServer(startupStatus = {}) {
             console.warn('[Stripe]', event.type, 'no local row for subscription', sub.id);
           }
         }
+        if (sub.metadata?.purpose === 'api_quota') {
+          // Task #463 — billable API rate-limit quota. created/updated grants or
+          // holds the bump; deleted (or a cancel status) auto-degrades the key
+          // back to its tier default. Match on key_id from metadata so the very
+          // first created event can attach the subscription id to the row.
+          const keyId = parseInt(sub.metadata?.key_id, 10);
+          const row = await db.applyApiQuotaSubscriptionEvent({
+            keyId: Number.isFinite(keyId) ? keyId : null,
+            stripeSubscriptionId: sub.id,
+            stripeCustomerId: sub.customer || null,
+            quotaTier: sub.metadata?.quota_tier || null,
+            status: event.type === 'customer.subscription.deleted' ? 'canceled' : sub.status,
+            currentPeriodEnd: sub.current_period_end || null,
+          }).catch(err => { console.error('[Stripe] applyApiQuotaSubscriptionEvent failed:', err.message); return null; });
+          if (row) {
+            console.log('[Stripe] API quota', event.type, 'key', row.id, '->', row.api_quota_status || 'degraded');
+          } else {
+            console.warn('[Stripe]', event.type, 'no local key for api_quota subscription', sub.id);
+          }
+        }
       } else if (event.type === 'invoice.payment_succeeded') {
         // Task #318 — Pro monthly renewal. Resets dunning + extends period.
         const invoice = event.data.object;
@@ -14549,22 +14569,46 @@ NOTES
       const rows = await db.listApiKeysForAccount(accountId);
       const isPro = await _isProAccount(accountId);
       const flag = await db.getFeatureFlag('public_api').catch(() => null);
+      // Task #463 — surface the durable monthly usage + effective quota. Flush
+      // any in-process counts first so the tile reflects the latest calls.
+      const { flushMonthlyUsage, API_QUOTA_TIERS, _effectiveLimits, _quotaActive, TIER_LIMITS } =
+        require('./publicApiRouter');
+      await flushMonthlyUsage().catch(() => {});
+      const month = new Date().toISOString().slice(0, 7);
+      const usageByKey = await db.getApiKeysMonthlyUsage(rows.map(k => k.id), month).catch(() => new Map());
       res.json({
-        keys: rows.map(k => ({
-          id: k.id,
-          label: k.label,
-          tier: k.tier,
-          prefix: k.prefix,
-          scopes: k.scopes || ['read'],
-          rate_per_min: k.rate_per_min ?? null,
-          usage_count: Number(k.usage_count) || 0,
-          last_used_at: k.last_used_at,
-          created_at: k.created_at,
-          revoked_at: k.revoked_at,
-        })),
+        keys: rows.map(k => {
+          const tier = k.tier === 'pro' ? 'pro' : 'free';
+          const eff = _effectiveLimits(k, tier);
+          const quotaActive = _quotaActive(k);
+          return {
+            id: k.id,
+            label: k.label,
+            tier: k.tier,
+            prefix: k.prefix,
+            scopes: k.scopes || ['read'],
+            rate_per_min: k.rate_per_min ?? null,
+            usage_count: Number(k.usage_count) || 0,
+            usage_month: usageByKey.get(String(k.id)) || 0,
+            quota_tier: quotaActive ? k.api_quota_tier : null,
+            quota_status: k.api_quota_status || null,
+            quota_period_end: k.api_quota_period_end || null,
+            effective_per_minute: eff.perMinute,
+            last_used_at: k.last_used_at,
+            created_at: k.created_at,
+            revoked_at: k.revoked_at,
+          };
+        }),
         public_api_state: flag?.state || 'off',
         is_pro: isPro,
         known_scopes: db.listKnownApiScopes(),
+        usage_month: month,
+        tier_default_per_minute: isPro ? TIER_LIMITS.pro.perMinute : TIER_LIMITS.free.perMinute,
+        quota_tiers: Object.values(API_QUOTA_TIERS).map(t => ({
+          id: t.id, label: t.label, per_minute: t.perMinute,
+          per_day: t.perDay, price_cents: t.priceCents, currency: 'aud',
+        })),
+        quota_payments_enabled: !!process.env.STRIPE_SECRET_KEY,
       });
     } catch (err) {
       console.error('[API] me/api-keys list:', err.message);
@@ -14649,6 +14693,101 @@ NOTES
     } catch (err) {
       console.error('[API] me/api-keys revoke:', err.message);
       res.status(500).json({ error: 'Failed to revoke API key' });
+    }
+  });
+
+  // Task #463 — buy a billable rate-limit bump for a key. Creates a monthly
+  // Stripe subscription; fulfilment (granting the quota) happens in the webhook
+  // so funds are confirmed before the bump applies. Idempotency: a key already
+  // carrying an active bump must cancel it first (Stripe would otherwise stack
+  // two subscriptions on one key).
+  router.post('/me/api-keys/:id/quota-checkout', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const keyId = parseInt(req.params.id, 10);
+      if (!Number.isFinite(keyId)) return res.status(400).json({ error: 'Invalid key id' });
+      const { API_QUOTA_TIERS } = require('./publicApiRouter');
+      const tierId = String(req.body?.tier || '');
+      const tier = API_QUOTA_TIERS[tierId];
+      if (!tier) return res.status(400).json({ error: 'Unknown quota tier' });
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: 'Payments are not configured. Please try again later.' });
+      }
+      const key = await db.findApiKeyForAccount({ accountId, keyId });
+      if (!key || key.revoked_at) return res.status(404).json({ error: 'Key not found' });
+      if (key.api_quota_tier && key.api_quota_status && key.api_quota_status !== 'cancelled') {
+        return res.status(409).json({ error: 'This key already has an active quota bump. Cancel it first to change tiers.' });
+      }
+      const stripe = require('../observability/stripeClient').getStripe();
+      const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
+      const successUrl = `${baseUrl}/settings/api?quota=success&session_id={CHECKOUT_SESSION_ID}`;
+      const cancelUrl = `${baseUrl}/settings/api?quota=cancelled`;
+      const priceId = process.env[tier.envPriceId] || null;
+      const lineItem = priceId
+        ? { price: priceId, quantity: 1 }
+        : {
+            price_data: {
+              currency: 'aud',
+              product_data: {
+                name: `Inhouse Stats API — ${tier.label} quota`,
+                description: `Raises this API key's rate limit to ${tier.label}. Billed monthly; cancel any time from Settings → API & webhooks.`,
+              },
+              unit_amount: tier.priceCents,
+              recurring: { interval: 'month' },
+            },
+            quantity: 1,
+          };
+      const meta = { purpose: 'api_quota', account_id: String(accountId), key_id: String(keyId), quota_tier: tier.id };
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [lineItem],
+        mode: 'subscription',
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        metadata: meta,
+        subscription_data: { metadata: meta },
+        allow_promotion_codes: true,
+      });
+      res.json({ url: session.url, tier: tier.id });
+    } catch (err) {
+      console.error('[API] me/api-keys quota-checkout:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to start checkout' });
+    }
+  });
+
+  // Task #463 — cancel a key's quota subscription. Cancels at Stripe (the
+  // subscription.deleted webhook then auto-degrades the key) and degrades the
+  // local row immediately so the UI reflects it without waiting for the event.
+  router.post('/me/api-keys/:id/quota-cancel', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const keyId = parseInt(req.params.id, 10);
+      if (!Number.isFinite(keyId)) return res.status(400).json({ error: 'Invalid key id' });
+      const key = await db.findApiKeyForAccount({ accountId, keyId });
+      if (!key) return res.status(404).json({ error: 'Key not found' });
+      if (!key.api_quota_sub_id) {
+        return res.status(404).json({ error: 'No active quota subscription on this key.' });
+      }
+      if (process.env.STRIPE_SECRET_KEY) {
+        try {
+          const stripe = require('../observability/stripeClient').getStripe();
+          await stripe.subscriptions.cancel(key.api_quota_sub_id);
+        } catch (e) {
+          // Already cancelled at Stripe (or never fully created) — degrade anyway.
+          console.warn('[API] quota-cancel stripe:', e.message);
+        }
+      }
+      await db.applyApiQuotaSubscriptionEvent({
+        keyId,
+        stripeSubscriptionId: key.api_quota_sub_id,
+        status: 'canceled',
+      }).catch(() => {});
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] me/api-keys quota-cancel:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to cancel quota' });
     }
   });
 
