@@ -32,6 +32,7 @@ export const modules: ModuleMap = {
   "./components/mockups/shop-redesign/FoundersRingPicker.tsx": () => import("../components/mockups/shop-redesign/FoundersRingPicker.tsx"),
   "./components/mockups/shop-redesign/Tabbed.tsx": () => import("../components/mockups/shop-redesign/Tabbed.tsx"),
   "./components/mockups/upscale-2026/Home.tsx": () => import("../components/mockups/upscale-2026/Home.tsx"),
+  "./components/mockups/upscale-2026/HomeSignedOut.tsx": () => import("../components/mockups/upscale-2026/HomeSignedOut.tsx"),
   "./components/mockups/upscale-2026/Inhouse.tsx": () => import("../components/mockups/upscale-2026/Inhouse.tsx"),
   "./components/mockups/upscale-2026/Leaderboard.tsx": () => import("../components/mockups/upscale-2026/Leaderboard.tsx"),
   "./components/mockups/upscale-2026/MatchDetail.tsx": () => import("../components/mockups/upscale-2026/MatchDetail.tsx"),
