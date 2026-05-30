@@ -13,6 +13,7 @@
 const seed = require('./seed');
 const heroData = require('./heroData');
 const itemData = require('./itemData');
+const voiceData = require('./voiceData');
 
 const GAMES = ['heroguessr', 'item-zoom', 'statline', 'talent', 'voiceline'];
 
@@ -25,8 +26,8 @@ const GAME_META = {
     blurb: 'Guess the hero from a real inhouse scoreboard line.' },
   talent: { title: 'Talent guesser', kind: 'hero', maxGuesses: 6, emoji: '🌳', available: true,
     blurb: 'Name the hero from its level-25 talent tree.' },
-  voiceline: { title: 'Voiceline daily', kind: 'hero', maxGuesses: 6, emoji: '🔊', available: false,
-    blurb: 'Hear a 3-second clip and guess the hero. (Coming soon.)' },
+  voiceline: { title: 'Voiceline daily', kind: 'hero', maxGuesses: 6, emoji: '🔊', available: true,
+    blurb: 'Hear a short voice line and guess the hero.' },
 };
 
 function isGame(g) {
@@ -51,7 +52,11 @@ function selectDailyAnswer(game, dateStr) {
   }
   // hero games — talent guesser restricts to heroes whose talents all resolve
   // to display names so no daily puzzle shows a "Hidden talent" placeholder.
-  const ids = game === 'talent' ? heroData.talentReadyHeroIds() : heroData.heroIds();
+  // voiceline restricts to heroes that actually have a hosted clip on disk.
+  let ids;
+  if (game === 'talent') ids = heroData.talentReadyHeroIds();
+  else if (game === 'voiceline') ids = voiceData.voiceReadyHeroIds();
+  else ids = heroData.heroIds();
   const id = seed.pick(ids, rng);
   return { answer: { heroId: id, name: heroData.heroName(id) } };
 }
@@ -79,7 +84,8 @@ function buildClue(game, answer, tokenFor) {
     return { imageToken: tokenFor('item', answer.slug), zoom: 8 };
   }
   if (game === 'voiceline') {
-    return { unavailable: true };
+    const slug = voiceData.slugForHero(answer.heroId);
+    return { audioToken: slug ? tokenFor('voice', slug) : null };
   }
   return {};
 }
@@ -122,15 +128,25 @@ function generateEndless(game, tokenFor) {
       answerToken: seed.signToken({ g: game, m: 'endless', a: answer }),
     };
   }
-  // hero games (heroguessr / talent). statline endless reuses talent-style? No
-  // — statline endless needs DB; handled separately by the route.
-  const id = seed.pick(game === 'talent' ? heroData.talentReadyHeroIds() : heroData.heroIds(), rng);
+  // hero games (heroguessr / talent / voiceline). statline endless needs DB and
+  // is handled separately by the route.
+  let pool;
+  if (game === 'talent') pool = heroData.talentReadyHeroIds();
+  else if (game === 'voiceline') pool = voiceData.voiceReadyHeroIds();
+  else pool = heroData.heroIds();
+  const id = seed.pick(pool, rng);
   const answer = { heroId: id };
-  const clue = game === 'talent'
-    ? { talents: heroData.heroTalents(id) }
-    : { hints: heroData.heroHints(id).map(h => h.abilitySlugs
-        ? { key: h.key, label: h.label, abilityTokens: h.abilitySlugs.map(x => tokenFor('ability', x)) }
-        : { key: h.key, label: h.label, value: h.value }) };
+  let clue;
+  if (game === 'talent') {
+    clue = { talents: heroData.heroTalents(id) };
+  } else if (game === 'voiceline') {
+    const slug = voiceData.slugForHero(id);
+    clue = { audioToken: slug ? tokenFor('voice', slug) : null };
+  } else {
+    clue = { hints: heroData.heroHints(id).map(h => h.abilitySlugs
+      ? { key: h.key, label: h.label, abilityTokens: h.abilitySlugs.map(x => tokenFor('ability', x)) }
+      : { key: h.key, label: h.label, value: h.value }) };
+  }
   return {
     number: null,
     maxGuesses: GAME_META[game].maxGuesses,

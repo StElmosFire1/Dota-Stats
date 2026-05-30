@@ -161,3 +161,159 @@ id = "axxTkC26RFzpCXUVHtOtR"
 uri = "file://.local/previews/scoreboard_test.png"
 type = "image"
 title = "Community-edition scoreboard image — test render with synthetic 10-player match"
+
+[[outputs]]
+id = "h3mOD2hCxQcV5A_N640Mh"
+uri = "file://src/games/voice-lines/antimage.mp3"
+type = "audio"
+title = "voiceline antimage"
+
+[[outputs]]
+id = "_TmSajG7_yJH-CCFkMIzN"
+uri = "file://src/games/voice-lines/axe.mp3"
+type = "audio"
+title = "voiceline axe"
+
+[[outputs]]
+id = "msPw292G6TwKoSd8nVB1P"
+uri = "file://src/games/voice-lines/crystal_maiden.mp3"
+type = "audio"
+title = "voiceline crystal_maiden"
+
+[[outputs]]
+id = "yS881p_-0-BVg5Wc-r4W4"
+uri = "file://src/games/voice-lines/earthshaker.mp3"
+type = "audio"
+title = "voiceline earthshaker"
+
+[[outputs]]
+id = "EcuFuN3H27l2QFq8pBEqg"
+uri = "file://src/games/voice-lines/juggernaut.mp3"
+type = "audio"
+title = "voiceline juggernaut"
+
+[[outputs]]
+id = "CQC_xPgd7AIAYmeoNBxkT"
+uri = "file://src/games/voice-lines/pudge.mp3"
+type = "audio"
+title = "voiceline pudge"
+
+[[outputs]]
+id = "HfqhJQrc1yrc8_EDMQb1d"
+uri = "file://src/games/voice-lines/sven.mp3"
+type = "audio"
+title = "voiceline sven"
+
+[[outputs]]
+id = "pCpRsB-LpsN5AxcZsd4Ga"
+uri = "file://src/games/voice-lines/zuus.mp3"
+type = "audio"
+title = "voiceline zuus"
+
+[[outputs]]
+id = "CVs-i76VM_bn-XUsMHaoq"
+uri = "file://src/games/voice-lines/lina.mp3"
+type = "audio"
+title = "voiceline lina"
+
+[[outputs]]
+id = "CbHOZHFhjLAblyxQivs6y"
+uri = "file://src/games/voice-lines/lion.mp3"
+type = "audio"
+title = "voiceline lion"
+
+[[outputs]]
+id = "8A5f49GEN0NBEXEosDGkn"
+uri = "file://src/games/voice-lines/tidehunter.mp3"
+type = "audio"
+title = "voiceline tidehunter"
+
+[[outputs]]
+id = "ZqO3UwDfx26ZY2anPJmVu"
+uri = "file://src/games/voice-lines/witch_doctor.mp3"
+type = "audio"
+title = "voiceline witch_doctor"
+
+[[outputs]]
+id = "5axsm0YuQngEKkhehNSmN"
+uri = "file://src/games/voice-lines/tinker.mp3"
+type = "audio"
+title = "voiceline tinker"
+
+[[outputs]]
+id = "yzYfiLVBTr9VfegRmaTpL"
+uri = "file://src/games/voice-lines/sniper.mp3"
+type = "audio"
+title = "voiceline sniper"
+
+[[outputs]]
+id = "rthCyAeLcs4S1BpBi2Xfj"
+uri = "file://src/games/voice-lines/faceless_void.mp3"
+type = "audio"
+title = "voiceline faceless_void"
+
+[[outputs]]
+id = "CpscpE9jGjNlnRST789QL"
+uri = "file://src/games/voice-lines/skeleton_king.mp3"
+type = "audio"
+title = "voiceline skeleton_king"
+
+[[outputs]]
+id = "uXlSRPwN58puxSlK5FClZ"
+uri = "file://src/games/voice-lines/phantom_assassin.mp3"
+type = "audio"
+title = "voiceline phantom_assassin"
+
+[[outputs]]
+id = "iKacNNE6EUWn89voAiAml"
+uri = "file://src/games/voice-lines/life_stealer.mp3"
+type = "audio"
+title = "voiceline life_stealer"
+
+[[outputs]]
+id = "5t6Lt7yBieIzAzh2VORYL"
+uri = "file://src/games/voice-lines/doom_bringer.mp3"
+type = "audio"
+title = "voiceline doom_bringer"
+
+[[outputs]]
+id = "_1seqeChSYnWLnZHIwU_n"
+uri = "file://src/games/voice-lines/invoker.mp3"
+type = "audio"
+title = "voiceline invoker"
+
+[[outputs]]
+id = "qSW1JZbvfCnQaBZtYgxee"
+uri = "file://src/games/voice-lines/meepo.mp3"
+type = "audio"
+title = "voiceline meepo"
+
+[[outputs]]
+id = "y3otr-abtkSjRxOe69dHc"
+uri = "file://src/games/voice-lines/slark.mp3"
+type = "audio"
+title = "voiceline slark"
+
+[[outputs]]
+id = "BW-wRJ8eOmjmQNqd3lTEN"
+uri = "file://src/games/voice-lines/bristleback.mp3"
+type = "audio"
+title = "voiceline bristleback"
+
+[[outputs]]
+id = "TSluHew0mfYwODcCuajCF"
+uri = "file://src/games/voice-lines/legion_commander.mp3"
+type = "audio"
+title = "voiceline legion_commander"
+
+[[outputs]]
+id = "XL9c2erYx-inK-PisQjQc"
+uri = "file://src/games/voice-lines/techies.mp3"
+type = "audio"
+title = "voiceline techies"
+
+[[outputs]]
+id = "uXmGPf86od3jGO3CLZ8Ks"
+uri = "file://web/public/games/voiceline-demo.mp3"
+type = "audio"
+title = "voiceline hub demo"

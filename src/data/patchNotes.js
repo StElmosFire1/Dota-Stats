@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.33",
+    "title": "Voiceline daily mini-game is live",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** Voiceline was the last 'coming soon' tile in the daily mini-games suite — it shipped as a placeholder because there were no hosted voice-line audio assets. It now plays like every other game: hear a short clip, guess the hero.",
+      "**Licensing-clean audio.** Rather than rehosting Valve's copyrighted hero VO, each clip is a short self-generated text-to-speech rendition of a hero's iconic catchphrase (e.g. Pudge's 'Fresh meat!'). The 25 clips live under `src/games/voice-lines/` (outside the web root) and are curated to recognisable, talking heroes.",
+      "**Answer never leaks.** A new HMAC token audio proxy (`GET /api/games/audio`) mirrors the existing image proxy — the clip is streamed for a server-minted token so the hero slug never appears in any client-readable URL. The daily/endless answer pool is restricted to heroes that actually have a clip on disk, so a half-deployed asset set degrades gracefully instead of 404-ing.",
+      "**Frontend.** GamePlay renders an accessible round play/pause button (real `<button>` + `aria-label`) wired to a hidden `<audio>` element; the hub Voiceline card gains a 'Preview' button that plays a generic announcer clip (never a daily answer). Daily, endless, guess flow, leaderboard, and the share string all work like the other hero games.",
+      "**Scope.** Full edition games suite — no payment, schema, or community-edition changes."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.32",
     "title": "Fix daily mini-games crashing on production",
     "published_at": "2026-05-30",

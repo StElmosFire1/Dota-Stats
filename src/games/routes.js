@@ -6,10 +6,12 @@
 // player finishes. Daily puzzles are cached in `game_daily_puzzles`; endless
 // puzzles are stateless (answer rides inside a signed token).
 
+const fs = require('fs');
 const seed = require('./seed');
 const puzzles = require('./puzzles');
 const heroData = require('./heroData');
 const itemData = require('./itemData');
+const voiceData = require('./voiceData');
 
 // Best-effort XP hookup to the quests system (Task #440). That task isn't
 // merged yet, so this stays a no-op unless the helper appears later.
@@ -141,6 +143,30 @@ function mountGamesRoutes({ router, express, db }) {
       res.send(buf);
     } catch (e) {
       res.status(404).send('Image unavailable');
+    }
+  });
+
+  // ── Audio proxy (HMAC-token) ────────────────────────────────────────────
+  // Streams a self-hosted hero voice-line clip for a token minted server-side.
+  // Keeps the answer slug out of any client-readable URL (same posture as the
+  // image proxy). The clip files live outside the web root under
+  // src/games/voice-lines/ and are only reachable through a valid token.
+  router.get('/games/audio', (req, res) => {
+    try {
+      const data = seed.verifyToken(String(req.query.t || ''));
+      if (!data || data.k !== 'voice' || !data.s) return res.status(400).send('Bad token');
+      const filePath = voiceData.clipPathForSlug(String(data.s));
+      if (!filePath || !fs.existsSync(filePath)) return res.status(404).send('Clip unavailable');
+      const stat = fs.statSync(filePath);
+      res.set('Content-Type', 'audio/mpeg');
+      res.set('Content-Length', String(stat.size));
+      res.set('Accept-Ranges', 'none');
+      res.set('Cache-Control', 'private, max-age=3600');
+      fs.createReadStream(filePath)
+        .on('error', () => { if (!res.headersSent) res.status(404).end(); })
+        .pipe(res);
+    } catch (e) {
+      res.status(404).send('Clip unavailable');
     }
   });
 

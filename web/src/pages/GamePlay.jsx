@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  getGameDaily, getGameEndless, getGameLeaderboard, submitGameGuess, gameImageUrl,
+  getGameDaily, getGameEndless, getGameLeaderboard, submitGameGuess, gameImageUrl, gameAudioUrl,
 } from '../api';
 
 // Task #451 — Daily Dota mini-games play surface. One component drives all
@@ -142,6 +142,74 @@ function StatlineClue({ clue }) {
   );
 }
 
+function VoicelineClue({ clue }) {
+  const audioRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [err, setErr] = useState(false);
+  const src = clue && clue.audioToken ? gameAudioUrl(clue.audioToken) : null;
+
+  // Reset transient UI state whenever the clip (token) changes — e.g. on an
+  // endless "Next puzzle" or daily/endless mode switch.
+  useEffect(() => {
+    setPlaying(false);
+    setErr(false);
+    if (audioRef.current) {
+      try { audioRef.current.pause(); audioRef.current.currentTime = 0; } catch (_) {}
+    }
+  }, [src]);
+
+  const toggle = useCallback(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (el.paused) {
+      el.currentTime = 0;
+      const p = el.play();
+      if (p && p.catch) p.catch(() => setErr(true));
+    } else {
+      el.pause();
+    }
+  }, []);
+
+  if (!src) {
+    return (
+      <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
+        Audio clip unavailable for this puzzle.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ display: 'grid', placeItems: 'center', gap: 12 }}>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={playing ? 'Pause the voice-line clip' : 'Play the voice-line clip'}
+        className="btn"
+        style={{
+          width: 96, height: 96, borderRadius: '50%', fontSize: 36, lineHeight: 1,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          border: '2px solid var(--brass)', background: 'var(--bg-secondary)', color: 'var(--text)',
+        }}
+      >
+        <span aria-hidden="true">{playing ? '⏸' : '▶'}</span>
+      </button>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: 0 }}>
+        {err ? 'Couldn’t play the clip — try again.' : 'Tap play, then guess the hero.'}
+      </p>
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="auto"
+        onPlay={() => { setPlaying(true); setErr(false); }}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+        onError={() => setErr(true)}
+      />
+    </div>
+  );
+}
+
 function ClueArea({ game, clue, guessCount }) {
   if (game === 'heroguessr') return <HeroguessrClue clue={clue} revealCount={Math.min(6, guessCount + 1)} />;
   if (game === 'item-zoom') {
@@ -152,6 +220,7 @@ function ClueArea({ game, clue, guessCount }) {
   }
   if (game === 'talent') return <TalentClue clue={clue} revealCount={guessCount + 1} />;
   if (game === 'statline') return <StatlineClue clue={clue} />;
+  if (game === 'voiceline') return <VoicelineClue clue={clue} />;
   return null;
 }
 

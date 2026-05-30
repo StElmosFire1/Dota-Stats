@@ -2561,3 +2561,4 @@ export async function submitGameGuess(game, payload) {
   return data;
 }
 export const gameImageUrl = (token) => `${BASE}/games/image?t=${encodeURIComponent(token)}`;
+export const gameAudioUrl = (token) => `${BASE}/games/audio?t=${encodeURIComponent(token)}`;
