@@ -235,32 +235,17 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
 
             // Perceptual diff vs baseline if present.
             const baseline = path.join(BASELINE_DIR, `${j.key}.png`);
-            if (fs.existsSync(baseline)) {
-              baselinePath = baseline;
-              try {
-                const cur = PNG.sync.read(fs.readFileSync(screenshotPath));
-                const base = PNG.sync.read(fs.readFileSync(baseline));
-                if (cur.width === base.width && cur.height === base.height) {
-                  const diff = new PNG({ width: cur.width, height: cur.height });
-                  const px = pixelmatch(cur.data, base.data, diff.data, cur.width, cur.height, { threshold: 0.2 });
-                  diffPixels = px;
-                  diffRatio = px / (cur.width * cur.height);
-                  diffPath = path.join(runDir, `${j.key}.diff.png`);
-                  fs.writeFileSync(diffPath, PNG.sync.write(diff));
-                  if (diffRatio > diffThreshold) {
-                    status = 'failed';
-                    reason = `visual diff ${(diffRatio * 100).toFixed(2)}% exceeds ${(diffThreshold * 100).toFixed(2)}% threshold`;
-                  }
-                } else {
-                  // Size mismatch — treat as a soft warn (baseline came from a
-                  // different viewport). Operator can re-approve.
-                  status = 'failed';
-                  reason = `viewport mismatch vs baseline (${cur.width}x${cur.height} vs ${base.width}x${base.height})`;
-                }
-              } catch (diffErr) {
-                status = 'failed';
-                reason = `pixelmatch error: ${diffErr.message}`;
-              }
+            const cmp = _diffAgainstBaseline({
+              screenshotPath, baselinePath: baseline, diffThreshold,
+              pixelmatch, PNG, writeDiffTo: path.join(runDir, `${j.key}.diff.png`),
+            });
+            baselinePath = cmp.baselinePath;
+            diffPath = cmp.diffPath;
+            diffPixels = cmp.diffPixels;
+            diffRatio = cmp.diffRatio;
+            if (cmp.status === 'failed') {
+              status = 'failed';
+              reason = cmp.reason;
             }
           }
         } catch (err) {
@@ -310,6 +295,56 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
   }
 }
 
+// Pure perceptual-diff decision, factored out of runSmoke so the threshold,
+// viewport-mismatch, and pixelmatch-error branches are unit-testable without a
+// real browser. Returns the per-step diff outcome:
+//   - baseline absent          → { status: 'ok' } (nothing to compare)
+//   - dimensions match         → diff ratio vs diffThreshold (over → failed)
+//   - dimensions differ        → failed (viewport mismatch)
+//   - read/compare throws       → failed (pixelmatch error)
+// `fsImpl`, `pixelmatch`, and `PNG` are injectable so tests can drive each
+// branch with fakes. When `writeDiffTo` is set the diff PNG is written there
+// (only on a successful same-size comparison) and surfaced as `diffPath`.
+function _diffAgainstBaseline({
+  screenshotPath, baselinePath, diffThreshold,
+  pixelmatch, PNG, writeDiffTo = null, fsImpl = fs,
+}) {
+  const out = {
+    status: 'ok', reason: null,
+    baselinePath: null, diffPath: null,
+    diffPixels: null, diffRatio: null,
+  };
+  if (!fsImpl.existsSync(baselinePath)) return out; // no baseline → can't diff
+  out.baselinePath = baselinePath;
+  try {
+    const cur = PNG.sync.read(fsImpl.readFileSync(screenshotPath));
+    const base = PNG.sync.read(fsImpl.readFileSync(baselinePath));
+    if (cur.width === base.width && cur.height === base.height) {
+      const diff = new PNG({ width: cur.width, height: cur.height });
+      const px = pixelmatch(cur.data, base.data, diff.data, cur.width, cur.height, { threshold: 0.2 });
+      out.diffPixels = px;
+      out.diffRatio = px / (cur.width * cur.height);
+      if (writeDiffTo) {
+        fsImpl.writeFileSync(writeDiffTo, PNG.sync.write(diff));
+        out.diffPath = writeDiffTo;
+      }
+      if (out.diffRatio > diffThreshold) {
+        out.status = 'failed';
+        out.reason = `visual diff ${(out.diffRatio * 100).toFixed(2)}% exceeds ${(diffThreshold * 100).toFixed(2)}% threshold`;
+      }
+    } else {
+      // Size mismatch — treat as a soft warn (baseline came from a
+      // different viewport). Operator can re-approve.
+      out.status = 'failed';
+      out.reason = `viewport mismatch vs baseline (${cur.width}x${cur.height} vs ${base.width}x${base.height})`;
+    }
+  } catch (diffErr) {
+    out.status = 'failed';
+    out.reason = `pixelmatch error: ${diffErr.message}`;
+  }
+  return out;
+}
+
 async function _alertOwner(runId, failed, summaries, failingScreenshots = []) {
   try {
     const { getDiscordBot } = require('../discord/bot');
@@ -336,4 +371,4 @@ function isLatestPatchNoteMajor() {
   } catch (_) { return false; }
 }
 
-module.exports = { runSmoke, isLatestPatchNoteMajor, JOURNEYS };
+module.exports = { runSmoke, isLatestPatchNoteMajor, JOURNEYS, _diffAgainstBaseline, _alertOwner };

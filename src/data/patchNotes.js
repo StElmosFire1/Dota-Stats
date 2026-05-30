@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.23",
+    "title": "Unit tests for the browser-smoke diff + failure paths (Task #489)",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** `src/smoke/runner.js` had no automated coverage — the pixel-diff threshold maths, the viewport-size-mismatch branch, the missing-baseline branch, the optional-deps SKIPPED branch, the in-flight guard, and the owner-alert path were only ever exercised by the live Sunday-3am cron, so a regression would surface in production rather than in CI.",
+      "**Testable refactor.** The inline perceptual-diff decision in `runSmoke()` was factored out into a pure `_diffAgainstBaseline()` helper (injectable `fs` / `pixelmatch` / `PNG`) so the threshold, viewport-mismatch, and pixelmatch-error branches can be unit-tested without launching a real browser. Runtime behavior is unchanged.",
+      "**New coverage.** Added `tests/smokeRunner.test.js`: baseline-absent → ok, under-threshold → ok, over-threshold → failed, viewport mismatch → failed, pixelmatch error → failed, missing optional deps → SKIPPED bootstrap row, concurrent call → in-flight skip, and `_alertOwner` no-op when the Discord bot is unavailable (plus the happy-path DM). Wired into the existing `node --test` suite automatically.",
+      "**Scope.** Test + smoke-harness only; no schema, payment, runtime, or community-edition changes."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.22",
     "title": "Browser-smoke: deeper signed-in journeys + session reuse (Task #488)",
     "published_at": "2026-05-30",
