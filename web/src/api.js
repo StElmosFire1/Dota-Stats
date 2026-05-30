@@ -1833,6 +1833,9 @@ export async function retryTournamentPayout(tournamentId, payoutId, superuserKey
 export async function getMyPayoutAccount() {
   return fetchJson('/me/payout-account');
 }
+export async function getMyPayouts() {
+  return fetchJson('/me/payouts');
+}
 export async function startPayoutOnboarding(country = 'AU') {
   const res = await fetch(BASE + '/me/payout-account/onboard', {
     method: 'POST',

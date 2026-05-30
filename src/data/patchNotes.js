@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.38",
+    "title": "See every prize you've been paid on your own profile",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** Winners are now paid automatically, but the only place to check a prize's status was the per-tournament payouts panel. There was no single view to confirm you were paid — or chase up anything stuck — across every tournament you've won.",
+      "**What.** Your own profile now shows a \"My prize payouts\" card listing every prize tied to your account: tournament, placing, amount, status (paid / pending / failed) and the date, plus a running total of what you've actually received.",
+      "**Private by design.** The new read endpoint is scoped strictly to your signed-in account — you only ever see your own payouts, never anyone else's.",
+      "**Self-hiding.** The card only appears on your own profile and only when you have at least one payout, so it stays out of the way for everyone who hasn't won a prize.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.37",
     "title": "Win prize money? You'll be told to connect a payout account",
     "published_at": "2026-05-30",

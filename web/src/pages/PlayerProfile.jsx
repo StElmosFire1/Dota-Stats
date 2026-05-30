@@ -27,6 +27,7 @@ import SponsorshipBanner from '../components/SponsorshipBanner';
 import VerifiedBadge from '../components/VerifiedBadge';
 import CoachRecommendationsTile from '../components/CoachRecommendationsTile';
 import GamesProfileWidget from '../components/GamesProfileWidget';
+import MyPayoutsCard from '../components/MyPayoutsCard';
 import { VerifiedBadgeOwnerCta } from '../components/VerifiedBadgePurchaseModal';
 import useProMembers from '../hooks/useProMembers';
 import useProStatus from '../hooks/useProStatus';
@@ -1349,6 +1350,8 @@ export default function PlayerProfile() {
       {isOwnProfile && <MoodFormWidget accountId={accountId} />}
       {/* Task #451 — Daily mini-games streaks tile (own profile, self-hides if unplayed). */}
       {isOwnProfile && <GamesProfileWidget />}
+      {/* Task #546 — prize payout history (own profile, self-hides if no payouts). */}
+      {isOwnProfile && <MyPayoutsCard />}
       {/* Task #442 — Compare-vs picker. Navigates to /h2h/<thisProfile>/<picked>
           so the same control works on your own profile (compare you vs anyone)
           and on someone else's profile (compare them vs anyone). When viewing

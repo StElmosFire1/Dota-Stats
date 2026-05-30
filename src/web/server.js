@@ -16436,6 +16436,22 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     }
   });
 
+  // Task #546 — player-facing prize payout history. Returns every
+  // tournament_payouts row tied to the signed-in account (status, amount,
+  // tournament) so a winner can confirm they were paid or chase anything
+  // stuck. Strictly scoped to req.session.accountId — never another player's.
+  router.get('/me/payouts', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const payouts = await db.getPayoutsForAccount(accountId);
+      res.json({ payouts });
+    } catch (err) {
+      console.error('[API] me/payouts:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to fetch payouts' });
+    }
+  });
+
   // Begin (or resume) Stripe Connect Express onboarding for prize payouts.
   // Idempotent — reuses an existing account when present.
   router.post('/me/payout-account/onboard', express.json(), async (req, res) => {

@@ -25456,6 +25456,7 @@ module.exports = {
   setTournamentPayoutTransfer,
   getTournamentsWithPendingPayouts,
   listFailedTournamentPayouts,
+  getPayoutsForAccount,
   getPayoutAccount,
   upsertPayoutAccount,
   setPayoutAccountKyc,
@@ -28015,6 +28016,27 @@ async function listFailedTournamentPayouts() {
        LEFT JOIN nicknames n ON n.account_id = tp.account_id
       WHERE tp.transfer_status = 'failed'
       ORDER BY tp.tournament_id DESC, tp.place ASC`);
+  return r.rows;
+}
+
+// Task #546 — player-facing prize payout history. Every tournament_payouts
+// row tied to one account, newest first, with the tournament name + the
+// transfer status (pending/paid/failed) so a winner can confirm they were
+// paid or chase anything stuck. Scoped to a single account_id by the caller;
+// never expose another player's payouts.
+async function getPayoutsForAccount(accountId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT tp.id, tp.tournament_id, t.name AS tournament_name,
+            tp.place, tp.percent, tp.amount_cents, tp.currency,
+            tp.transfer_status, tp.stripe_transfer_id,
+            tp.transferred_at, tp.finalized_at,
+            t.payouts_finalized_at
+       FROM tournament_payouts tp
+       JOIN tournaments t ON t.id = tp.tournament_id
+      WHERE tp.account_id = $1
+      ORDER BY tp.finalized_at DESC, tp.tournament_id DESC, tp.place ASC`,
+    [accountId]);
   return r.rows;
 }
 
