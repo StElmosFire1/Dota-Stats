@@ -31,9 +31,20 @@ screenshots the inline "Sign in" gate page and `/api/health` returns 401. So:
 the 1% pixel-diff threshold absorbs cross-renderer jitter but not a wholesale
 "sign-in page vs real content" difference.
 
-**Durable fix candidate:** have the smoke runner send `x-superuser-key`
-(or otherwise present a superuser-trusted credential) so it works regardless of
-lockdown state — tracked as a follow-up.
+**Durable fix (implemented):** the smoke runner now sends `x-superuser-key:
+$SUPERUSER_PASSWORD` on the whole Playwright context (`browser.newContext({
+extraHTTPHeaders })`) so document navs, subresources, the page's own XHR/fetch,
+and the asJson probes all bypass the lockdown gate — runs/baseline-capture work
+whether or not lockdown is on. The header only bypasses the gate and elevates
+preview-state feature flags; it does NOT flip the session into superuser (the
+frontend reads `/admin/session-status`, which is session-only), so pages still
+render as the normal signed-in user. When `SUPERUSER_PASSWORD` is unset the
+runner probes `/api/health`; a 401 (the gate's signature) makes it bail with a
+clear `_lockdown` SKIPPED step instead of screenshotting the gate page.
+
+**Caveat:** because the header elevates *preview-state* feature flags, baselines
+captured before this change (no header) may need a one-time re-approval if any
+preview flag affects a journey page.
 
 ## Journey `expect` selectors: lead with one that actually renders
 

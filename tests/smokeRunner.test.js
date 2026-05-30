@@ -18,7 +18,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
+const fs = require('fs');
 const Module = require('module');
+
+// The lockdown-bypass tests drive runSmoke far enough that it creates the
+// per-run screenshot directory (tests/smoke/screenshots/<runId>). Remove it so
+// the test leaves no tracked artifact behind.
+function rmRunDir(runId) {
+  try {
+    fs.rmSync(path.join(__dirname, 'smoke', 'screenshots', String(runId)), { recursive: true, force: true });
+  } catch (_) { /* best-effort */ }
+}
 
 const DB_PATH = require.resolve('../src/db');
 const BOT_PATH = require.resolve('../src/discord/bot');
@@ -269,6 +279,101 @@ test('runSmoke: second concurrent call returns skipped (in-flight guard)', async
     cleanup();
   }
   assert.ok(stub);
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// runSmoke — Task #561 lockdown bypass
+// ──────────────────────────────────────────────────────────────────────────
+
+// Drive runSmoke past the optional-deps check with a fake playwright so the new
+// lockdown-bypass code (after browser launch) runs without a real browser. The
+// fake context's request.get returns whatever status the test supplies, so we
+// can simulate the lockdown gate's 401 signature.
+function installFakePlaywright({ probeStatus, captureContextOpts }) {
+  const fakePlaywright = {
+    chromium: {
+      launch: async () => ({
+        newContext: async (opts) => {
+          if (captureContextOpts) captureContextOpts(opts);
+          return {
+            addInitScript: async () => {},
+            request: { get: async () => ({ status: () => probeStatus, ok: () => probeStatus < 400, json: async () => ({}) }) },
+            close: async () => {},
+            storageState: async () => {},
+          };
+        },
+        close: async () => {},
+      }),
+    },
+  };
+  const origLoad = Module._load;
+  Module._load = function (request, parent, isMain) {
+    if (request === 'playwright') return fakePlaywright;
+    if (request === 'pixelmatch') return () => 0;
+    if (request === 'pngjs') return { PNG: fakePNG };
+    return origLoad.call(this, request, parent, isMain);
+  };
+  return () => { Module._load = origLoad; };
+}
+
+test('runSmoke: lockdown on + no SUPERUSER_PASSWORD → records _lockdown skipped step and bails', async () => {
+  const stub = installStubDb();
+  const restoreLoad = installFakePlaywright({ probeStatus: 401 });
+  const prevPwd = process.env.SUPERUSER_PASSWORD;
+  const prevTok = process.env.SMOKE_TEST_LOGIN_TOKEN;
+  delete process.env.SUPERUSER_PASSWORD;     // no bypass credential
+  delete process.env.SMOKE_TEST_LOGIN_TOKEN; // no synthetic login configured
+  const runner = freshRunner();
+
+  let result;
+  try {
+    result = await runner.runSmoke({ trigger: 'test' });
+  } finally {
+    restoreLoad();
+    if (prevPwd === undefined) delete process.env.SUPERUSER_PASSWORD; else process.env.SUPERUSER_PASSWORD = prevPwd;
+    if (prevTok === undefined) delete process.env.SMOKE_TEST_LOGIN_TOKEN; else process.env.SMOKE_TEST_LOGIN_TOKEN = prevTok;
+    rmRunDir(1234);
+    cleanup();
+  }
+
+  assert.equal(result.skipped, true);
+  assert.equal(result.runId, 1234);
+  const lockStep = stub.calls.steps.find(s => s.stepKey === '_lockdown');
+  assert.ok(lockStep, 'a _lockdown step should be recorded');
+  assert.equal(lockStep.status, 'skipped');
+  assert.match(lockStep.reason, /SUPERUSER_PASSWORD/);
+  assert.equal(stub.calls.finishes.length, 1);
+  assert.equal(stub.calls.finishes[0].status, 'skipped');
+});
+
+test('runSmoke: SUPERUSER_PASSWORD set → context carries x-superuser-key header, no lockdown probe', async () => {
+  const stub = installStubDb();
+  let contextOpts = null;
+  // probeStatus 401 here proves the probe is NOT consulted when the key is set:
+  // if it were, the run would bail as "locked out" despite having the credential.
+  const restoreLoad = installFakePlaywright({ probeStatus: 401, captureContextOpts: (o) => { contextOpts = o; } });
+  const prevPwd = process.env.SUPERUSER_PASSWORD;
+  const prevTok = process.env.SMOKE_TEST_LOGIN_TOKEN;
+  process.env.SUPERUSER_PASSWORD = 'secret-pw';
+  delete process.env.SMOKE_TEST_LOGIN_TOKEN; // keep auth journeys skipped
+  const runner = freshRunner();
+
+  try {
+    await runner.runSmoke({ trigger: 'test' });
+  } finally {
+    restoreLoad();
+    if (prevPwd === undefined) delete process.env.SUPERUSER_PASSWORD; else process.env.SUPERUSER_PASSWORD = prevPwd;
+    if (prevTok === undefined) delete process.env.SMOKE_TEST_LOGIN_TOKEN; else process.env.SMOKE_TEST_LOGIN_TOKEN = prevTok;
+    rmRunDir(1234);
+    cleanup();
+  }
+
+  assert.ok(contextOpts, 'newContext should have been called');
+  assert.ok(contextOpts.extraHTTPHeaders, 'context should set extraHTTPHeaders');
+  assert.equal(contextOpts.extraHTTPHeaders['x-superuser-key'], 'secret-pw');
+  // The probe-based bail must not have fired (no _lockdown step) since the key
+  // is present — the run proceeds (and fails on the fake pages, which is fine).
+  assert.equal(stub.calls.steps.find(s => s.stepKey === '_lockdown'), undefined);
 });
 
 // ──────────────────────────────────────────────────────────────────────────

@@ -94,6 +94,23 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
 
     const browser = await playwright.chromium.launch({ headless: true });
 
+    // Task #561 — bypass the full-edition lockdown gate.
+    //
+    // The lockdown middleware (src/web/server.js) blocks every request unless
+    // the caller is a superuser session OR carries a matching `x-superuser-key`
+    // header. Our synthetic test-login only mints a *normal user* session, which
+    // does NOT bypass the gate — so whenever the site is locked down (emergency
+    // lock, pre-deploy, or the AdminPanel toggle left on) every journey would
+    // just screenshot the inline "Sign in" gate page and /api/health would 401,
+    // poisoning baselines. We send the superuser key on the whole Playwright
+    // context (document navigations, subresources, the page's own XHR/fetch
+    // calls, and the asJson probes all carry it) so the runner sees real content
+    // regardless of lockdown state. This only bypasses the gate and elevates
+    // preview-state feature flags; it does NOT flip the session into superuser
+    // (the frontend reads /admin/session-status, which is session-only), so the
+    // pages still render as the normal signed-in user.
+    const superuserKey = process.env.SUPERUSER_PASSWORD || null;
+
     // Reuse a previously-captured synthetic session when it's still fresh, so
     // we skip the /auth/steam/test-login round-trip every run. A stale (too
     // old) or invalid (no longer authenticates) state file is ignored — the
@@ -110,8 +127,40 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
     const context = await browser.newContext({
       viewport: { width: 1280, height: 800 },
       ignoreHTTPSErrors: true,
+      ...(superuserKey ? { extraHTTPHeaders: { 'x-superuser-key': superuserKey } } : {}),
       ...(reuseStoredState ? { storageState: AUTH_STATE_PATH } : {}),
     });
+
+    // If we have no superuser credential to present, the lockdown gate (when
+    // on) would block every request and we'd silently screenshot the sign-in
+    // wall. Detect that up front with a probe and bail with a clear skipped
+    // step instead of capturing — and poisoning baselines with — gate pages.
+    // A 401 on a non-allowlisted, non-document request is the gate's signature;
+    // a healthy unlocked site returns 200. Any other outcome (server down,
+    // network error) falls through so the journeys report the real failure.
+    if (!superuserKey) {
+      let lockedOut = false;
+      try {
+        const probe = await context.request.get(url + '/api/health', { timeout: 10_000 });
+        if (probe.status() === 401) lockedOut = true;
+      } catch (_) { /* probe failed — let the journeys run and surface the real error */ }
+      if (lockedOut) {
+        await db.recordBrowserSmokeStep({
+          runId,
+          stepKey: '_lockdown',
+          label: 'Site lockdown bypass credential available',
+          status: 'skipped',
+          reason: 'site is in lockdown and SUPERUSER_PASSWORD is unset — every journey would screenshot the sign-in gate. Set SUPERUSER_PASSWORD so the runner can send x-superuser-key.',
+        });
+        await db.finishBrowserSmokeRun(runId, {
+          status: 'skipped', totalSteps: 1, passedSteps: 0, failedSteps: 0,
+          notes: 'Skipped — site locked down and no SUPERUSER_PASSWORD to bypass the gate.',
+        });
+        await context.close().catch(() => {});
+        await browser.close().catch(() => {});
+        return { runId, skipped: true };
+      }
+    }
 
     // Suppress site-wide modals that would otherwise overlay every screenshot.
     // The runner starts from a fresh context (no prior "dismissed" flags), so
