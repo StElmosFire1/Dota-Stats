@@ -611,6 +611,9 @@ function cleanupChunks(jobId) {
   } catch {}
 }
 
+// Task #508 — dedicated brute-force limiter for the lockdown sign-in route.
+const { superuserLoginLimiter } = require('../security/superuserLoginLimiter');
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
@@ -4630,7 +4633,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
     });
   });
 
-  router.post('/admin/superuser-login', authLimiter, express.json(), (req, res) => {
+  router.post('/admin/superuser-login', superuserLoginLimiter, express.json(), (req, res) => {
     const superuserPassword = process.env.SUPERUSER_PASSWORD;
     if (!superuserPassword) {
       return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });

@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.31",
+    "title": "Brute-force protection on the lockdown sign-in page",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** While the site is locked, the inline sign-in page is the one credential-checking endpoint that has to stay reachable through the gate (otherwise nobody could unlock). It previously shared the global API rate-limit, so an attacker who knew the site was locked could grind password guesses against it.",
+      "**Dedicated limiter.** `POST /api/admin/superuser-login` now has its own stacked limiter (`src/security/superuserLoginLimiter.js`): a burst bucket of 5 failed attempts / 15 min per IP plus a longer 20 failed attempts / 2 h lockout that survives an attacker patiently waiting out each burst window. Successful logins don't count, so a legit operator who fat-fingers the password once isn't penalised.",
+      "**Minimal-info lockout.** A tripped limiter returns the same shape the lockdown gate uses — a 429 with an empty body and `no-store` — so a brute-forcer learns nothing about why the request was refused.",
+      "**Owner alert.** The bot DMs `OWNER_DISCORD_ID` (deduped to one alert per IP per ~15 min) when a lockout triggers, so a real attack is visible instead of silent.",
+      "**Scope.** Full edition only — community edition has no lockdown gate and is untouched."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.30",
     "title": "Audit log of who locked/unlocked the site and when",
     "published_at": "2026-05-30",
