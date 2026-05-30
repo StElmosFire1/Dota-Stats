@@ -7,6 +7,7 @@ const {
   hotlinkMiddleware,
   buildReport,
   isGatedAssetPath,
+  flushHotlinkLog,
   _resetForTests,
 } = require('../src/security/assetHotlink');
 
@@ -140,6 +141,86 @@ test('non-gated paths pass through without being recorded', () => {
   assert.equal(nextCalled, true);
   const report = buildReport();
   assert.equal(report.ringBufferSize, 0);
+});
+
+// Task #565 — durable persistence: the middleware rolls decisions up into an
+// in-memory accumulator that flushHotlinkLog() batches into the DB. We stub the
+// db module in require.cache so we can assert the rollup snapshot shape without
+// a live Postgres.
+test('flushHotlinkLog batches a daily rollup snapshot to the db (sampled/bounded)', async () => {
+  _resetForTests();
+  const path = require('node:path');
+  const dbPath = require.resolve(path.join(__dirname, '../src/db'));
+  const prevCached = require.cache[dbPath];
+  const captured = [];
+  require.cache[dbPath] = {
+    id: dbPath,
+    filename: dbPath,
+    loaded: true,
+    exports: {
+      async upsertAssetHotlinkDaily(rows) { captured.push(rows); return rows.length; },
+      async pruneAssetHotlinkDaily() { return 0; },
+    },
+  };
+  try {
+    // 3 blocked from one clone host (2 distinct paths) + 1 allowed same-origin.
+    run({ url: '/oa-logo.png', headers: { host: 'oceinhouse.gg', referer: 'https://clone.test/a' } });
+    run({ url: '/oa-logo.png', headers: { host: 'oceinhouse.gg', referer: 'https://clone.test/a' } });
+    run({ url: '/badges/x.png', headers: { host: 'oceinhouse.gg', referer: 'https://clone.test/b' } });
+    run({ url: '/oa-logo.png', headers: { host: 'oceinhouse.gg', referer: 'https://oceinhouse.gg/' } });
+
+    const n = await flushHotlinkLog();
+    assert.equal(n, 2, 'one rollup row per referer host');
+    assert.equal(captured.length, 1, 'a single batched db write');
+    const rows = captured[0];
+    const clone = rows.find(r => r.referer_host === 'clone.test');
+    assert.ok(clone, 'clone.test rollup row present');
+    assert.equal(clone.hits, 3);
+    assert.equal(clone.blocked, 3);
+    assert.equal(clone.allowed, 0);
+    assert.equal(clone.distinct_paths, 2);
+    assert.match(clone.day, /^\d{4}-\d{2}-\d{2}$/);
+    const self = rows.find(r => r.referer_host === 'oceinhouse.gg');
+    assert.ok(self, 'same-origin rollup row present');
+    assert.equal(self.allowed, 1);
+
+    // Accumulator is drained after a successful flush — no double-counting.
+    const n2 = await flushHotlinkLog();
+    assert.equal(n2, 0);
+  } finally {
+    if (prevCached) require.cache[dbPath] = prevCached;
+    else delete require.cache[dbPath];
+  }
+});
+
+test('flushHotlinkLog folds the snapshot back when the db write fails', async () => {
+  _resetForTests();
+  const path = require('node:path');
+  const dbPath = require.resolve(path.join(__dirname, '../src/db'));
+  const prevCached = require.cache[dbPath];
+  let attempts = 0;
+  require.cache[dbPath] = {
+    id: dbPath,
+    filename: dbPath,
+    loaded: true,
+    exports: {
+      async upsertAssetHotlinkDaily() { attempts += 1; throw new Error('db down'); },
+      async pruneAssetHotlinkDaily() { return 0; },
+    },
+  };
+  try {
+    run({ url: '/oa-logo.png', headers: { host: 'oceinhouse.gg', referer: 'https://clone.test/a' } });
+    const n = await flushHotlinkLog();
+    assert.equal(n, 0, 'failed flush reports 0 rows written');
+    assert.equal(attempts, 1);
+    // The data is retried on the next flush rather than being lost.
+    require.cache[dbPath].exports.upsertAssetHotlinkDaily = async (rows) => rows.length;
+    const n2 = await flushHotlinkLog();
+    assert.equal(n2, 1, 'folded-back row is retried and written on the next flush');
+  } finally {
+    if (prevCached) require.cache[dbPath] = prevCached;
+    else delete require.cache[dbPath];
+  }
 });
 
 test('buildReport aggregates by referer host with allowed/blocked counts', () => {

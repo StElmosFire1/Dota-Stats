@@ -32,6 +32,152 @@ function _push(entry) {
   }
 }
 
+// --- Task #565: durable persistence (daily rollup) ------------------------
+// The ring buffer above is in-process only and resets on every deploy/reboot,
+// so the owner loses the hotlink history right when a clone scrape is worth
+// acting on. We additionally roll every decision up into an in-memory
+// accumulator keyed by (UTC day, referer host) and periodically flush the
+// DELTAS since the last flush into the `asset_hotlink_daily` table via UPSERT.
+// This bounds DB writes to (#distinct day|host) per flush window regardless of
+// traffic volume — a sustained scrape from one host is a single UPSERT per
+// flush — and keeps the privacy posture of the ring buffer (referer host + a
+// sample path/UA only, no raw PII beyond what the buffer already held).
+const FLUSH_INTERVAL_MS = 5 * 60 * 1000;        // batch window
+const RETENTION_DAYS = 90;                       // bounded retention for the rollup
+const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;   // prune at most once per day
+
+const _accum = new Map(); // key `${day}|${host}` -> delta row since last flush
+let _flushTimer = null;
+let _lastPruneTs = 0;
+let _flushing = false;
+
+function _dayKey(ts) {
+  return new Date(ts).toISOString().slice(0, 10); // UTC YYYY-MM-DD
+}
+
+function _accumulate(entry) {
+  const day = _dayKey(entry.ts);
+  const host = entry.referer_host || '(none)';
+  const key = day + '|' + host;
+  let row = _accum.get(key);
+  if (!row) {
+    row = {
+      day,
+      referer_host: host,
+      hits: 0,
+      allowed: 0,
+      blocked: 0,
+      _paths: new Set(),
+      sample_path: entry.path || null,
+      sample_ua: entry.ua || null,
+      first_seen: entry.ts,
+      last_seen: entry.ts,
+    };
+    _accum.set(key, row);
+  }
+  row.hits += 1;
+  if (entry.decision === 'allowed') row.allowed += 1;
+  else if (entry.decision === 'blocked') row.blocked += 1;
+  if (entry.path) row._paths.add(entry.path);
+  if (entry.ts < row.first_seen) row.first_seen = entry.ts;
+  if (entry.ts > row.last_seen) row.last_seen = entry.ts;
+}
+
+async function _maybePrune() {
+  const now = Date.now();
+  if (now - _lastPruneTs < PRUNE_INTERVAL_MS) return;
+  _lastPruneTs = now;
+  try {
+    const db = require('../db');
+    await db.pruneAssetHotlinkDaily(RETENTION_DAYS);
+  } catch (err) {
+    console.warn('[AssetHotlink] prune failed:', err.message);
+  }
+}
+
+// Flush the accumulated deltas to the DB. Returns the number of (day, host)
+// rows written. Single-flighted so an overlapping interval + report-triggered
+// flush can't double-write. Best-effort: on DB failure the snapshot is folded
+// back into the accumulator so the next flush retries it.
+async function flushHotlinkLog() {
+  if (_flushing) return 0;
+  if (_accum.size === 0) {
+    await _maybePrune();
+    return 0;
+  }
+  _flushing = true;
+  const snapshot = [..._accum.values()].map(r => ({
+    day: r.day,
+    referer_host: r.referer_host,
+    hits: r.hits,
+    allowed: r.allowed,
+    blocked: r.blocked,
+    distinct_paths: r._paths.size,
+    sample_path: r.sample_path,
+    sample_ua: r.sample_ua,
+    first_seen: r.first_seen,
+    last_seen: r.last_seen,
+  }));
+  _accum.clear();
+  let n = 0;
+  try {
+    const db = require('../db');
+    n = await db.upsertAssetHotlinkDaily(snapshot);
+  } catch (err) {
+    // Fold the snapshot back so the next flush retries it (path identities are
+    // lost on a fold, so distinct_paths becomes approximate after a failure —
+    // acceptable for a best-effort observability rollup).
+    for (const s of snapshot) {
+      const key = s.day + '|' + s.referer_host;
+      const existing = _accum.get(key);
+      if (!existing) {
+        _accum.set(key, {
+          day: s.day,
+          referer_host: s.referer_host,
+          hits: s.hits,
+          allowed: s.allowed,
+          blocked: s.blocked,
+          _paths: new Set(),
+          sample_path: s.sample_path,
+          sample_ua: s.sample_ua,
+          first_seen: s.first_seen,
+          last_seen: s.last_seen,
+        });
+      } else {
+        existing.hits += s.hits;
+        existing.allowed += s.allowed;
+        existing.blocked += s.blocked;
+        if (s.first_seen < existing.first_seen) existing.first_seen = s.first_seen;
+        if (s.last_seen > existing.last_seen) existing.last_seen = s.last_seen;
+      }
+    }
+    console.warn('[AssetHotlink] flush failed (will retry next flush):', err.message);
+    _flushing = false;
+    return 0;
+  }
+  _flushing = false;
+  await _maybePrune();
+  return n;
+}
+
+// Start the periodic background flush. Idempotent — calling twice is a no-op.
+// The timer is unref'd so it never keeps the process alive on its own.
+function startHotlinkPersistence({ intervalMs = FLUSH_INTERVAL_MS } = {}) {
+  if (_flushTimer) return _flushTimer;
+  _flushTimer = setInterval(() => {
+    flushHotlinkLog().catch(() => { /* best-effort */ });
+  }, intervalMs);
+  if (_flushTimer.unref) _flushTimer.unref();
+  return _flushTimer;
+}
+
+function stopHotlinkPersistence() {
+  if (_flushTimer) {
+    clearInterval(_flushTimer);
+    _flushTimer = null;
+  }
+}
+
 // Built-in default allow-list of host suffixes that are always permitted as a
 // referer. Configurable / extendable via BRAND_ASSET_REFERER_ALLOWLIST
 // (comma-separated). Matched as a suffix so subdomains (e.g. www.oceinhouse.gg)
@@ -156,7 +302,7 @@ function hotlinkMiddleware(req, res, next) {
     else if (_hostAllowed(refHost, allowed)) decision = 'allowed';
     else if (_isUnfurler(ua)) decision = 'allowed';     // social unfurler
 
-    _push({
+    const entry = {
       ts: Date.now(),
       path: _shortStr(rawPath.split('?')[0], 200),
       referer_host: refHost || '(none)',
@@ -165,7 +311,9 @@ function hotlinkMiddleware(req, res, next) {
       ip: req.ip || null,
       method: req.method,
       decision,
-    });
+    };
+    _push(entry);
+    _accumulate(entry); // Task #565 — roll up for durable persistence
 
     if (decision === 'blocked') {
       res.set('Cache-Control', 'no-store');
@@ -234,16 +382,22 @@ function buildReport({ windowMs = 7 * 24 * 60 * 60 * 1000 } = {}) {
   };
 }
 
-// Test hook — reset the buffer between cases.
+// Test hook — reset the buffer + accumulator + prune marker between cases.
 function _resetForTests() {
   _ring.length = 0;
+  _accum.clear();
+  _lastPruneTs = 0;
 }
 
 module.exports = {
   hotlinkMiddleware,
   buildReport,
   isGatedAssetPath,
+  flushHotlinkLog,
+  startHotlinkPersistence,
+  stopHotlinkPersistence,
   _resetForTests,
   RING_BUFFER_MAX,
+  RETENTION_DAYS,
   DEFAULT_ALLOWED_HOSTS,
 };

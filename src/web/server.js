@@ -4244,8 +4244,11 @@ function createServer(startupStatus = {}) {
   // / scoreboard requests whose Referer points off-domain. Generic bundled
   // assets (JS/CSS/fonts) pass straight through. Full edition only.
   try {
-    const { hotlinkMiddleware } = require('../security/assetHotlink');
-    app.use(hotlinkMiddleware);
+    const assetHotlink = require('../security/assetHotlink');
+    app.use(assetHotlink.hotlinkMiddleware);
+    // Task #565 — periodically flush the in-memory rollup to the DB so the
+    // admin report survives deploys/reboots. Bounded, best-effort, unref'd.
+    assetHotlink.startHotlinkPersistence();
   } catch (e) {
     console.warn('[AssetHotlink] failed to mount:', e.message);
   }
@@ -7768,13 +7771,44 @@ function createApiRouter(startupStatus = {}, _app = null) {
   // last N days (default 7, capped at 30 — the ring buffer holds ~5000 entries
   // anyway). Lets the owner see whether a clone (or anything else) has been
   // hotlinking our logo / badges / scoreboard renders off oceinhouse.gg.
-  router.get('/admin/asset-hotlink-report', requireSuperuser, (req, res) => {
+  router.get('/admin/asset-hotlink-report', requireSuperuser, async (req, res) => {
     try {
-      const { buildReport } = require('../security/assetHotlink');
+      const assetHotlink = require('../security/assetHotlink');
       const days = Math.max(1, Math.min(30, parseInt(req.query.days, 10) || 7));
-      const report = buildReport({ windowMs: days * 24 * 60 * 60 * 1000 });
+      const windowMs = days * 24 * 60 * 60 * 1000;
+      // In-memory view supplies the recent raw tail + ring/allow-list metadata.
+      const mem = assetHotlink.buildReport({ windowMs });
+
+      // Task #565 — read totals/hosts from the durable rollup so the report
+      // covers the full window across restarts. Flush pending deltas first so
+      // the very latest hits are included, then fall back to the in-memory
+      // aggregation if the DB is unavailable.
+      let persisted = null;
+      try {
+        await assetHotlink.flushHotlinkLog();
+        persisted = await db.getAssetHotlinkReport({ windowMs });
+      } catch (e) {
+        persisted = null;
+      }
+
       res.set('Cache-Control', 'no-store');
-      res.json({ days, ...report });
+      if (persisted) {
+        res.json({
+          days,
+          windowMs,
+          generatedAt: Date.now(),
+          persisted: true,
+          retentionDays: assetHotlink.RETENTION_DAYS,
+          ringBufferSize: mem.ringBufferSize,
+          ringBufferMax: mem.ringBufferMax,
+          allowedHosts: mem.allowedHosts,
+          totals: persisted.totals,
+          hosts: persisted.hosts,
+          recent: mem.recent,
+        });
+      } else {
+        res.json({ days, persisted: false, ...mem });
+      }
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

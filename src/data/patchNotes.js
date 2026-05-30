@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.40",
+    "title": "Brand-asset hotlink history now survives restarts",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** The admin 'Brand-asset hotlinks' report was built from an in-process buffer that was wiped on every deploy/reboot — so evidence of a clone scraping our logo could vanish right when it was worth acting on.",
+      "**What.** Hotlink allow/block decisions are now rolled up by day + referer host and persisted to the database, so the report covers the full 7/30-day window even across restarts.",
+      "**Lightweight by design.** Decisions are batched in memory and flushed periodically (one write per host per flush window), so even a sustained scrape can't hammer the database. Privacy posture is unchanged — only the referer host plus a sample path/UA are kept, no raw PII — and rows are auto-pruned after 90 days.",
+      "**Same card, more reliable.** The recent-requests list stays live/in-process; only the aggregated totals are now durable. Falls back to the in-memory view if the database is briefly unavailable.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.38",
     "title": "See every prize you've been paid on your own profile",
     "published_at": "2026-05-30",

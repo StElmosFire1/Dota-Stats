@@ -956,9 +956,11 @@ function AssetHotlinkCard({ superuserKey }) {
         </div>
         <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 0, marginBottom: 12 }}>
           Requests for our logo / favicon / badges / voice packs / scoreboard renders whose
-          <code> Referer</code> points off-domain are blocked with HTTP 403. Aggregated from the
-          in-process ring buffer ({data ? `${data.ringBufferSize}/${data.ringBufferMax}` : '…'} entries),
-          grouped by referer host. Allow-list extendable via <code>BRAND_ASSET_REFERER_ALLOWLIST</code>.
+          <code> Referer</code> points off-domain are blocked with HTTP 403. Totals are aggregated
+          from a {data?.persisted ? `durable daily rollup (kept ${data.retentionDays || 90} days, survives deploys)` : 'durable daily rollup'},
+          grouped by referer host; the recent-requests list below is the live in-process tail
+          ({data ? `${data.ringBufferSize}/${data.ringBufferMax}` : '…'} entries, resets on reboot).
+          Allow-list extendable via <code>BRAND_ASSET_REFERER_ALLOWLIST</code>.
         </p>
         {data && data.totals && (
           <p style={{ fontSize: 13, marginTop: 0, marginBottom: 12 }}>
@@ -973,8 +975,7 @@ function AssetHotlinkCard({ superuserKey }) {
         {!data && !error && <div style={{ fontSize: 13 }}>Loading…</div>}
         {data && rows.length === 0 && (
           <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            No brand-asset requests in the selected window. (The buffer is in-process only,
-            so a recent bot reboot clears it.)
+            No brand-asset requests in the selected window.
           </div>
         )}
         {data && rows.length > 0 && (

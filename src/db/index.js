@@ -3311,6 +3311,33 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_smurf_acks_account ON smurf_acknowledgements(account_id, ack_at DESC)`);
 
+    // Task #565 — durable brand-asset hotlink history. The middleware in
+    // src/security/assetHotlink.js (Task #491) records allow/block decisions
+    // in an in-process ring buffer that resets on every deploy/reboot, so the
+    // owner loses the evidence of a clone scraping our logo right when they
+    // want to act on it. We roll decisions up by (UTC day, referer host) and
+    // periodically UPSERT the deltas here so the report survives restarts. The
+    // accumulator keeps DB writes bounded (one UPSERT per distinct day|host per
+    // flush window regardless of traffic). Privacy posture mirrors the ring
+    // buffer + SESSION_FINGERPRINT_SALT: referer host + a sample path/UA only,
+    // no raw PII; bounded retention is enforced by pruneAssetHotlinkDaily.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS asset_hotlink_daily (
+        day DATE NOT NULL,
+        referer_host TEXT NOT NULL,
+        hits INTEGER NOT NULL DEFAULT 0,
+        allowed INTEGER NOT NULL DEFAULT 0,
+        blocked INTEGER NOT NULL DEFAULT 0,
+        unique_paths INTEGER NOT NULL DEFAULT 0,
+        sample_path TEXT,
+        sample_ua TEXT,
+        first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (day, referer_host)
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_asset_hotlink_daily_day ON asset_hotlink_daily(day DESC)`);
+
     // Task #409 — draft trainer runs. Each row records a captain-phase
     // simulation completed by a signed-in user. `predicted_advantage` is
     // the engine-scored A-side advantage at the end of the draft (range
@@ -7141,6 +7168,109 @@ async function pruneDiscordAutoJoinLog(days = 7) {
   const d = Math.max(1, Math.min(365, Number(days) || 7));
   const r = await p.query(
     `DELETE FROM discord_autojoin_log WHERE ts < NOW() - ($1 || ' days')::interval`,
+    [String(d)]
+  );
+  return r.rowCount || 0;
+}
+
+// Task #565 — durable brand-asset hotlink history. The hotlink middleware
+// (src/security/assetHotlink.js) rolls allow/block decisions up by
+// (UTC day, referer host) in memory and periodically flushes the DELTAS since
+// the last flush here. `rows` is that accumulator snapshot:
+//   { day:'YYYY-MM-DD', referer_host, hits, allowed, blocked, distinct_paths,
+//     sample_path, sample_ua, first_seen(ms), last_seen(ms) }
+// Counts add on conflict; unique_paths uses GREATEST (best-effort — exact
+// cross-flush dedup would need to store the path set, which we deliberately
+// don't, to keep the row tiny and PII-free). Bounded by the number of distinct
+// (day, host) pairs seen since the last flush, so a sustained scrape from one
+// host is a single UPSERT per flush window. Best-effort: callers swallow errors.
+async function upsertAssetHotlinkDaily(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return 0;
+  const p = getPool();
+  let n = 0;
+  for (const r of rows) {
+    if (!r || !r.day || !r.referer_host) continue;
+    await p.query(
+      `INSERT INTO asset_hotlink_daily
+         (day, referer_host, hits, allowed, blocked, unique_paths, sample_path, sample_ua, first_seen, last_seen)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9 / 1000.0), to_timestamp($10 / 1000.0))
+       ON CONFLICT (day, referer_host) DO UPDATE SET
+         hits = asset_hotlink_daily.hits + EXCLUDED.hits,
+         allowed = asset_hotlink_daily.allowed + EXCLUDED.allowed,
+         blocked = asset_hotlink_daily.blocked + EXCLUDED.blocked,
+         unique_paths = GREATEST(asset_hotlink_daily.unique_paths, EXCLUDED.unique_paths),
+         sample_path = COALESCE(asset_hotlink_daily.sample_path, EXCLUDED.sample_path),
+         sample_ua = COALESCE(asset_hotlink_daily.sample_ua, EXCLUDED.sample_ua),
+         first_seen = LEAST(asset_hotlink_daily.first_seen, EXCLUDED.first_seen),
+         last_seen = GREATEST(asset_hotlink_daily.last_seen, EXCLUDED.last_seen)`,
+      [
+        r.day,
+        String(r.referer_host).slice(0, 255),
+        Number(r.hits) || 0,
+        Number(r.allowed) || 0,
+        Number(r.blocked) || 0,
+        Number(r.distinct_paths) || 0,
+        r.sample_path || null,
+        r.sample_ua || null,
+        Number(r.first_seen) || Date.now(),
+        Number(r.last_seen) || Date.now(),
+      ]
+    );
+    n += 1;
+  }
+  return n;
+}
+
+// Task #565 — read the persisted hotlink rollup back for the admin report,
+// aggregated by referer host over the last `windowMs` (default 7 days). Returns
+// `{ totals, hosts }` shaped to match src/security/assetHotlink.js buildReport
+// so the route can merge it with the in-memory `recent` tail. first_seen /
+// last_seen are returned as epoch ms to match the in-memory format.
+async function getAssetHotlinkReport({ windowMs = 7 * 24 * 60 * 60 * 1000 } = {}) {
+  const p = getPool();
+  const days = Math.max(1, Math.ceil(windowMs / (24 * 60 * 60 * 1000)));
+  const r = await p.query(
+    `SELECT referer_host,
+            SUM(hits)::bigint        AS hits,
+            SUM(allowed)::bigint     AS allowed,
+            SUM(blocked)::bigint     AS blocked,
+            SUM(unique_paths)::bigint AS unique_paths,
+            (EXTRACT(EPOCH FROM MIN(first_seen)) * 1000)::bigint AS first_seen,
+            (EXTRACT(EPOCH FROM MAX(last_seen)) * 1000)::bigint  AS last_seen,
+            MAX(sample_path) AS sample_path,
+            MAX(sample_ua)   AS sample_ua
+       FROM asset_hotlink_daily
+      WHERE day >= (NOW() - ($1 || ' days')::interval)::date
+      GROUP BY referer_host
+      ORDER BY SUM(hits) DESC`,
+    [String(days)]
+  );
+  const hosts = r.rows.map(row => ({
+    referer_host: row.referer_host,
+    hits: Number(row.hits) || 0,
+    allowed: Number(row.allowed) || 0,
+    blocked: Number(row.blocked) || 0,
+    unique_paths: Number(row.unique_paths) || 0,
+    first_seen: Number(row.first_seen) || 0,
+    last_seen: Number(row.last_seen) || 0,
+    sample_path: row.sample_path || '',
+    sample_ua: row.sample_ua || '',
+  }));
+  const totals = hosts.reduce((acc, h) => {
+    acc.hits += h.hits; acc.allowed += h.allowed; acc.blocked += h.blocked;
+    return acc;
+  }, { hits: 0, allowed: 0, blocked: 0 });
+  return { totals, hosts };
+}
+
+// Task #565 — bounded retention for the hotlink rollup. Drops day-buckets older
+// than `days` (default 90). Tiny table (one row per day per distinct host), so
+// this is cheap; the middleware calls it at most once per 24h via _maybePrune.
+async function pruneAssetHotlinkDaily(days = 90) {
+  const p = getPool();
+  const d = Math.max(1, Math.min(3650, Number(days) || 90));
+  const r = await p.query(
+    `DELETE FROM asset_hotlink_daily WHERE day < (NOW() - ($1 || ' days')::interval)::date`,
     [String(d)]
   );
   return r.rowCount || 0;
@@ -24861,6 +24991,9 @@ module.exports = {
   getDiscordAutoJoinFailuresPage,
   pruneDiscordAutoJoinLog,
   pruneDiscordAutoJoinFailures,
+  upsertAssetHotlinkDaily,
+  getAssetHotlinkReport,
+  pruneAssetHotlinkDaily,
   getDiscordAutoJoinFailuresPruneInfo,
   getDiscordIdCollisions,
   resolveDiscordIdCollision,
