@@ -1,2 +1,3 @@
 - [Dialog focus-trap & options](dialog-focus-trap.md) — shared <Dialog> trap treats every enabled <button> as focusable regardless of tabIndex=-1; listbox options must be non-button.
 - [Headless site capture](playwright-site-capture.md) — Nix libs + first-visit modal dismiss needed for headless oceinhouse.gg screenshots; /inhouse blank & /hall-of-fame errors for anon.
+- [Press Box vs purchasable themes](pressbox-theme-rewire.md) — upscale-2026 mockups use standalone --pb-* tokens; purchasable themes (Newsprint/Carbon/Holo/Heritage/Broadcast) need rewiring if design ships. Parked until design locked.
