@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.41",
+    "title": "Get pinged when a real person hits the locked site",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** While the site is in owner-only lockdown, the only way to see who tried to reach it was to open the 'Lockdown access log' card and go looking. A real person opening a deep link — usually a sign a private-preview link leaked — is exactly the thing worth knowing about immediately.",
+      "**What.** When lockdown is on and a request from a real browser (Chrome, Firefox, Edge, Safari, etc.) is blocked, the bot now DMs the owner a rolling 24-hour digest: how many hits, the time range, a sample path and the IP.",
+      "**No bot spam.** Crawlers and automated agents never trigger this — they're already covered by the existing 'AI agent traffic' alerts. Only real-person browsers do.",
+      "**Quiet by design.** The first hit from a browser family fires immediately, then further hits are rolled into a single summary every ~24 hours. Alert failures can never break the lockdown gate.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.40",
     "title": "Brand-asset hotlink history now survives restarts",
     "published_at": "2026-05-30",

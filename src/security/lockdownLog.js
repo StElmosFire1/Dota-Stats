@@ -20,8 +20,23 @@
 const { classifyUa } = require('./agentUaList');
 
 const RING_BUFFER_MAX = 1000;
+const ALERT_DEDUPE_MS = 24 * 60 * 60 * 1000;
+
+// Coarse UA families that mean "a real person in a browser" (as opposed to a
+// crawler/app-builder/unknown-bot, which the AI-agent card already DMs about
+// via src/security/agentClassifier.js). A blocked hit from one of these while
+// the gate is on is the signal the owner most wants pushed — it usually means a
+// private-preview deep link leaked. Empty/non-string UAs collapse to 'unknown'
+// and are deliberately excluded (scripted clients, not humans).
+const BROWSER_FAMILIES = new Set([
+  'edge', 'opera', 'brave', 'samsung', 'firefox', 'chrome', 'safari', 'other',
+]);
 
 const _ring = []; // newest pushed at end; trimmed from front when over cap
+const _lastAlertAt = new Map(); // family → ts of last owner DM
+// family → { count, firstTs, lastTs, samplePath, sampleIp, sampleUa } accumulated
+// since the last DM, so the next digest can report how many hits + when.
+const _pending = new Map();
 
 function _push(entry) {
   _ring.push(entry);
@@ -54,20 +69,81 @@ function uaFamily(ua) {
   return 'other';
 }
 
+function _fmtTs(ts) {
+  try {
+    return new Date(ts).toLocaleString('en-AU', { timeZone: 'Australia/Sydney', hour12: false });
+  } catch (_) {
+    return new Date(ts).toISOString();
+  }
+}
+
+// Rolling 24h digest DM to the owner when a *real person* (browser UA family)
+// is blocked by the lockdown gate — the strongest signal that a private-preview
+// deep link leaked. Mirrors agentClassifier._maybeAlertOwner: the first hit per
+// family fires immediately (count 1), then we suppress for 24h while still
+// counting, and the next hit past the window flushes a digest of everything in
+// between. Bots/crawlers never reach here (filtered by caller) — they're already
+// covered by the AI-agent card. Never throws — alerting must not break the gate.
+async function _maybeAlertOwner(family, samplePath, sampleIp, sampleUa) {
+  const now = Date.now();
+  let p = _pending.get(family);
+  if (!p) {
+    p = { count: 0, firstTs: now, lastTs: now, samplePath, sampleIp, sampleUa };
+    _pending.set(family, p);
+  }
+  p.count += 1;
+  p.lastTs = now;
+  p.samplePath = samplePath;
+  p.sampleIp = sampleIp;
+  p.sampleUa = sampleUa;
+
+  const last = _lastAlertAt.get(family) || 0;
+  if (now - last < ALERT_DEDUPE_MS) return; // still suppressed — keep counting
+  _lastAlertAt.set(family, now);
+  const snap = p;
+  _pending.delete(family);
+
+  try {
+    const { getDiscordBot } = require('../discord/bot');
+    const bot = getDiscordBot();
+    if (bot && typeof bot._dmOwner === 'function') {
+      const when = snap.count > 1
+        ? `**${snap.count}** hits between \`${_fmtTs(snap.firstTs)}\` and \`${_fmtTs(snap.lastTs)}\` (Sydney time)`
+        : `**1** hit at \`${_fmtTs(snap.lastTs)}\` (Sydney time)`;
+      await bot._dmOwner(
+        `🚪 **Locked-site visitor** — \`${family}\` (real browser, not a bot)\n` +
+        `${when}\n` +
+        `Latest path: \`${snap.samplePath || '/'}\`\n` +
+        `IP: \`${snap.sampleIp || 'unknown'}\`\n` +
+        `UA: \`${_shortStr(snap.sampleUa, 200)}\`\n` +
+        `A real person hit the site while lockdown is on — likely a leaked preview link.\n` +
+        `(Next summary for this family in ~24h, if visits continue.)`
+      );
+    }
+  } catch (_) { /* never let alerting break the gate */ }
+}
+
 // Record a single gated request. Called from the lockdown middleware right
 // before it returns the block response. `decision` is 'html-gate' or
 // '401-empty'. Never throws — logging must not break the gate.
 function record({ ip, path, ua, method, decision }) {
   try {
+    const family = uaFamily(ua);
+    const cleanPath = _shortStr((path || '').split('?')[0], 200);
     _push({
       ts: Date.now(),
       ip: ip || null,
-      path: _shortStr((path || '').split('?')[0], 200),
-      family: uaFamily(ua),
+      path: cleanPath,
+      family,
       ua: _shortStr(ua, 200),
       method: method || 'GET',
       decision,
     });
+    // Only real-person browser families trigger the owner DM; bots/crawlers are
+    // already covered by the AI-agent card (Task #492). Fire-and-forget.
+    if (BROWSER_FAMILIES.has(family)) {
+      _maybeAlertOwner(family, cleanPath, ip || null, ua).catch(() => {});
+    }
   } catch (_) { /* never let the access log break the gate */ }
 }
 
@@ -128,9 +204,11 @@ function buildReport({ windowMs = 7 * 24 * 60 * 60 * 1000 } = {}) {
   };
 }
 
-// Test hook — reset the buffer between cases.
+// Test hook — reset the buffer + alert dedupe state between cases.
 function _resetForTests() {
   _ring.length = 0;
+  _lastAlertAt.clear();
+  _pending.clear();
 }
 
 module.exports = {
@@ -139,4 +217,5 @@ module.exports = {
   uaFamily,
   _resetForTests,
   RING_BUFFER_MAX,
+  BROWSER_FAMILIES,
 };
