@@ -28,6 +28,17 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const BASELINE_DIR = path.join(REPO_ROOT, 'tests', 'smoke', 'baselines');
 const SCREENSHOT_DIR = path.join(REPO_ROOT, 'tests', 'smoke', 'screenshots');
 
+// Persisted Playwright storageState (cookies) for the synthetic Steam session,
+// so consecutive runs can reuse the authenticated session instead of POSTing
+// /auth/steam/test-login every time. The file holds a live session cookie, so
+// it MUST stay out of git (tests/smoke/.auth/ is .gitignore-blocked). We treat
+// it as stale once it's older than the cutoff — comfortably under the 7-day
+// session cookie maxAge — and a reused cookie that no longer validates against
+// /api/auth/me falls through to a fresh login that re-captures the state.
+const AUTH_STATE_DIR = path.join(REPO_ROOT, 'tests', 'smoke', '.auth');
+const AUTH_STATE_PATH = path.join(AUTH_STATE_DIR, 'storage-state.json');
+const AUTH_STATE_MAX_AGE_MS = 6 * 24 * 60 * 60 * 1000; // 6 days
+
 function _ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
@@ -82,9 +93,24 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
     const url = baseUrl || process.env.SMOKE_BASE_URL || process.env.PUBLIC_BASE_URL || `http://127.0.0.1:${process.env.PORT || 5000}`;
 
     const browser = await playwright.chromium.launch({ headless: true });
+
+    // Reuse a previously-captured synthetic session when it's still fresh, so
+    // we skip the /auth/steam/test-login round-trip every run. A stale (too
+    // old) or invalid (no longer authenticates) state file is ignored — the
+    // login block below re-captures a fresh one.
+    const authConfigured = Boolean(process.env.SMOKE_TEST_LOGIN_TOKEN && process.env.SMOKE_TEST_ACCOUNT_IDS);
+    let reuseStoredState = false;
+    if (authConfigured && fs.existsSync(AUTH_STATE_PATH)) {
+      try {
+        const ageMs = Date.now() - fs.statSync(AUTH_STATE_PATH).mtimeMs;
+        if (ageMs < AUTH_STATE_MAX_AGE_MS) reuseStoredState = true;
+      } catch (_) { /* unreadable — treat as no stored state */ }
+    }
+
     const context = await browser.newContext({
       viewport: { width: 1280, height: 800 },
       ignoreHTTPSErrors: true,
+      ...(reuseStoredState ? { storageState: AUTH_STATE_PATH } : {}),
     });
 
     // Suppress site-wide modals that would otherwise overlay every screenshot.
@@ -110,23 +136,48 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
     // record as 'skipped' with a clear reason rather than crashing the
     // whole run.
     let authReady = false, authSkipReason = null;
-    if (process.env.SMOKE_TEST_LOGIN_TOKEN && process.env.SMOKE_TEST_ACCOUNT_IDS) {
-      try {
-        const loginRes = await context.request.post(url + '/auth/steam/test-login', {
-          headers: {
-            'Authorization': `Bearer ${process.env.SMOKE_TEST_LOGIN_TOKEN}`,
-            'Content-Type': 'application/json',
-          },
-          data: {},
-          timeout: 10_000,
-        });
-        if (loginRes.ok()) authReady = true;
-        else authSkipReason = `test-login returned HTTP ${loginRes.status()}`;
-      } catch (e) {
-        authSkipReason = `test-login request failed: ${e.message}`;
-      }
-    } else {
+    if (!authConfigured) {
       authSkipReason = 'SMOKE_TEST_LOGIN_TOKEN / SMOKE_TEST_ACCOUNT_IDS not configured';
+    } else {
+      // If we loaded a stored session, confirm it still resolves to a
+      // logged-in account before trusting it. /api/auth/me returns the user
+      // object when authenticated and null otherwise — a stale cookie reads as
+      // null and we fall through to a fresh login.
+      if (reuseStoredState) {
+        try {
+          const meRes = await context.request.get(url + '/api/auth/me', { timeout: 10_000 });
+          if (meRes.ok()) {
+            const me = await meRes.json().catch(() => null);
+            if (me && me.accountId) authReady = true;
+          }
+        } catch (_) { /* reuse failed — fresh login below */ }
+      }
+      // Fresh synthetic login when we couldn't reuse a valid session. On
+      // success, capture the authenticated storageState so the next run can
+      // reuse it instead of logging in again.
+      if (!authReady) {
+        try {
+          const loginRes = await context.request.post(url + '/auth/steam/test-login', {
+            headers: {
+              'Authorization': `Bearer ${process.env.SMOKE_TEST_LOGIN_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            data: {},
+            timeout: 10_000,
+          });
+          if (loginRes.ok()) {
+            authReady = true;
+            try {
+              _ensureDir(AUTH_STATE_DIR);
+              await context.storageState({ path: AUTH_STATE_PATH });
+            } catch (_) { /* state capture is best-effort — login still valid */ }
+          } else {
+            authSkipReason = `test-login returned HTTP ${loginRes.status()}`;
+          }
+        } catch (e) {
+          authSkipReason = `test-login request failed: ${e.message}`;
+        }
+      }
     }
 
     try {

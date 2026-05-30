@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.22",
+    "title": "Browser-smoke: deeper signed-in journeys + session reuse (Task #488)",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** The smoke suite's authenticated tail only covered the signed-in `/profile` and `/inhouse` pages. The highest-value regressions hide on surfaces an anonymous visitor never sees, so the suite now drives more of the signed-in app through the existing synthetic Steam test-login.",
+      "**New signed-in journeys.** Added the coach earnings dashboard (`/coach/earnings`), the Draft & Assistant page (`/draft`), and the Pro upsell / checkout-intent page (`/pro`) to `src/smoke/journeys.js`, all gated behind the synthetic login. There is no standalone \"captain draft\" route — captain draft is an in-lobby phase of `/inhouse` that needs a live 10-player lobby, which a smoke run can't deterministically reach — so the draft assistant is the closest stable draft surface.",
+      "**Session reuse via storageState.** The runner now persists the authenticated Playwright `storageState` to `tests/smoke/.auth/storage-state.json` after a successful test-login and reuses it on subsequent runs (validated against `/api/auth/me`, refreshed once older than 6 days or when the cookie no longer authenticates), so it stops round-tripping the login endpoint every run. The state file holds a live session cookie and is `.gitignore`-blocked so it can never be committed.",
+      "**Scope.** Full edition smoke harness only; no schema, payment, or community-edition changes. Authenticated journeys still record as `skipped` with a clear reason when `SMOKE_TEST_LOGIN_TOKEN` / `SMOKE_TEST_ACCOUNT_IDS` aren't configured."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.21",
     "title": "Browser-smoke: fix the inhouse false-failure + easier access (Task #487)",
     "published_at": "2026-05-30",

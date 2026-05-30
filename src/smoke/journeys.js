@@ -41,8 +41,21 @@ const JOURNEYS = [
   { key: 'health_json',  path: '/api/health',                      label: '/v1/health endpoint', expect: null, asJson: true },
 
   // ── Authenticated journeys (require SMOKE_TEST_LOGIN_TOKEN) ────────────
-  { key: 'auth_profile',  path: '/profile',                  label: 'Signed-in profile',     expect: '.profile, h1, h2', auth: true },
-  { key: 'auth_inhouse',  path: '/inhouse',                  label: 'Inhouse lobby (signed-in)', expect: 'h1, button, .inhouse', auth: true },
+  // These exercise surfaces an anonymous visitor never sees — the signed-in
+  // profile, the coach earnings dashboard, the inhouse seat-registration flow,
+  // the draft assistant, and the Pro upsell / checkout-intent page. They run
+  // only when the synthetic Steam test-login is configured; otherwise the
+  // runner records each as 'skipped' with a clear reason.
+  //
+  // Note: there is no standalone "captain draft" route — captain draft is an
+  // in-lobby phase of /inhouse that needs a live 10-player lobby in the draft
+  // state, which a smoke run can't deterministically reach. The closest stable
+  // draft surface is the Draft & Assistant page (/draft), covered below.
+  { key: 'auth_profile',       path: '/profile',        label: 'Signed-in profile',                expect: '.profile, h1, h2',                                   auth: true },
+  { key: 'auth_inhouse',       path: '/inhouse',        label: 'Inhouse lobby (signed-in)',        expect: 'h1, button, .inhouse',                               auth: true },
+  { key: 'auth_coach_earnings',path: '/coach/earnings', label: 'Coach earnings (signed-in)',       expect: 'h1',                                                 auth: true },
+  { key: 'auth_draft',         path: '/draft',          label: 'Draft assistant (signed-in)',      expect: '.page-title, .scoreboard-wrapper, .empty-state, table, h1', auth: true },
+  { key: 'auth_pro',           path: '/pro',            label: 'Pro upsell / checkout intent (signed-in)', expect: '.page-title, h1, .loading',                  auth: true },
 ];
 
 // Pixel-diff tolerance: a step fails if the proportion of differing pixels
