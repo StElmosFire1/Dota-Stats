@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.29",
+    "title": "Lock down the smurf detector's fingerprint overlap math with tests",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** The fingerprint signal depends on a three-piece round-trip — session middleware stamps `sess.ip`/`sess.ua`, the scorer's index reads them back, and the overlap math turns a shared machine into points. Nothing tested that chain, so a regression in any piece would silently revert the signal to 'no data' with no visible failure.",
+      "**Coverage.** New `tests/smurfFingerprint.test.js` asserts: two accounts with a shared hashed IP produce a >0 contribution that names the partner; the no-overlap case returns 0 with the 'no overlapping fingerprints' detail; an empty index degrades to 'no fingerprint data available'; `stampSession` is a no-op for anonymous sessions and a write for authenticated ones (and a no-op re-stamp inside the refresh window); and an end-to-end round-trip where middleware-written prints flow through the index into the scorer.",
+      "**Scope.** Tests only — no runtime, schema, payment, or community-edition changes."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.28",
     "title": "Smurf Watch: see which accounts share a fingerprint with the suspect",
     "published_at": "2026-05-30",
