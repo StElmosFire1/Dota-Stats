@@ -12,13 +12,16 @@ import {
   Star, 
   Award,
   Lock,
-  Search,
   Crosshair,
   Zap,
-  BarChart3
+  Coins,
+  Heart,
+  ThumbsUp,
+  Sparkles
 } from "lucide-react";
 import "./_group.css";
 import { PressBoxNav } from "./_shared/PressBoxNav";
+import { TierEmblem, COSMETIC_FRAMES, TIERS } from "./_shared/PressBoxRank";
 
 // -----------------------------------------------------------------------------
 // INLINE SVG CHARTS
@@ -87,6 +90,46 @@ function PerfChart() {
   );
 }
 
+function KdaGpmChart() {
+  const kda = [2.1, 3.4, 2.8, 4.0, 3.1, 5.2, 4.4, 3.9, 6.1, 5.5, 4.8, 6.4];
+  const gpm = [410, 520, 480, 610, 540, 700, 650, 590, 760, 720, 680, 790];
+
+  const toPoints = (arr: number[]) => {
+    const min = Math.min(...arr);
+    const max = Math.max(...arr);
+    const span = max - min || 1;
+    return arr
+      .map((v, i) => {
+        const x = (i / (arr.length - 1)) * 100;
+        const y = 92 - ((v - min) / span) * 84;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
+  };
+
+  const kdaPts = toPoints(kda);
+  const gpmPts = toPoints(gpm);
+
+  return (
+    <div className="relative w-full h-[200px]">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+        {[20, 40, 60, 80].map((y) => (
+          <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="var(--pb-line)" strokeWidth="0.4" strokeDasharray="2 2" />
+        ))}
+        <defs>
+          <linearGradient id="gpm-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--pb-radiant)" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="var(--pb-radiant)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points={`0,100 ${gpmPts} 100,100`} fill="url(#gpm-fill)" />
+        <polyline points={gpmPts} fill="none" stroke="var(--pb-radiant)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        <polyline points={kdaPts} fill="none" stroke="var(--pb-brass-bright)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="0" />
+      </svg>
+    </div>
+  );
+}
+
 // -----------------------------------------------------------------------------
 // MAIN COMPONENT
 // -----------------------------------------------------------------------------
@@ -101,9 +144,17 @@ export function PlayerProfile() {
         <header className="flex flex-col md:flex-row gap-8 items-start md:items-end justify-between mb-16">
           <div className="flex items-end gap-8">
             <div className="relative">
-              <div className="w-32 h-32 md:w-40 md:h-40 rounded-xl overflow-hidden border-2 border-[var(--pb-brass)] shadow-[0_0_30px_rgba(197,169,117,0.15)] relative z-10">
+              <div
+                className="w-32 h-32 md:w-40 md:h-40 rounded-xl overflow-hidden relative z-10"
+                style={COSMETIC_FRAMES.founder.style}
+              >
                 <img src="/__mockup/images/upscale-player-avatar.png" alt="Kelsier" className="w-full h-full object-cover" />
               </div>
+              {/* Tier emblem badge */}
+              <div className="absolute -top-3 -left-3 z-20 drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]">
+                <TierEmblem tier={7} size={48} />
+              </div>
+              {/* Ladder rank badge */}
               <div className="absolute -bottom-4 -right-4 w-12 h-12 bg-[var(--pb-surface)] border border-[var(--pb-brass)] rounded-full flex items-center justify-center z-20 shadow-lg">
                 <span className="pb-serif text-xl text-[var(--pb-brass-bright)]">#4</span>
               </div>
@@ -157,6 +208,31 @@ export function PlayerProfile() {
           </div>
         </header>
 
+        {/* ANNIVERSARY RIBBON */}
+        <div className="relative mb-12 overflow-hidden pb-card border-[var(--pb-brass)]/40 flex flex-col md:flex-row items-center justify-between gap-4 px-8 py-5">
+          <div className="absolute top-0 left-0 w-72 h-full bg-[var(--pb-brass)]/5 blur-[80px] rounded-full pointer-events-none" />
+          <div className="flex items-center gap-5 relative z-10">
+            <div className="w-12 h-12 rounded-full border border-[var(--pb-brass)] bg-[var(--pb-brass)]/10 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-6 h-6 text-[var(--pb-brass-bright)]" />
+            </div>
+            <div>
+              <div className="pb-eyebrow text-[var(--pb-brass)] mb-1">League Anniversary</div>
+              <div className="pb-serif text-2xl text-[var(--pb-text)]">5 Years in the Press Box</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-8 relative z-10">
+            <div className="text-center">
+              <div className="pb-serif text-2xl text-[var(--pb-brass-bright)]">Mar 2021</div>
+              <div className="pb-eyebrow text-[var(--pb-faint)]">Member Since</div>
+            </div>
+            <div className="w-px h-10 bg-[var(--pb-line)]" />
+            <div className="text-center">
+              <div className="pb-serif text-2xl text-[var(--pb-text)]">Season 1</div>
+              <div className="pb-eyebrow text-[var(--pb-faint)]">Charter Class</div>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-16">
           {/* MMR HISTORY */}
           <div className="pb-card p-6 lg:col-span-7 flex flex-col">
@@ -193,6 +269,45 @@ export function PlayerProfile() {
               <div className="flex justify-between mt-4 text-[10px] pb-cond tracking-widest text-[var(--pb-faint)]">
                 <span>10 MATCHES AGO</span>
                 <span>CURRENT</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ROLLING KDA / GPM */}
+        <div className="pb-card p-6 mb-16 flex flex-col">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-8 border-b border-[var(--pb-line)] pb-4">
+            <div className="flex items-center gap-3">
+              <Activity className="w-5 h-5 text-[var(--pb-brass)]" />
+              <h2 className="pb-cond text-lg tracking-widest text-[var(--pb-text)] m-0">ROLLING FORM — LAST 12</h2>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-0.5 rounded-full bg-[var(--pb-brass-bright)]" />
+                <span className="pb-eyebrow text-[var(--pb-faint)]">KDA Ratio</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-0.5 rounded-full bg-[var(--pb-radiant)]" />
+                <span className="pb-eyebrow text-[var(--pb-faint)]">GPM</span>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-center">
+            <div className="md:col-span-3">
+              <KdaGpmChart />
+              <div className="flex justify-between mt-3 text-[10px] pb-cond tracking-widest text-[var(--pb-faint)]">
+                <span>12 MATCHES AGO</span>
+                <span>LATEST</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-1 gap-4">
+              <div className="pb-card p-4 text-center">
+                <div className="pb-serif text-2xl text-[var(--pb-brass-bright)]">6.4</div>
+                <div className="pb-eyebrow text-[var(--pb-faint)] mt-1">Avg KDA</div>
+              </div>
+              <div className="pb-card p-4 text-center">
+                <div className="pb-serif text-2xl text-[var(--pb-radiant)]">790</div>
+                <div className="pb-eyebrow text-[var(--pb-faint)] mt-1">Peak GPM</div>
               </div>
             </div>
           </div>
@@ -330,6 +445,96 @@ export function PlayerProfile() {
           </div>
 
         </div>
+
+        {/* HALL OF FAME PLAQUES */}
+        <div className="mt-16">
+          <div className="flex items-center justify-between mb-6 border-b border-[var(--pb-line)] pb-4">
+            <div className="flex items-center gap-3">
+              <Award className="w-5 h-5 text-[var(--pb-brass)]" />
+              <h2 className="pb-cond text-lg tracking-widest text-[var(--pb-text)] m-0">HALL OF FAME PLAQUES</h2>
+            </div>
+            <span className="pb-eyebrow text-[var(--pb-faint)]">League Records Held</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              { record: "Most Kills — Single Match", value: "31", meta: "vs Apex • S9 Finals", icon: Swords },
+              { record: "Longest Win Streak", value: "18", meta: "Season 7", icon: Flame },
+              { record: "Highest GPM on Record", value: "1,042", meta: "Anti-Mage • S10", icon: Coins },
+            ].map((p, i) => (
+              <div key={i} className="pb-card p-6 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-40 h-full bg-[var(--pb-brass)]/5 blur-[60px] rounded-full pointer-events-none" />
+                <div
+                  className="relative rounded-lg px-5 py-5 text-center"
+                  style={{ border: "1px solid var(--pb-brass)", background: "linear-gradient(160deg, rgba(197,169,117,0.10), transparent)" }}
+                >
+                  <p.icon className="w-5 h-5 text-[var(--pb-brass-bright)] mx-auto mb-3" />
+                  <div className="pb-eyebrow text-[var(--pb-brass)] mb-2">{p.record}</div>
+                  <div className="pb-serif text-4xl text-[var(--pb-brass-bright)] leading-none mb-2">{p.value}</div>
+                  <div className="text-[11px] text-[var(--pb-faint)] pb-cond tracking-wider uppercase">{p.meta}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* COMMUNITY MOOD */}
+        <div className="mt-16">
+          <div className="flex items-center justify-between mb-6 border-b border-[var(--pb-line)] pb-4">
+            <div className="flex items-center gap-3">
+              <Heart className="w-5 h-5 text-[var(--pb-brass)]" />
+              <h2 className="pb-cond text-lg tracking-widest text-[var(--pb-text)] m-0">COMMUNITY MOOD</h2>
+            </div>
+            <span className="pb-eyebrow text-[var(--pb-faint)]">From 214 Teammates</span>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Sentiment meter */}
+            <div className="pb-card p-6 lg:col-span-1 flex flex-col justify-center">
+              <div className="flex items-end gap-3 mb-3">
+                <span className="pb-serif text-5xl text-[var(--pb-radiant)] leading-none">94%</span>
+                <span className="pb-eyebrow text-[var(--pb-faint)] mb-1">Positive</span>
+              </div>
+              <div className="h-2 w-full rounded-full overflow-hidden bg-[var(--pb-elevated)] flex">
+                <div className="h-full bg-[var(--pb-radiant)]" style={{ width: "94%" }} />
+                <div className="h-full bg-[var(--pb-dire)]" style={{ width: "6%" }} />
+              </div>
+              <p className="text-xs text-[var(--pb-muted)] mt-4 leading-relaxed">
+                Aggregated post-match endorsements across the last two seasons.
+              </p>
+            </div>
+            {/* Commend breakdown */}
+            <div className="pb-card p-6 lg:col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                {[
+                  { label: "Friendly", count: 142, icon: Heart },
+                  { label: "Teamwork", count: 119, icon: ThumbsUp },
+                  { label: "Leadership", count: 87, icon: Star },
+                ].map((c, i) => {
+                  const max = 142;
+                  return (
+                    <div key={i} className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2 text-[var(--pb-brass)]">
+                        <c.icon className="w-4 h-4" />
+                        <span className="pb-cond text-sm tracking-widest uppercase text-[var(--pb-text)]">{c.label}</span>
+                      </div>
+                      <div className="pb-serif text-3xl text-[var(--pb-brass-bright)] leading-none">{c.count}</div>
+                      <div className="h-1.5 w-full rounded-full overflow-hidden bg-[var(--pb-elevated)]">
+                        <div className="h-full bg-[var(--pb-brass)] rounded-full" style={{ width: `${(c.count / max) * 100}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-6 pt-5 border-t border-[var(--pb-line)] flex flex-wrap gap-2">
+                {["Calm under pressure", "Great shotcaller", "Reliable support", "Positive attitude"].map((tag) => (
+                  <span key={tag} className="px-3 py-1.5 rounded-full text-xs pb-cond tracking-wider bg-[var(--pb-elevated)] border border-[var(--pb-line)] text-[var(--pb-muted)]">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
       </main>
     </div>
   );

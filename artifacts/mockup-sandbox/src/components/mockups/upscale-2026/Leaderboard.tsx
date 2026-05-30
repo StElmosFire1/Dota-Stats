@@ -13,22 +13,27 @@ import {
 } from 'lucide-react';
 import './_group.css';
 import { PressBoxNav } from './_shared/PressBoxNav';
+import { TierEmblem, FramedRank, TIERS, type TierLevel, type FrameSlug } from './_shared/PressBoxRank';
 
 // ----------------------------------------------------------------------
 // Mock Data
 // ----------------------------------------------------------------------
 
-const MOCK_LEADERBOARD = [
-  { id: '1', rank: 1, name: 'Slickz', isPro: true, isFounder: false, tier: 'Divine', mmr: 8140, winRate: 62.4, wins: 48, losses: 29, streak: ['W', 'W', 'W', 'L', 'W'] },
-  { id: '2', rank: 2, name: 'QO', isPro: true, isFounder: true, tier: 'Divine', mmr: 8095, winRate: 59.8, wins: 55, losses: 37, streak: ['L', 'W', 'W', 'W', 'W'] },
-  { id: '3', rank: 3, name: 'Kpii', isPro: true, isFounder: false, tier: 'Divine', mmr: 7920, winRate: 58.1, wins: 43, losses: 31, streak: ['W', 'L', 'W', 'L', 'W'] },
-  { id: '4', rank: 4, name: 'kstars', isPro: false, isFounder: true, tier: 'Immortal', mmr: 7450, winRate: 54.2, wins: 65, losses: 55, streak: ['W', 'W', 'L', 'L', 'L'] },
-  { id: '5', rank: 5, name: 'Splicko', isPro: false, isFounder: false, tier: 'Immortal', mmr: 7380, winRate: 55.6, wins: 50, losses: 40, streak: ['L', 'L', 'W', 'W', 'L'] },
-  { id: '6', rank: 6, name: 'mizu', isPro: false, isFounder: false, tier: 'Immortal', mmr: 7120, winRate: 53.0, wins: 35, losses: 31, streak: ['W', 'L', 'L', 'W', 'W'] },
-  { id: '7', rank: 7, name: 'Batz', isPro: true, isFounder: false, tier: 'Immortal', mmr: 7050, winRate: 51.5, wins: 34, losses: 32, streak: ['L', 'W', 'L', 'L', 'W'] },
-  { id: '8', rank: 8, name: 'Ducks', isPro: false, isFounder: true, tier: 'Ascendant', mmr: 6890, winRate: 52.8, wins: 28, losses: 25, streak: ['W', 'W', 'W', 'W', 'L'] },
-  { id: '9', rank: 9, name: 'vtfaded', isPro: true, isFounder: false, tier: 'Ascendant', mmr: 6740, winRate: 50.1, wins: 41, losses: 40, streak: ['L', 'L', 'W', 'L', 'L'] },
-  { id: '10', rank: 10, name: 'Ranger', isPro: false, isFounder: false, tier: 'Ascendant', mmr: 6600, winRate: 49.5, wins: 30, losses: 31, streak: ['W', 'L', 'W', 'L', 'W'] },
+const MOCK_LEADERBOARD: {
+  id: string; rank: number; name: string; isPro: boolean; isFounder: boolean;
+  tierLevel: TierLevel; frame: FrameSlug; mmr: number; winRate: number;
+  wins: number; losses: number; streak: string[];
+}[] = [
+  { id: '1', rank: 1, name: 'Slickz', isPro: true, isFounder: true, tierLevel: 8, frame: 'founder', mmr: 8140, winRate: 62.4, wins: 48, losses: 29, streak: ['W', 'W', 'W', 'L', 'W'] },
+  { id: '2', rank: 2, name: 'QO', isPro: true, isFounder: true, tierLevel: 7, frame: 'cosmic', mmr: 8095, winRate: 59.8, wins: 55, losses: 37, streak: ['L', 'W', 'W', 'W', 'W'] },
+  { id: '3', rank: 3, name: 'Kpii', isPro: true, isFounder: false, tierLevel: 7, frame: 'gold', mmr: 7920, winRate: 58.1, wins: 43, losses: 31, streak: ['W', 'L', 'W', 'L', 'W'] },
+  { id: '4', rank: 4, name: 'kstars', isPro: false, isFounder: true, tierLevel: 6, frame: 'neon-blue', mmr: 7450, winRate: 54.2, wins: 65, losses: 55, streak: ['W', 'W', 'L', 'L', 'L'] },
+  { id: '5', rank: 5, name: 'Splicko', isPro: false, isFounder: false, tierLevel: 6, frame: 'fire', mmr: 7380, winRate: 55.6, wins: 50, losses: 40, streak: ['L', 'L', 'W', 'W', 'L'] },
+  { id: '6', rank: 6, name: 'mizu', isPro: false, isFounder: false, tierLevel: 5, frame: 'silver', mmr: 7120, winRate: 53.0, wins: 35, losses: 31, streak: ['W', 'L', 'L', 'W', 'W'] },
+  { id: '7', rank: 7, name: 'Batz', isPro: true, isFounder: false, tierLevel: 5, frame: 'gold', mmr: 7050, winRate: 51.5, wins: 34, losses: 32, streak: ['L', 'W', 'L', 'L', 'W'] },
+  { id: '8', rank: 8, name: 'Ducks', isPro: false, isFounder: true, tierLevel: 4, frame: 'cosmic', mmr: 6890, winRate: 52.8, wins: 28, losses: 25, streak: ['W', 'W', 'W', 'W', 'L'] },
+  { id: '9', rank: 9, name: 'vtfaded', isPro: true, isFounder: false, tierLevel: 4, frame: 'neon-blue', mmr: 6740, winRate: 50.1, wins: 41, losses: 40, streak: ['L', 'L', 'W', 'L', 'L'] },
+  { id: '10', rank: 10, name: 'Ranger', isPro: false, isFounder: false, tierLevel: 3, frame: 'silver', mmr: 6600, winRate: 49.5, wins: 30, losses: 31, streak: ['W', 'L', 'W', 'L', 'W'] },
 ];
 
 const SPOTLIGHTS = [
@@ -176,19 +181,11 @@ export function Leaderboard() {
                     className="border-b pb-hairline hover:bg-[var(--pb-surface-2)] transition-colors group"
                   >
                     <td className="px-6 py-4">
-                      {player.rank <= 3 ? (
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--pb-elevated)] border border-[var(--pb-brass)]">
-                          <span className="pb-serif text-lg text-[var(--pb-brass-bright)] font-bold">{player.rank}</span>
-                        </div>
-                      ) : (
-                        <div className="w-8 h-8 flex items-center justify-center text-[var(--pb-muted)] font-medium">
-                          {player.rank}
-                        </div>
-                      )}
+                      <FramedRank rank={player.rank} frame={player.frame} size={40} />
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full border pb-hairline bg-[var(--pb-bg-2)] overflow-hidden"></div>
+                        <TierEmblem tier={player.tierLevel} size={36} />
                         <span className="font-semibold text-[var(--pb-text)] text-lg">{player.name}</span>
                         <div className="flex gap-1 ml-1">
                           {player.isPro && (
@@ -205,7 +202,7 @@ export function Leaderboard() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-[var(--pb-muted)] text-sm font-medium">{player.tier}</span>
+                      <span className="pb-cond text-sm tracking-widest uppercase text-[var(--pb-brass)]">{TIERS[player.tierLevel].name}</span>
                     </td>
                     <td className="px-6 py-4">
                       <span className="pb-serif text-xl text-[var(--pb-brass-bright)] tracking-tight">

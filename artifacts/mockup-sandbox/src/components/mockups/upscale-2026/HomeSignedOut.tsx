@@ -1,10 +1,11 @@
 import React from "react";
 import {
   Trophy, ArrowUpRight, Users, ArrowRight, ShieldHalf, Swords,
-  BarChart3, Crown, Medal, Calendar, Zap, Coins,
+  BarChart3, Calendar, Zap, Coins,
 } from "lucide-react";
 import "./_group.css";
 import { PressBoxNav } from "./_shared/PressBoxNav";
+import { TierEmblem, FramedRank, TIERS, type TierLevel, type FrameSlug } from "./_shared/PressBoxRank";
 
 function SteamIcon({ className = "" }: { className?: string }) {
   return (
@@ -129,11 +130,11 @@ export function HomeSignedOut() {
               </button>
             </div>
             <div className="space-y-3">
-              <LadderRow rank={1} name="razorlight" tier="Immortal" rating="7,140" wr="61%" />
-              <LadderRow rank={2} name="quietstorm" tier="Immortal" rating="6,985" wr="58%" />
-              <LadderRow rank={3} name="ember.oce" tier="Divine" rating="6,720" wr="57%" />
-              <LadderRow rank={4} name="nightfall" tier="Divine" rating="6,544" wr="55%" />
-              <LadderRow rank={5} name="lotus" tier="Divine" rating="6,488" wr="54%" />
+              <LadderRow rank={1} name="razorlight" tierLevel={8} frame="founder" rating="7,140" wr="61%" />
+              <LadderRow rank={2} name="quietstorm" tierLevel={7} frame="cosmic" rating="6,985" wr="58%" />
+              <LadderRow rank={3} name="ember.oce" tierLevel={7} frame="gold" rating="6,720" wr="57%" />
+              <LadderRow rank={4} name="nightfall" tierLevel={6} frame="neon-blue" rating="6,544" wr="55%" />
+              <LadderRow rank={5} name="lotus" tierLevel={6} frame="fire" rating="6,488" wr="54%" />
             </div>
           </div>
 
@@ -240,26 +241,15 @@ function PulseStat({ icon, value, label, accent = false }: { icon: React.ReactNo
   );
 }
 
-function LadderRow({ rank, name, tier, rating, wr }: { rank: number; name: string; tier: string; rating: string; wr: string }) {
-  const medal = rank === 1 ? "var(--pb-brass-bright)" : rank === 2 ? "#c0c5ce" : rank === 3 ? "#b08d57" : "var(--pb-faint)";
+function LadderRow({ rank, name, tierLevel, frame, rating, wr }: { rank: number; name: string; tierLevel: TierLevel; frame: FrameSlug; rating: string; wr: string }) {
   return (
     <div className="pb-card p-4 flex items-center justify-between hover:border-[var(--pb-brass)]/50 transition-colors group">
       <div className="flex items-center gap-5">
-        <div className="w-8 text-center">
-          {rank <= 3 ? (
-            rank === 1
-              ? <Crown className="w-5 h-5 mx-auto" style={{ color: medal }} />
-              : <Medal className="w-5 h-5 mx-auto" style={{ color: medal }} />
-          ) : (
-            <span className="pb-serif text-lg" style={{ color: medal }}>{rank}</span>
-          )}
-        </div>
-        <div className="w-10 h-10 rounded-full border border-[var(--pb-line)] bg-[var(--pb-elevated)] flex items-center justify-center pb-serif text-sm text-[var(--pb-brass-bright)]">
-          {name.charAt(0).toUpperCase()}
-        </div>
+        <TierEmblem tier={tierLevel} size={40} />
+        <FramedRank rank={rank} frame={frame} size={44} />
         <div>
           <div className="text-[var(--pb-text)] font-medium mb-0.5">{name}</div>
-          <div className="text-[10px] uppercase tracking-widest text-[var(--pb-faint)]">{tier}</div>
+          <div className="text-[10px] uppercase tracking-widest text-[var(--pb-faint)]">{TIERS[tierLevel].name}</div>
         </div>
       </div>
       <div className="flex items-center gap-8 text-right">
