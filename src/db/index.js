@@ -14507,6 +14507,36 @@ async function awardSeasonPassXp({ accountId, seasonNumber, matchId, source, xpD
   return r.rowCount > 0;
 }
 
+// Task #542 — Daily mini-games XP hook into the Season Pass ledger.
+// Called best-effort from src/games/routes.js (`awardGameXp`) with
+// source = `game:<game>` and amount = 25 (win) / 5 (play). XP is granted into
+// the current active season's ledger. Idempotency is per Sydney-calendar-day:
+// the `season_pass_xp_events` UNIQUE (account, season, match_id, source)
+// constraint dedups when match_id is non-null, so we stamp the daily key into
+// match_id (`daily:<YYYY-MM-DD>`). This guarantees at most one grant per game
+// per player per day even if the hook fires more than once. Returns true only
+// when a fresh row was inserted; never throws (quests are an optional bonus).
+async function awardQuestXp(accountId, source, amount) {
+  try {
+    if (!accountId || !source || typeof amount !== 'number') return false;
+    const a = await getActiveSeason();
+    if (!a) return false;
+    const { sydneyDateStr } = require('../games/seed');
+    const dayKey = `daily:${sydneyDateStr()}`;
+    return await awardSeasonPassXp({
+      accountId,
+      seasonNumber: a.id,
+      matchId: dayKey,
+      source,
+      xpDelta: amount,
+      notes: 'Daily mini-game',
+    });
+  } catch (_) {
+    // Quests / season-pass are an optional bonus — never block a game result.
+    return false;
+  }
+}
+
 // Grant win/loss + hot-streak XP for every player in a freshly-recorded match.
 // Hot streaks are awarded when the player's rolling win streak reaches a
 // 5- or 10-game threshold for the first time in this season (idempotent
@@ -24938,6 +24968,7 @@ module.exports = {
   getHeroMetaV2,
   getDraftSuggestionsV2,
   awardSeasonPassXp,
+  awardQuestXp,
   grantSeasonPassXpForMatch,
   grantSeasonPassXpForMatchMvp,
   getSeasonPassProgress,

@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.34",
+    "title": "Daily mini-games now reward Season Pass XP",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** The daily mini-games suite carried a best-effort XP hook that was a silent no-op because the quests / Season Pass plumbing it called (`db.awardQuestXp`) didn't exist yet. Now that the quests system has landed, finishing a daily puzzle actually earns XP.",
+      "**Backing implemented.** `db.awardQuestXp(accountId, source, amount)` writes into the same `season_pass_xp_events` ledger the match XP uses. A recorded daily result grants **25 XP for a win, 5 for a play**, sourced as `game:<game>`.",
+      "**No farming.** Only *daily* results earn XP — endless mode is unlimited and is excluded. Grants are idempotent per Sydney-calendar-day (the daily key is stamped into the ledger's `match_id`), so a repeated finish for the same game/day can never double-grant.",
+      "**Graceful degradation.** The hook stays a safe no-op when there's no active season or the helper is absent, and never blocks or rolls back a recorded game result.",
+      "**Scope.** Full edition only — the community edition has no mini-games suite."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.33",
     "title": "Voiceline daily mini-game is live",
     "published_at": "2026-05-30",

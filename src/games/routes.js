@@ -13,8 +13,11 @@ const heroData = require('./heroData');
 const itemData = require('./itemData');
 const voiceData = require('./voiceData');
 
-// Best-effort XP hookup to the quests system (Task #440). That task isn't
-// merged yet, so this stays a no-op unless the helper appears later.
+// Best-effort XP hookup to the quests / Season Pass system (Task #440 / #542).
+// Awards Season Pass XP for a recorded *daily* result — 25 for a win, 5 for a
+// play — sourced as `game:<game>`. db.awardQuestXp is idempotent per
+// Sydney-calendar-day, so re-fires for the same game/day never double-grant.
+// Degrades to a no-op if the helper isn't present (e.g. community edition).
 async function awardGameXp(db, accountId, game, won) {
   try {
     if (db && typeof db.awardQuestXp === 'function') {
@@ -303,7 +306,10 @@ function mountGamesRoutes({ router, express, db }) {
               guesses: finalGuesses, won: didWin,
             });
             out.recorded = recorded;
-            if (recorded) await awardGameXp(db, acct, game, didWin);
+            // Only daily results earn Season Pass XP (endless is unlimited and
+            // would let players farm XP); recordGameResult already dedups daily
+            // to one row per day, and awardQuestXp is idempotent per day too.
+            if (recorded && mode === 'daily') await awardGameXp(db, acct, game, didWin);
           } catch (e) {
             out.recorded = false;
           }
