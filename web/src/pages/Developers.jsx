@@ -80,6 +80,45 @@ const EVENTS = [
   { name: 'coaching.booked', desc: 'A coaching session was booked and paid.' },
 ];
 
+// Official client libraries (Task #462). The call expression per endpoint id
+// drives the "Use the SDK" sample rendered on each endpoint card below.
+// Keyed by ENDPOINTS[].id — keep in lockstep when adding endpoints (the
+// developerSdkSamples test fails otherwise).
+const SDK_CALLS = {
+  status:            { js: 'client.status()',                          py: 'client.status()' },
+  me:                { js: 'client.me()',                              py: 'client.me()' },
+  matches:           { js: 'client.matches({ limit: 50 })',           py: 'client.matches(limit=50)' },
+  match:             { js: "client.match('7821345921')",              py: 'client.match("7821345921")' },
+  leaderboard:       { js: 'client.leaderboard({ limit: 10 })',       py: 'client.leaderboard(limit=10)' },
+  profile:           { js: "client.profile('76561198000000000')",     py: 'client.profile("76561198000000000")' },
+  teams:             { js: 'client.teams({ limit: 50 })',             py: 'client.teams(limit=50)' },
+  team:              { js: 'client.team(1)',                          py: 'client.team(1)' },
+  inhouse:           { js: 'client.inhouseStatus()',                  py: 'client.inhouse_status()' },
+  tournaments:       { js: 'client.tournaments()',                    py: 'client.tournaments()' },
+  tournament:        { js: 'client.tournament(1)',                    py: 'client.tournament(1)' },
+  coaches:           { js: 'client.coaches()',                        py: 'client.coaches()' },
+  availability:      { js: 'client.coachAvailability(1)',             py: 'client.coach_availability(1)' },
+  'webhooks-list':   { js: 'client.webhooks.list()',                  py: 'client.webhooks.list()' },
+  'webhooks-create': {
+    js: "client.webhooks.create({ url: 'https://example.com/hook', events: ['match.finalized'] })",
+    py: 'client.webhooks.create(url="https://example.com/hook", events=["match.finalized"])',
+  },
+};
+
+function sdkSamples(endpoint) {
+  const call = SDK_CALLS[endpoint.id];
+  if (!call) return null;
+  const js = `import { OceInhouseClient } from '@oce-inhouse/sdk';
+const client = new OceInhouseClient({ apiKey: 'oi_pro_…' });
+
+const data = await ${call.js};`;
+  const py = `from oce_inhouse import OceInhouseClient
+client = OceInhouseClient(api_key="oi_pro_…")
+
+data = ${call.py}`;
+  return { js, py };
+}
+
 const Section = ({ id, title, children }) => (
   <section id={id} style={{ marginBottom: 32 }}>
     <h2 style={{ borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>{title}</h2>
@@ -96,6 +135,20 @@ const Code = ({ children }) => (
 
 function fillPath(path, values) {
   return path.replace(/:([a-zA-Z]+)/g, (_, k) => encodeURIComponent(values[k] ?? `:${k}`));
+}
+
+function SdkSample({ endpoint }) {
+  const samples = sdkSamples(endpoint);
+  if (!samples) return null;
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Use the SDK</div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 2 }}>TypeScript / Node</div>
+      <Code>{samples.js}</Code>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', margin: '6px 0 2px' }}>Python</div>
+      <Code>{samples.py}</Code>
+    </div>
+  );
 }
 
 function TryIt({ endpoint }) {
@@ -263,6 +316,18 @@ export default function Developers() {
   -H "Authorization: Bearer oi_fre_XXXXXXXXXXXXXXXXXXXX"`}</Code>
       </Section>
 
+      <Section id="client-libraries" title="Client libraries">
+        <p>
+          Official thin clients wrap every endpoint below with bearer auth, automatic retry on{' '}
+          <code>429</code>, and a signed-webhook verifier. Each endpoint card has a copy-paste{' '}
+          <em>Use the SDK</em> sample.
+        </p>
+        <p style={{ fontSize: 14, marginBottom: 4 }}><strong>TypeScript / Node</strong> (Node 18+):</p>
+        <Code>{`npm install @oce-inhouse/sdk`}</Code>
+        <p style={{ fontSize: 14, margin: '8px 0 4px' }}><strong>Python</strong> (3.8+, zero dependencies):</p>
+        <Code>{`pip install oce-inhouse-sdk`}</Code>
+      </Section>
+
       <Section id="auth-scopes" title="Authentication &amp; scopes">
         <p>Every request needs a key. Each key carries a set of scopes — endpoints check for the
         scope they require and reject with <code>403 insufficient_scope</code> otherwise.</p>
@@ -332,6 +397,7 @@ export default function Developers() {
                 {isOpen && (
                   <div style={{ padding: 10, borderTop: '1px solid var(--border)' }}>
                     <div style={{ fontSize: 14, marginBottom: 8 }}>{e.desc}</div>
+                    <SdkSample endpoint={e} />
                     <TryIt endpoint={e} />
                   </div>
                 )}

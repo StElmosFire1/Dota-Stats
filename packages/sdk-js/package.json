@@ -1,0 +1,38 @@
+{
+  "name": "@oce-inhouse/sdk",
+  "version": "1.0.0",
+  "description": "Official TypeScript/Node client for the OCE Inhouse public API (matches, leaderboard, teams, tournaments, coaches, webhooks).",
+  "keywords": [
+    "dota2",
+    "oce-inhouse",
+    "api",
+    "sdk",
+    "webhooks"
+  ],
+  "license": "MIT",
+  "homepage": "https://oceinhouse.gg/developers",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/StElmosFire1/Dota-Stats-Full.git",
+    "directory": "packages/sdk-js"
+  },
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "test": "node --test test/"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "8.19",
+    "title": "Official client libraries for the public API (Task #462)",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** Task #415 shipped the v2 public API but explicitly excluded SDKs, so integrators had to hand-roll HTTP calls and — riskier — re-implement webhook signature verification by hand. Two official thin clients remove that friction and the signature-verification footguns around the new `match.finalized` event.",
+      "**TypeScript / Node** (`@oce-inhouse/sdk`, `packages/sdk-js`). Typed method per `/v1` endpoint (matches, leaderboard, profile, teams, tournaments, coaches, inhouse status, plus `webhooks.list/create/delete`), bearer auth, and automatic retry on `429` honouring `Retry-After` / `retry_after_seconds`. Uses the global `fetch` (Node 18+). Throws `OceInhouseApiError` carrying `status` + the machine-readable `code`.",
+      "**Python** (`oce-inhouse-sdk`, `packages/sdk-python`). Same surface, zero runtime dependencies (stdlib `urllib` only), `snake_case` methods, same 429 retry behaviour, raises `OceInhouseApiError`.",
+      "**Signed-webhook verifier** in both. `constructWebhookEvent` / `construct_webhook_event` (and boolean `verifyWebhookSignature` / `verify_webhook_signature`) replicate the dispatcher's `HMAC-SHA256` over `<timestamp>.<raw_body>` and enforce the 5-minute replay window — verified against the server signer in each SDK's test suite.",
+      "**Docs.** Every endpoint card on `/developers` now renders a copy-paste *Use the SDK* sample (TypeScript + Python), plus a new *Client libraries* install section. `tests/developerSdkSamples.test.js` is a drift guard that fails if a new endpoint lands without an SDK sample or if either SDK is missing a sampled method.",
+      "**Scope.** Full edition only — the public API is full-edition-only, so the community edition is untouched. Publishing to npm / PyPI is a release-time step (the packages are publish-ready with `prepublishOnly` build + metadata); no registry credentials are committed."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.18",
     "title": "Regression tests for the mobile action endpoints + deep-link router (Task #461)",
     "published_at": "2026-05-29",

@@ -1,0 +1,1 @@
+- [Public API SDKs](public-api-sdks.md) — official clients in packages/sdk-{js,python}; webhook verifiers must mirror webhookDispatcher.signPayload; new endpoints need an SDK method + Developers SDK_CALLS sample (drift test).

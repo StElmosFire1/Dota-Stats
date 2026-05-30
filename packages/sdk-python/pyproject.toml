@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "oce-inhouse-sdk"
+version = "1.0.0"
+description = "Official Python client for the OCE Inhouse public API (matches, leaderboard, teams, tournaments, coaches, webhooks)."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+keywords = ["dota2", "oce-inhouse", "api", "sdk", "webhooks"]
+authors = [{ name = "OCE Inhouse" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://oceinhouse.gg/developers"
+Repository = "https://github.com/StElmosFire1/Dota-Stats-Full"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oce_inhouse"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/oce_inhouse", "README.md"]
