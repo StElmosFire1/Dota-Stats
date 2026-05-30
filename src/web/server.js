@@ -960,6 +960,19 @@ function createServer(startupStatus = {}) {
     const acceptRaw = (req.headers['accept'] || '').toLowerCase();
     const acceptsHtmlFirst = acceptRaw.split(',')[0].trim().startsWith('text/html');
     const isDocumentNav = isReadable && (secFetchDest === 'document' || (!secFetchDest && acceptsHtmlFirst));
+    // Task #498 — record who tried to reach the site while the gate is on, so
+    // the owner can see which deep links humans are hitting from a leaked share
+    // (separate from the AI-agent traffic card). Never throws.
+    try {
+      const { record: recordLockdownAttempt } = require('../security/lockdownLog');
+      recordLockdownAttempt({
+        ip: req.ip,
+        path: req.originalUrl || req.url || req.path,
+        ua: req.headers['user-agent'] || '',
+        method,
+        decision: isDocumentNav ? 'html-gate' : '401-empty',
+      });
+    } catch (_) { /* logging must not break the gate */ }
     if (isDocumentNav) {
       return res.status(200).type('html').send(GATE_HTML);
     }
@@ -7663,6 +7676,25 @@ function createApiRouter(startupStatus = {}, _app = null) {
       const report = buildReport({ windowMs: days * 24 * 60 * 60 * 1000 });
       res.set('Cache-Control', 'no-store');
       res.json({ days, ...report });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #498 — Lockdown access log. Aggregates the in-memory ring buffer
+  // maintained by src/security/lockdownLog.js by UA family for the last N days
+  // (default 7, capped at 30 — the ring buffer holds ~1000 entries anyway).
+  // Lets the owner see who tried to reach the site while the gate was on,
+  // separate from the AI-agent traffic card (Task #492).
+  router.get('/admin/lockdown-attempts', requireSuperuser, (req, res) => {
+    try {
+      const { buildReport } = require('../security/lockdownLog');
+      const days = Math.max(1, Math.min(30, parseInt(req.query.days, 10) || 7));
+      const report = buildReport({ windowMs: days * 24 * 60 * 60 * 1000 });
+      const envForced = process.env.FULL_SITE_LOCKDOWN === '1';
+      const gateOn = envForced || lockdownState.enabled;
+      res.set('Cache-Control', 'no-store');
+      res.json({ days, gateOn, ...report });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

@@ -146,6 +146,11 @@ export async function getAssetHotlinkReport(superuserKey, days = 7) {
 export async function getLockdownState(superuserKey) {
   return superuserJson('/admin/lockdown', { superuserKey });
 }
+// Task #498 — Lockdown access log (who tried to reach the site while gated).
+export async function getLockdownAttempts(superuserKey, days = 7) {
+  const qs = days ? `?days=${encodeURIComponent(days)}` : '';
+  return superuserJson(`/admin/lockdown-attempts${qs}`, { superuserKey });
+}
 export async function setLockdownState(superuserKey, enabled) {
   return superuserJson('/admin/lockdown', {
     superuserKey,

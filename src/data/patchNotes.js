@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.27",
+    "title": "See who tried to reach the site while the lockdown gate was on",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** When the owner-only lockdown gate is on, it's useful to see *which* URLs people are trying to reach (and from what UA family / IP) — a human hitting a deep link from a leaked share matters more than yet-another crawler. This is separate from the AI-agent traffic card.",
+      "**Access log.** Every request the lockdown gate blocks is now recorded into a small in-memory ring buffer (`src/security/lockdownLog.js`, ~1000 cap, no schema) capturing timestamp, IP, path, a coarse UA family (known bots labelled via the shared classifier, otherwise a browser family like chrome/firefox/edge/safari), method, and which response it got — `html-gate` (browser navigation shown the sign-in page) or `401-empty` (API/asset request denied).",
+      "**Owner visibility.** New superuser-only `GET /api/admin/lockdown-attempts` aggregates the last N days grouped by UA family with per-family decision counts, unique IPs, unique paths, and a recent-requests feed. Surfaced in a new \"🚪 Lockdown access log\" card in the AdminPanel Overview tab, sitting next to the AI-agent traffic card and hidden entirely while the gate is off.",
+      "**Scope.** Full edition only — community edition has no lockdown gate and is untouched. Buffer is in-process only and resets on reboot."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.26",
     "title": "Fix dev preview: games (and all /api) failing to load",
     "published_at": "2026-05-30",
