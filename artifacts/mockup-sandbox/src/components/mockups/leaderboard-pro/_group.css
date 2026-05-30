@@ -1,0 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800;900&family=Oswald:wght@400;500;600;700&display=swap');
+
+.lb-pro {
+  --bg-primary: #0d1424;
+  --bg-secondary: #152036;
+  --bg-card: #152036;
+  --bg-hover: #1a2744;
+  --text-primary: #e6edf8;
+  --text-secondary: #94a6cb;
+  --text-muted: #6c7e9c;
+  --radiant-color: #34d399;
+  --radiant-bg: rgba(52, 211, 153, 0.12);
+  --dire-color: #f87171;
+  --dire-bg: rgba(248, 113, 113, 0.12);
+  --accent: #c5a975;
+  --accent-hover: #d4bb87;
+  --gold: #c5a975;
+  --brass: #c5a975;
+  --amber: #f59e0b;
+  --ink-navy: #0d1424;
+  --parchment: #f5efe2;
+  --border: #2a3b5c;
+  --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-condensed: 'Oswald', 'Inter', sans-serif;
+  --accent-green: #34d399;
+  --accent-red: #f87171;
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.3);
+
+  font-family: var(--font);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
