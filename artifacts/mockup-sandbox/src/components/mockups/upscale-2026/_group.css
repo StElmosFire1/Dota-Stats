@@ -1,0 +1,64 @@
+/* Upscale 2026 — "Press Box" design system tokens.
+   Shared across all pages in this group for visual cohesion.
+   Imported explicitly by each page component. Do NOT rely on index.css. */
+
+.pressbox {
+  /* Surfaces */
+  --pb-bg: #0a101e;
+  --pb-bg-2: #0d1424;
+  --pb-surface: #121b2e;
+  --pb-surface-2: #16223a;
+  --pb-elevated: #1a2744;
+
+  /* Hairlines / borders */
+  --pb-line: rgba(197, 169, 117, 0.18);
+  --pb-line-soft: rgba(255, 255, 255, 0.06);
+
+  /* Text */
+  --pb-text: #eef3fb;
+  --pb-muted: #93a3c4;
+  --pb-faint: #6c7e9c;
+
+  /* Accents */
+  --pb-brass: #c5a975;
+  --pb-brass-bright: #e1c79a;
+  --pb-amber: #f59e0b;
+  --pb-radiant: #34d399;
+  --pb-dire: #f87171;
+
+  /* Type */
+  --pb-serif: 'Playfair Display', Georgia, serif;
+  --pb-cond: 'Oswald', 'Inter', sans-serif;
+  --pb-body: 'Inter', system-ui, sans-serif;
+
+  /* Radii + shadow */
+  --pb-radius: 16px;
+  --pb-radius-sm: 10px;
+  --pb-shadow: 0 24px 60px -28px rgba(0, 0, 0, 0.75);
+
+  background: var(--pb-bg);
+  color: var(--pb-text);
+  font-family: var(--pb-body);
+  min-height: 100vh;
+}
+
+.pb-eyebrow {
+  font-family: var(--pb-cond);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pb-brass);
+}
+
+.pb-serif { font-family: var(--pb-serif); }
+.pb-cond { font-family: var(--pb-cond); }
+
+.pb-card {
+  background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
+  border: 1px solid var(--pb-line);
+  border-radius: var(--pb-radius);
+  box-shadow: var(--pb-shadow);
+}
+
+.pb-hairline { border-color: var(--pb-line); }
