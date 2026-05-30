@@ -51,9 +51,9 @@ function Countdown({ startsAt, seconds, onExpire, endsAt, label }) {
   const pct = seconds > 0 ? (remaining / seconds) * 100 : 0;
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-        <span style={{ color: 'var(--text-muted)' }}>{label || 'Accept phase'}</span>
-        <span style={{ fontWeight: 700, color: remaining < 10 ? '#f44336' : 'var(--text)' }}>{remaining}s</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 13, marginBottom: 4 }}>
+        <span className="pb-eyebrow">{label || 'Accept phase'}</span>
+        <span className="pb-serif" style={{ fontWeight: 700, fontSize: 18, color: remaining < 10 ? '#f44336' : 'var(--pb-brass-bright)' }}>{remaining}s</span>
       </div>
       <div style={{ height: 6, background: 'var(--bg-elevated)', borderRadius: 3, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${pct}%`, background: remaining < 10 ? '#f44336' : '#4caf50', transition: 'width 0.3s' }} />
@@ -82,11 +82,11 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
       alignItems: 'center',
       gap: 12,
       padding: '10px 14px 10px 18px',
-      background: isCurrentUser ? 'color-mix(in srgb, var(--brass) 10%, var(--bg-card))' : 'var(--bg-card)',
-      border: `1px solid ${isCurrentUser ? 'color-mix(in srgb, var(--brass) 45%, var(--border))' : 'var(--border)'}`,
+      background: isCurrentUser ? 'color-mix(in srgb, var(--pb-brass) 10%, var(--pb-surface))' : 'var(--pb-surface)',
+      border: `1px solid ${isCurrentUser ? 'color-mix(in srgb, var(--pb-brass) 45%, var(--pb-line))' : 'var(--pb-line)'}`,
       borderRadius: 6,
       marginBottom: 6,
-      boxShadow: isCurrentUser ? '0 1px 6px color-mix(in srgb, var(--brass) 15%, transparent)' : 'none',
+      boxShadow: isCurrentUser ? '0 1px 6px color-mix(in srgb, var(--pb-brass) 15%, transparent)' : 'none',
     }}>
       {/* Brass left-rule (Hybrid Court & Pitch motif). */}
       <span aria-hidden="true" style={{
@@ -849,14 +849,15 @@ export default function Inhouse() {
       <LiveQueueWidget emptyMode="recent" />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ margin: 0, fontFamily: 'var(--font-serif)', letterSpacing: 0.2 }}>Inhouse Lobby</h1>
+          <div className="pb-eyebrow" style={{ marginBottom: 6 }}>Live Lobby</div>
+          <h1 className="pb-page-title" style={{ margin: 0, fontSize: '2.1rem' }}>Inhouse Lobby</h1>
           <div aria-hidden="true" style={{
-            height: 4, marginTop: 6, width: 220, maxWidth: '100%',
+            height: 4, marginTop: 8, width: 220, maxWidth: '100%',
             background:
-              'linear-gradient(to right, var(--brass), transparent 30%) top/100% 2px no-repeat,' +
-              'linear-gradient(to right, var(--border), var(--border)) bottom/100% 1px no-repeat',
+              'linear-gradient(to right, var(--pb-brass), transparent 30%) top/100% 2px no-repeat,' +
+              'linear-gradient(to right, var(--pb-line), var(--pb-line)) bottom/100% 1px no-repeat',
           }} />
-          <p style={{ color: 'var(--text-muted)', margin: '8px 0 0' }}>FACEIT-style match accept, captain draft, and direct server connect.</p>
+          <p style={{ color: 'var(--pb-muted)', margin: '8px 0 0' }}>FACEIT-style match accept, captain draft, and direct server connect.</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {/* v5.92 — mute toggle for inhouse sound alerts. */}
@@ -880,9 +881,9 @@ export default function Inhouse() {
             {muted ? 'Chime muted' : 'Chime on'}
           </button>
         {serverStatus && (
-          <div style={{ background: 'var(--bg-elevated)', padding: '10px 14px', borderRadius: 6, fontSize: 12, border: '1px solid var(--border)' }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>Dedicated Server</div>
-            <div>{serverStatus.ip}:{serverStatus.port}</div>
+          <div className="pb-card pb-card-sm" style={{ padding: '10px 14px', fontSize: 12 }}>
+            <div className="pb-eyebrow" style={{ marginBottom: 4 }}>Dedicated Server</div>
+            <div style={{ fontFamily: 'var(--font-condensed)' }}>{serverStatus.ip}:{serverStatus.port}</div>
             <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
               <span style={{ color: serverStatus.rcon?.ok ? '#4caf50' : '#f44336' }}>● RCON</span>
               <span style={{ color: serverStatus.ssh?.ok ? '#4caf50' : '#f44336' }}>● SSH</span>
@@ -895,13 +896,14 @@ export default function Inhouse() {
       {error && <div style={{ padding: 12, background: 'rgba(244,67,54,0.1)', border: '1px solid #f44336', borderRadius: 6, marginBottom: 16, color: '#f44336' }}>{error}</div>}
 
       {!session && (
-        <div style={{ padding: 30, textAlign: 'center', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border)', borderTop: '3px solid var(--brass)' }}>
+        <div className="pb-card" style={{ padding: 30, textAlign: 'center', borderTop: '3px solid var(--pb-brass)' }}>
           {/* v6.03 — auto-running lobby. No more "An admin must open a session"
               empty state: any signed-in player joining auto-creates the open
               session via /inhouse/join, so the primary CTA is always present
               and the previous admin-only form is collapsed into <details>. */}
-          <h3 style={{ marginTop: 0, fontFamily: 'var(--font-condensed, var(--font))', letterSpacing: 0.5 }}>Inhouse lobby is open</h3>
-          <p style={{ color: 'var(--text-muted)', marginBottom: 16 }}>
+          <div className="pb-eyebrow" style={{ marginBottom: 6 }}>Open Queue</div>
+          <h3 className="pb-serif" style={{ marginTop: 0, fontSize: '1.6rem' }}>Inhouse lobby is open</h3>
+          <p style={{ color: 'var(--pb-muted)', marginBottom: 16 }}>
             Be the first to sign in — joining auto-starts the lobby. Once 10 players have queued
             we'll auto-open the accept phase.
           </p>
@@ -1005,20 +1007,16 @@ export default function Inhouse() {
           completed:   { bg: 'rgba(120,120,120,0.18)', fg: 'var(--text-muted)', label: 'COMPLETED' },
         })[session.status] || { bg: 'var(--bg)', fg: 'var(--text-muted)', label: String(session.status || '').toUpperCase() };
         return (
-        <div style={{
-          background: 'var(--bg-elevated)',
+        <div className="pb-card" style={{
           padding: 20,
-          borderRadius: 10,
-          border: '1px solid var(--border)',
-          borderTop: '3px solid var(--brass)',
+          borderTop: '3px solid var(--pb-brass)',
           marginBottom: 20,
-          boxShadow: '0 2px 12px rgba(0,0,0,0.18)',
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
             <div style={{ flex: '1 1 auto', minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <h2 style={{ margin: 0, fontFamily: 'var(--font-condensed, var(--font))', letterSpacing: 0.5 }}>
-                  Session <span style={{ color: 'var(--brass)' }}>#{session.id}</span>
+                <h2 className="pb-serif" style={{ margin: 0, fontSize: '1.5rem', letterSpacing: 0.2 }}>
+                  Session <span style={{ color: 'var(--pb-brass-bright)' }}>#{session.id}</span>
                 </h2>
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -1160,9 +1158,9 @@ export default function Inhouse() {
               auto-start ticker the moment we flip into the accept phase.
               Tie / zero-vote → Highest Rank. */}
           {session.status === 'open' && (
-            <div style={{ marginTop: 14, padding: 14, background: 'var(--bg)', borderRadius: 6, border: '1px solid var(--border)' }}>
+            <div className="pb-card-sm" style={{ marginTop: 14, padding: 14, background: 'var(--pb-surface)', border: '1px solid var(--pb-line)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
-                <div style={{ fontWeight: 700, letterSpacing: 0.4, color: 'var(--brass)', fontSize: 13 }}>👑 CAPTAIN MODE — VOTE</div>
+                <div className="pb-eyebrow" style={{ fontSize: 13 }}>👑 Captain Mode — Vote</div>
                 <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                   {voteTally.totalVotes} vote{voteTally.totalVotes === 1 ? '' : 's'} · winning: <strong style={{ color: 'var(--text)' }}>{({
                     highest_rank: 'Highest Rank',
@@ -1443,21 +1441,14 @@ export default function Inhouse() {
             };
 
             const RosterPanel = ({ teamNum, label, accent, capName, picks }) => (
-              <div style={{
+              <div className="pb-card" style={{
                 position: 'relative',
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border)',
                 borderTop: `3px solid ${accent}`,
-                borderRadius: 8,
                 padding: '14px 12px 12px',
                 minHeight: 320,
               }}>
                 <div style={{ marginBottom: 10 }}>
-                  <div style={{
-                    fontFamily: 'var(--font-condensed, var(--font))',
-                    fontSize: 11, letterSpacing: 1.4, textTransform: 'uppercase',
-                    color: 'var(--text-muted)', fontWeight: 600,
-                  }}>{label}</div>
+                  <div className="pb-eyebrow" style={{ letterSpacing: '0.16em' }}>{label}</div>
                   <div style={{
                     fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700,
                     color: 'var(--text-primary)', marginTop: 2,
@@ -1505,22 +1496,15 @@ export default function Inhouse() {
               <div style={{ marginTop: 20 }}>
                 {/* Timer / turn-indicator strip — anchored at the top of the draft board. */}
                 {isDrafting && (
-                  <div style={{
-                    background: 'var(--bg-card)',
-                    border: '1px solid var(--border)',
-                    borderTop: '3px solid var(--brass)',
-                    borderRadius: 8,
+                  <div className="pb-card" style={{
+                    borderTop: '3px solid var(--pb-brass)',
                     padding: '12px 16px',
                     marginBottom: 14,
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     gap: 12, flexWrap: 'wrap',
                   }}>
                     <div>
-                      <div style={{
-                        fontFamily: 'var(--font-condensed, var(--font))',
-                        fontSize: 11, letterSpacing: 1.6, textTransform: 'uppercase',
-                        color: 'var(--text-muted)', fontWeight: 600,
-                      }}>Captain Draft</div>
+                      <div className="pb-eyebrow">Captain Draft</div>
                       <div style={{
                         fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700,
                         color: 'var(--text-primary)', marginTop: 2,
@@ -1577,11 +1561,8 @@ export default function Inhouse() {
                   const fmt = (n) => Math.round(n).toLocaleString();
                   const fmtPct = (p) => `${(p * 100).toFixed(1)}%`;
                   return (
-                    <div style={{
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border)',
-                      borderTop: '3px solid var(--brass)',
-                      borderRadius: 8,
+                    <div className="pb-card" style={{
+                      borderTop: '3px solid var(--pb-brass)',
                       padding: '12px 16px',
                       marginBottom: 14,
                     }}>
@@ -1590,11 +1571,7 @@ export default function Inhouse() {
                         gap: 12, flexWrap: 'wrap', marginBottom: 10,
                       }}>
                         <div>
-                          <div style={{
-                            fontFamily: 'var(--font-condensed, var(--font))',
-                            fontSize: 11, letterSpacing: 1.6, textTransform: 'uppercase',
-                            color: 'var(--text-muted)', fontWeight: 600,
-                          }}>Auto-balance · Projected balance</div>
+                          <div className="pb-eyebrow">Auto-balance · Projected balance</div>
                           <div style={{
                             fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700,
                             color: 'var(--text-primary)', marginTop: 2,
@@ -1621,13 +1598,13 @@ export default function Inhouse() {
                       }}>
                         <div style={{ borderLeft: '3px solid #4caf50', paddingLeft: 10 }}>
                           <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>{team1Label}</div>
-                          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(t1Sum)}</div>
+                          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, color: 'var(--pb-brass-bright)' }}>{fmt(t1Sum)}</div>
                           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Win prob <strong style={{ color: 'var(--text-primary)' }}>{fmtPct(winProbT1)}</strong></div>
                         </div>
                         <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'var(--font-condensed, var(--font))', fontSize: 11, letterSpacing: 1.2 }}>VS</div>
                         <div style={{ borderRight: '3px solid #f44336', paddingRight: 10, textAlign: 'right' }}>
                           <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>{team2Label}</div>
-                          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(t2Sum)}</div>
+                          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, color: 'var(--pb-brass-bright)' }}>{fmt(t2Sum)}</div>
                           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Win prob <strong style={{ color: 'var(--text-primary)' }}>{fmtPct(winProbT2)}</strong></div>
                         </div>
                       </div>
@@ -1650,19 +1627,12 @@ export default function Inhouse() {
                   />
 
                   {/* Centre pool — unpicked players. */}
-                  <div style={{
-                    background: 'var(--bg-card)',
-                    border: '1px solid var(--border)',
-                    borderTop: '3px solid var(--brass)',
-                    borderRadius: 8,
+                  <div className="pb-card" style={{
+                    borderTop: '3px solid var(--pb-brass)',
                     padding: '14px 12px 12px',
                     minHeight: 320,
                   }}>
-                    <div style={{
-                      fontFamily: 'var(--font-condensed, var(--font))',
-                      fontSize: 11, letterSpacing: 1.4, textTransform: 'uppercase',
-                      color: 'var(--text-muted)', fontWeight: 600, marginBottom: 2,
-                    }}>The Pool</div>
+                    <div className="pb-eyebrow" style={{ letterSpacing: '0.16em', marginBottom: 2 }}>The Pool</div>
                     <div style={{
                       fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700,
                       color: 'var(--text-primary)', marginBottom: 10,
@@ -1694,7 +1664,7 @@ export default function Inhouse() {
             );
           })() : (
             <div style={{ marginTop: 20 }}>
-              <h3>Registered Players ({players.length})</h3>
+              <h3 className="pb-section-title" style={{ marginBottom: 12 }}>Registered Players ({players.length})</h3>
               {players.sort((a,b)=>Number(b.trueskill_mmr)-Number(a.trueskill_mmr)).map(p => (
                 <PlayerRow key={p.account_id} player={p} session={session} isCurrentUser={Number(p.account_id) === myAccountId} />
               ))}
@@ -1707,19 +1677,19 @@ export default function Inhouse() {
 
       {pastSessions.length > 0 && (
         <div>
-          <h3>Recent Sessions</h3>
+          <h3 className="pb-section-title" style={{ marginBottom: 12 }}>Recent Sessions</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                <th style={{ textAlign: 'left', padding: '8px' }}>#</th>
-                <th style={{ textAlign: 'left', padding: '8px' }}>Status</th>
-                <th style={{ textAlign: 'left', padding: '8px' }}>Match</th>
-                <th style={{ textAlign: 'left', padding: '8px' }}>Created</th>
+              <tr style={{ borderBottom: '1px solid var(--pb-line)' }}>
+                <th className="pb-eyebrow" style={{ textAlign: 'left', padding: '8px' }}>#</th>
+                <th className="pb-eyebrow" style={{ textAlign: 'left', padding: '8px' }}>Status</th>
+                <th className="pb-eyebrow" style={{ textAlign: 'left', padding: '8px' }}>Match</th>
+                <th className="pb-eyebrow" style={{ textAlign: 'left', padding: '8px' }}>Created</th>
               </tr>
             </thead>
             <tbody>
               {pastSessions.map(s => (
-                <tr key={s.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <tr key={s.id} style={{ borderBottom: '1px solid var(--pb-line)' }}>
                   <td style={{ padding: '8px' }}>{s.id}</td>
                   <td style={{ padding: '8px' }}>{s.status}</td>
                   <td style={{ padding: '8px' }}>{s.match_id ? <Link to={`/match/${s.match_id}`}>{s.match_id}</Link> : '—'}</td>

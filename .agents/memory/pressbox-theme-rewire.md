@@ -29,3 +29,19 @@ what they bought. This is a real follow-up, not cosmetic polish.
 **How to apply:** once the design is locked, map each of the 5 Pro themes + the
 free default onto the `--pb-*` tokens, wire a theme class/data-attribute onto the
 Press Box root, and present the variants on the canvas for owner comparison.
+
+## Graduation scoping rule (2026-05-30)
+
+When graduating Press Box onto live pages, keep every token namespaced under
+`--pb-*` and consume them only via `.pb-*` classes on the target pages. **Never
+override a global Court & Pitch token** (e.g. `--bg-primary`) in `web/src/styles.css`
+to get the deeper press-box background — `body` reads `--bg-primary`, so it leaks
+the new look onto every non-target page and breaks a scoped/page-by-page rollout.
+The architect code review fails this as cross-page leakage.
+
+**Why:** the rollout is deliberately page-by-page with a review window per batch;
+a global token change silently restyles pages that weren't reviewed.
+
+**How to apply:** if a target page needs the deeper bg, set it on that page's
+scoped root (the `.pb-leaderboard` / `.pb-profile` / `.pb-match` wrapper, or add a
+wrapper class for inline-styled pages like Home/Inhouse), not on global `:root`.

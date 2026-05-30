@@ -1,0 +1,54 @@
+/* Press Box re-skin for the PlayerProfile page (T003).
+   Scoped to .pb-profile so it never leaks into other pages that reuse the
+   shared .section-title / .stat-card / .stat-value classes. This is a
+   re-skin only — no behaviour, data, layout or markup logic changes. */
+
+/* Section / column headers — Oswald condensed, uppercase, wide tracking. */
+.pb-profile .section-title {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--pb-text);
+}
+
+/* Primary stat tiles & chart panels become Press Box cards: gradient
+   surface, brass hairline border, 16px radius, soft shadow. */
+.pb-profile .stat-card {
+  background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
+  border: 1px solid var(--pb-line);
+  border-radius: var(--pb-radius);
+  box-shadow: var(--pb-shadow);
+}
+
+/* Big stat numbers rendered as editorial Playfair serif figures. Inline
+   semantic colours (green/red/amber) still win via the style attribute. */
+.pb-profile .stat-value {
+  font-family: var(--font-serif);
+  letter-spacing: 0.01em;
+}
+
+/* MMR figure tinted brass-bright, mirroring the mockup. */
+.pb-profile .stat-value.mmr {
+  color: var(--pb-brass-bright);
+}
+
+/* Stat captions styled as condensed brass eyebrows. */
+.pb-profile .stat-label {
+  font-family: var(--font-condensed);
+  letter-spacing: 0.18em;
+  color: var(--pb-faint);
+}
+
+/* Back link as a small condensed brass eyebrow. */
+.pb-profile .back-link {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.78rem;
+  color: var(--pb-brass);
+}
+.pb-profile .back-link:hover {
+  color: var(--pb-brass-bright);
+}

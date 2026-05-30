@@ -39,15 +39,14 @@ function JoinTheLeagueButton() {
 
 function StatCard({ label, value, sub, icon }) {
   return (
-    <div style={{
-      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
+    <div className="pb-card" style={{
       padding: '20px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center',
-      textAlign: 'center', gap: 4, flex: 1, minWidth: 140,
+      textAlign: 'center', gap: 6, flex: 1, minWidth: 140,
     }}>
-      <span style={{ fontSize: 22 }}>{icon}</span>
-      <span style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>{value ?? '—'}</span>
-      <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
-      {sub && <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{sub}</span>}
+      {icon && <span style={{ fontSize: 22 }}>{icon}</span>}
+      <span className="pb-serif" style={{ fontSize: 30, fontWeight: 700, color: 'var(--pb-brass-bright)', lineHeight: 1.1 }}>{value ?? '—'}</span>
+      <span className="pb-eyebrow">{label}</span>
+      {sub && <span style={{ fontSize: 11, color: 'var(--pb-muted)', marginTop: 2 }}>{sub}</span>}
     </div>
   );
 }
@@ -94,11 +93,11 @@ function PersonalMatchRow({ m }) {
     <Link to={`/match/${m.match_id}`} style={{
       display: 'flex', alignItems: 'center', gap: 12,
       padding: '10px 14px', borderRadius: 8,
-      background: 'var(--bg-hover)', textDecoration: 'none',
-      border: '1px solid transparent', transition: 'border-color 0.15s',
+      background: 'var(--pb-elevated)', textDecoration: 'none',
+      border: '1px solid var(--pb-line-soft)', transition: 'border-color 0.15s',
     }}
-      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border)'}
-      onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
+      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--pb-line)'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--pb-line-soft)'}
     >
       <span style={{
         fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, flexShrink: 0,
@@ -171,18 +170,17 @@ function MiniMmrChart({ accountId }) {
   const deltaColor = delta >= 0 ? 'var(--accent-green, #22c55e)' : 'var(--accent-red, #ef4444)';
 
   return (
-    <div style={{
-      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
+    <div className="pb-card" style={{
       padding: '18px 20px', marginBottom: 24,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-          📈 MMR History
-          <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
+        <div className="pb-section-title" style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          MMR History
+          <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--pb-muted)', letterSpacing: 0, textTransform: 'none', fontFamily: 'var(--font)' }}>
             last {data.length} games
           </span>
         </div>
-        <span style={{ fontSize: 13, fontWeight: 700, color: deltaColor }}>
+        <span className="pb-serif" style={{ fontSize: 16, fontWeight: 700, color: deltaColor }}>
           {delta >= 0 ? '+' : ''}{delta} MMR
         </span>
       </div>
@@ -251,16 +249,15 @@ function PersonalisedDashboard({ steamUser }) {
   return (
     <>
       {/* Personal hero banner */}
-      <div style={{
-        background: 'linear-gradient(135deg, var(--bg-card) 0%, rgba(59,130,246,0.1) 100%)',
-        border: '1px solid var(--border)', borderRadius: 16, padding: '28px 32px',
+      <div className="pb-card" style={{
+        padding: '28px 32px',
         marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20,
       }}>
         <div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+          <div className="pb-eyebrow" style={{ marginBottom: 8 }}>
             Welcome back
           </div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: 'var(--text-primary)' }}>
+          <h1 className="pb-page-title" style={{ margin: 0, fontSize: 34 }}>
             {displayName}
           </h1>
           {!loading && homeData && (
@@ -300,11 +297,11 @@ function PersonalisedDashboard({ steamUser }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
 
           {/* Last 3 matches */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 22 }}>
-            <h2 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>🕐 Recent Games</span>
+          <div className="pb-card" style={{ padding: 22 }}>
+            <h2 style={{ margin: '0 0 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span className="pb-section-title" style={{ fontSize: '0.95rem' }}>Recent Games</span>
               {accountId && (
-                <Link to={`/player/${accountId}`} style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>
+                <Link to={`/player/${accountId}`} className="pb-eyebrow" style={{ textDecoration: 'none' }}>
                   All matches →
                 </Link>
               )}
@@ -343,16 +340,14 @@ function PersonalisedDashboard({ steamUser }) {
 
             {/* Hero spotlight */}
             {homeData.top_hero && (
-              <div style={{
-                background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: '18px 20px',
-              }}>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
-                  ⭐ Your hero this week
+              <div className="pb-card" style={{ padding: '18px 20px' }}>
+                <div className="pb-eyebrow" style={{ marginBottom: 10 }}>
+                  Your hero this week
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{
                     width: 56, height: 32, borderRadius: 6, overflow: 'hidden',
-                    background: 'var(--bg-hover)', flexShrink: 0,
+                    background: 'var(--pb-elevated)', border: '1px solid var(--pb-line)', flexShrink: 0,
                   }}>
                     <img
                       src={`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${homeData.top_hero.hero_name || ''}.png`}
@@ -362,10 +357,10 @@ function PersonalisedDashboard({ steamUser }) {
                     />
                   </div>
                   <div>
-                    <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <div className="pb-serif" style={{ fontSize: 18, fontWeight: 700, color: 'var(--pb-text)' }}>
                       {formatHeroName(homeData.top_hero.hero_name) || homeData.top_hero.hero_name}
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: 'var(--pb-muted)', marginTop: 2 }}>
                       {homeData.top_hero.picks} game{homeData.top_hero.picks !== 1 ? 's' : ''} this week
                       {homeData.top_hero.picks > 0 && homeData.top_hero.wins != null && (
                         <> · {Math.round((homeData.top_hero.wins / homeData.top_hero.picks) * 100)}% WR</>
@@ -374,7 +369,8 @@ function PersonalisedDashboard({ steamUser }) {
                   </div>
                   <Link
                     to={`/heroes`}
-                    style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}
+                    className="pb-eyebrow"
+                    style={{ marginLeft: 'auto', textDecoration: 'none' }}
                   >
                     Heroes →
                   </Link>
@@ -652,19 +648,18 @@ function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {
   return (
     <>
       {/* Stats Strip */}
-      <div style={{
+      <div className="pb-card" style={{
         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-        gap: 1, background: 'var(--border)', border: '1px solid var(--border)',
-        borderRadius: 12, overflow: 'hidden', marginBottom: 32,
+        gap: 1, background: 'var(--pb-line)',
+        overflow: 'hidden', marginBottom: 32,
       }}>
         {stats.map((s, i) => (
           <div key={i} style={{
-            background: 'var(--bg-card)', padding: '22px 18px',
+            background: 'var(--pb-surface)', padding: '22px 18px',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
           }}>
-            <div className="font-serif" style={{
-              fontSize: 28, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.1,
-              fontFamily: 'var(--font-serif, serif)',
+            <div className="font-serif pb-serif" style={{
+              fontSize: 30, fontWeight: 700, color: 'var(--pb-brass-bright)', lineHeight: 1.1,
             }}>{loading ? '—' : s.value}</div>
             <div className="uppercase-wide" style={{
               fontSize: 11, fontFamily: 'var(--font-condensed, inherit)',
@@ -702,7 +697,7 @@ function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {
           </div>
           <div className="oa-rule-double" style={{ marginBottom: 14 }} />
 
-          <div className="oa-card" style={{ overflow: 'hidden' }}>
+          <div className="oa-card pb-card" style={{ overflow: 'hidden' }}>
             {recentMatches.length === 0 ? (
               <div style={{ padding: '24px 18px', color: 'var(--text-muted)', fontSize: 13 }}>
                 No matches recorded yet.
@@ -835,10 +830,9 @@ function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {
                         }}>{p.wins || 0}W – {p.losses || 0}L</div>
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 10 }}>
-                        <div style={{
-                          fontSize: 18, fontWeight: 700, color: 'var(--brass, var(--accent))',
+                        <div className="pb-serif" style={{
+                          fontSize: 20, fontWeight: 700, color: 'var(--pb-brass-bright)',
                           lineHeight: 1.1, marginBottom: 2,
-                          fontFamily: 'var(--font-condensed, inherit)',
                         }}>{Math.round(p.mmr || 0)}</div>
                         <div style={{
                           fontSize: 10, color: 'var(--text-muted)',

@@ -1,0 +1,67 @@
+/* Press Box re-skin for the Leaderboard standings table (T001).
+   Scoped to .pb-leaderboard so it never leaks into other pages that
+   reuse the shared .scoreboard / .leaderboard-table classes. */
+
+.pb-leaderboard .scoreboard-wrapper {
+  border: none;
+  border-radius: 0;
+}
+
+.pb-leaderboard table.scoreboard {
+  background: transparent;
+}
+
+.pb-leaderboard .scoreboard thead {
+  background: var(--pb-surface-2);
+}
+
+.pb-leaderboard .scoreboard th {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  font-size: 0.72rem;
+  color: var(--pb-faint);
+  border-bottom: 1px solid var(--pb-line);
+}
+
+.pb-leaderboard .scoreboard td {
+  border-bottom: 1px solid var(--pb-line);
+}
+
+.pb-leaderboard .scoreboard tbody tr:hover {
+  background: var(--pb-surface-2);
+}
+
+.pb-leaderboard .scoreboard tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* MMR value rendered as a Playfair serif brass-bright figure. */
+.pb-leaderboard .scoreboard td.mmr {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--pb-brass-bright);
+}
+
+/* Framed rank disc — mirrors the mockup's FramedRank treatment. */
+.pb-leaderboard .col-rank .pb-rank-disc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--pb-line);
+  background: var(--pb-elevated);
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.pb-leaderboard tr.rank-1 .pb-rank-disc {
+  border-color: rgba(245, 158, 11, 0.55);
+  background: radial-gradient(circle at 50% 30%, rgba(245, 158, 11, 0.28), var(--pb-elevated) 70%);
+}

@@ -10,6 +10,7 @@ import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
 import { FRAME_META } from '../profileCosmetics';
 import SponsorshipBanner from '../components/SponsorshipBanner';
+import '../styles/pressbox-leaderboard.css';
 
 // Medieval tier ladder — top 8 are the heraldic ranks (with /badges/tier-N-name.png art),
 // bottom 3 are the meme fallback tiers retained for sub-Apprentice MMR.
@@ -177,53 +178,43 @@ function StreakBadge({ streak }) {
 
 
 function MostImprovedWidget({ data, loading, seasonLabel }) {
-  const title = seasonLabel ? `Most Improved — ${seasonLabel}` : 'Most Improved — last 30 days';
+  const eyebrow = 'Most Improved';
+  const subLabel = seasonLabel || 'Last 30 days';
   const proMembers = useProMembers();
   if (loading) return (
-    <div style={{
-      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
-      padding: '16px 20px', marginBottom: 24,
-    }}>
-      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading most improved…</div>
+    <div className="pb-card" style={{ padding: '16px 20px', marginBottom: 24 }}>
+      <div style={{ color: 'var(--pb-faint)', fontSize: 13 }}>Loading most improved…</div>
     </div>
   );
 
   if (!data || data.length === 0) return (
-    <div style={{
-      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
-      padding: '16px 20px', marginBottom: 24,
-    }}>
-      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>📈 {title}</div>
-      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+    <div className="pb-card" style={{ padding: '16px 20px', marginBottom: 24 }}>
+      <div className="pb-eyebrow" style={{ marginBottom: 6 }}>{eyebrow}</div>
+      <div style={{ color: 'var(--pb-faint)', fontSize: 13 }}>
         Not enough rating history yet — data accumulates after more matches.
       </div>
     </div>
   );
 
   return (
-    <div style={{
-      background: 'linear-gradient(135deg, rgba(76,175,80,0.08) 0%, var(--bg-card) 100%)',
-      border: '1px solid rgba(76,175,80,0.3)', borderRadius: 12,
-      padding: '16px 20px', marginBottom: 24,
-    }}>
-      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span>📈</span>
-        <span>{title}</span>
+    <div className="pb-card" style={{ padding: '18px 22px', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+        <div className="pb-eyebrow">{eyebrow}</div>
+        <span style={{ fontSize: 11, color: 'var(--pb-faint)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>{subLabel}</span>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         {data.slice(0, 5).map((p, i) => (
-          <div key={p.account_id} style={{
-            background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+          <div key={p.account_id} className="pb-card-sm" style={{
+            background: 'var(--pb-surface-2)', border: '1px solid var(--pb-line)',
             padding: '10px 14px', minWidth: 140, flex: '1 1 140px',
             display: 'flex', flexDirection: 'column', gap: 4,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
-                fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
-                background: 'var(--bg-hover)', borderRadius: 4, padding: '1px 5px',
+                fontFamily: 'var(--font-serif)', fontSize: 13, fontWeight: 700, color: 'var(--pb-brass-bright)',
               }}>#{i + 1}</span>
               <Link to={`/player/${p.account_id}`} style={{
-                fontWeight: 600, fontSize: 13, color: 'var(--text-primary)',
+                fontWeight: 600, fontSize: 13, color: 'var(--pb-text)',
                 textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 display: 'inline-flex', alignItems: 'center', gap: 4,
               }}>
@@ -232,20 +223,20 @@ function MostImprovedWidget({ data, loading, seasonLabel }) {
               </Link>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>MMR</span>
-              <span style={{ fontWeight: 700, fontSize: 14 }}>{p.current_mmr}</span>
+              <span style={{ fontSize: 12, color: 'var(--pb-faint)' }}>MMR</span>
+              <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 700, fontSize: 15 }}>{p.current_mmr}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Gained</span>
+              <span style={{ fontSize: 12, color: 'var(--pb-faint)' }}>Gained</span>
               <span style={{
-                fontWeight: 700, fontSize: 14,
-                color: Number(p.mmr_delta) > 0 ? 'var(--accent-green)' : 'var(--text-muted)',
+                fontFamily: 'var(--font-serif)', fontWeight: 700, fontSize: 15,
+                color: Number(p.mmr_delta) > 0 ? 'var(--pb-radiant)' : 'var(--pb-faint)',
               }}>
                 +{p.mmr_delta}
               </span>
             </div>
             {p.games_in_period > 0 && (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              <div style={{ fontSize: 11, color: 'var(--pb-faint)' }}>
                 {p.games_in_period} game{p.games_in_period !== 1 ? 's' : ''} this period
               </div>
             )}
@@ -257,25 +248,20 @@ function MostImprovedWidget({ data, loading, seasonLabel }) {
 }
 
 function BestAndFairestWidget({ data, loading, seasonLabel }) {
-  const title = seasonLabel ? `Best & Fairest — ${seasonLabel}` : 'Best & Fairest — All Time';
+  const eyebrow = 'Best & Fairest';
+  const subLabel = seasonLabel || 'All Time';
   const proMembers = useProMembers();
 
   if (loading) return (
-    <div style={{
-      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
-      padding: '16px 20px', marginBottom: 24,
-    }}>
-      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading best & fairest…</div>
+    <div className="pb-card" style={{ padding: '16px 20px', marginBottom: 24 }}>
+      <div style={{ color: 'var(--pb-faint)', fontSize: 13 }}>Loading best & fairest…</div>
     </div>
   );
 
   if (!data || data.length === 0) return (
-    <div style={{
-      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
-      padding: '16px 20px', marginBottom: 24,
-    }}>
-      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>🤝 {title}</div>
-      <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+    <div className="pb-card" style={{ padding: '16px 20px', marginBottom: 24 }}>
+      <div className="pb-eyebrow" style={{ marginBottom: 6 }}>{eyebrow}</div>
+      <div style={{ color: 'var(--pb-faint)', fontSize: 13 }}>
         Not enough attitude ratings yet — needs at least 3 ratings per player.
       </div>
     </div>
@@ -289,32 +275,27 @@ function BestAndFairestWidget({ data, loading, seasonLabel }) {
   }
 
   return (
-    <div style={{
-      background: 'linear-gradient(135deg, rgba(96,165,250,0.08) 0%, var(--bg-card) 100%)',
-      border: '1px solid rgba(96,165,250,0.3)', borderRadius: 12,
-      padding: '16px 20px', marginBottom: 24,
-    }}>
-      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span>🤝</span>
-        <span>{title}</span>
+    <div className="pb-card" style={{ padding: '18px 22px', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+        <div className="pb-eyebrow">{eyebrow}</div>
+        <span style={{ fontSize: 11, color: 'var(--pb-faint)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>{subLabel}</span>
       </div>
-      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
+      <div style={{ fontSize: 12, color: 'var(--pb-faint)', marginBottom: 14 }}>
         Average attitude rating received from teammates (min. 3 ratings)
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         {data.slice(0, 5).map((p, i) => (
-          <div key={p.account_id} style={{
-            background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+          <div key={p.account_id} className="pb-card-sm" style={{
+            background: 'var(--pb-surface-2)', border: '1px solid var(--pb-line)',
             padding: '10px 14px', minWidth: 140, flex: '1 1 140px',
             display: 'flex', flexDirection: 'column', gap: 4,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
-                fontSize: 11, fontWeight: 700, color: 'var(--text-muted)',
-                background: 'var(--bg-hover)', borderRadius: 4, padding: '1px 5px',
+                fontFamily: 'var(--font-serif)', fontSize: 13, fontWeight: 700, color: 'var(--pb-brass-bright)',
               }}>#{i + 1}</span>
               <Link to={`/player/${p.account_id}`} style={{
-                fontWeight: 600, fontSize: 13, color: 'var(--text-primary)',
+                fontWeight: 600, fontSize: 13, color: 'var(--pb-text)',
                 textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 display: 'inline-flex', alignItems: 'center', gap: 4,
               }}>
@@ -323,12 +304,12 @@ function BestAndFairestWidget({ data, loading, seasonLabel }) {
               </Link>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Attitude</span>
-              <span style={{ fontWeight: 800, fontSize: 16, color: attitudeColor(p.avg_attitude) }}>
-                {parseFloat(p.avg_attitude).toFixed(1)}<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)' }}>/10</span>
+              <span style={{ fontSize: 12, color: 'var(--pb-faint)' }}>Attitude</span>
+              <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 700, fontSize: 17, color: attitudeColor(p.avg_attitude) }}>
+                {parseFloat(p.avg_attitude).toFixed(1)}<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--pb-faint)', fontFamily: 'var(--font)' }}>/10</span>
               </span>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: 11, color: 'var(--pb-faint)' }}>
               {p.total_ratings} rating{p.total_ratings !== '1' ? 's' : ''}
             </div>
           </div>
@@ -479,8 +460,11 @@ export default function Leaderboard() {
   if (loading) return <div className="loading">Loading leaderboard...</div>;
 
   return (
-    <div>
-      <h1 className="page-title">Leaderboard</h1>
+    <div className="pb-leaderboard">
+      <header style={{ marginBottom: 20 }}>
+        <div className="pb-eyebrow" style={{ marginBottom: 8 }}>Competitive Ladder</div>
+        <h1 className="pb-page-title" style={{ fontSize: '2.6rem', margin: 0 }}>Seasonal Rankings</h1>
+      </header>
 
       <SponsorshipBanner slug="leaderboard_top" style={{ margin: '12px 0' }} />
 
@@ -505,13 +489,12 @@ export default function Leaderboard() {
       })()}
 
       {/* Tier legend — worst to best left to right */}
-      <div style={{
+      <div className="pb-card" style={{
         display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20,
-        padding: '12px 16px', background: 'var(--bg-card)',
-        border: '1px solid var(--border)', borderRadius: 10,
+        padding: '12px 16px',
         alignItems: 'center',
       }}>
-        <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 4, whiteSpace: 'nowrap' }}>worst →</span>
+        <span style={{ fontSize: 11, color: 'var(--pb-faint)', marginRight: 4, whiteSpace: 'nowrap' }}>worst →</span>
         {[...MMR_TIERS].reverse().map((t) => (
           <span
             key={t.name}
@@ -543,14 +526,14 @@ export default function Leaderboard() {
             {t.name}
           </span>
         ))}
-        <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 4, whiteSpace: 'nowrap' }}>→ best</span>
+        <span style={{ fontSize: 11, color: 'var(--pb-faint)', marginLeft: 4, whiteSpace: 'nowrap' }}>→ best</span>
       </div>
 
-      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4, marginTop: -8 }}>
+      <p style={{ fontSize: 12, color: 'var(--pb-faint)', marginBottom: 4, marginTop: -8 }}>
         Ranked by TrueSkill MMR — beating stronger opponents earns more rating than raw win rate.
       </p>
-      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-        <strong style={{ color: 'var(--text-secondary)' }}>Impact Score</strong> (1–10): a community ranking based on K/D/A, win rate, and games played — hover the column header for details.
+      <p style={{ fontSize: 12, color: 'var(--pb-faint)', marginBottom: 16 }}>
+        <strong style={{ color: 'var(--pb-muted)' }}>Impact Score</strong> (1–10): a community ranking based on K/D/A, win rate, and games played — hover the column header for details.
       </p>
 
       {data.leaderboard.length === 0 ? (
@@ -558,7 +541,14 @@ export default function Leaderboard() {
           <p>No ratings yet. Play some matches to populate the leaderboard!</p>
         </div>
       ) : (
-        <div className="scoreboard-wrapper">
+        <div className="pb-card" style={{ overflow: 'hidden' }}>
+          <div style={{
+            padding: '14px 20px', borderBottom: '1px solid var(--pb-line)',
+            background: 'var(--pb-surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <h2 className="pb-section-title" style={{ margin: 0 }}>Global Standings</h2>
+          </div>
+          <div className="scoreboard-wrapper">
           <table className="scoreboard leaderboard-table">
             <thead>
               <tr>
@@ -587,7 +577,7 @@ export default function Leaderboard() {
                   : '0.0';
                 return (
                   <tr key={p.player_id} className={i < 3 ? `rank-${i + 1}` : ''}>
-                    <td className="col-rank">{i + 1}</td>
+                    <td className="col-rank"><span className="pb-rank-disc">{i + 1}</span></td>
                     <td className="col-player">
                       {(() => {
                         const frameMeta = p.profile_frame ? FRAME_META[p.profile_frame] : null;
@@ -658,6 +648,7 @@ export default function Leaderboard() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.43",
+    "title": "A new look across the site — the \"Press Box\" redesign",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** The Court & Pitch palette was only skin-deep on a handful of pages. We've pulled the editorial \"press box\" look — magazine-style serif headlines, brass eyebrow labels and framed stat cards — through the most-visited pages so the whole site feels like one publication.",
+      "**What.** The home page, leaderboard, player profiles, match pages and the inhouse lobby all got the new treatment: Playfair serif titles over condensed brass eyebrows, gradient cards with hairline brass borders, and key numbers (MMR, scores, net worth) set in editorial serif figures.",
+      "**Re-skin only.** This is purely a visual refresh — every stat, chart, table, admin tool, paywall and live-draft control works exactly as before. Nothing about how the pages behave has changed.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.42",
     "title": "Voiceline daily now covers nearly the whole hero roster",
     "published_at": "2026-05-30",

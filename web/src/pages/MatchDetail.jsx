@@ -39,6 +39,7 @@ import SponsorshipBanner from '../components/SponsorshipBanner';
 import {
   LineChart, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from 'recharts';
+import '../styles/pressbox-matchdetail.css';
 
 const POSITION_NAMES = {
   0: '-',
@@ -990,8 +991,8 @@ function DraftDisplay({ draft }) {
   if (!hasBans) return null;
 
   return (
-    <div style={{ marginTop: '1.5rem' }}>
-      <h3 style={{ color: '#94a3b8', marginBottom: '0.75rem', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Draft Order</h3>
+    <div className="pb-draft-panel" style={{ marginTop: '1.5rem' }}>
+      <h3 style={{ marginBottom: '0.75rem', fontSize: '1rem' }}>Draft Order</h3>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'flex-start' }}>
         {draft.map((entry, i) => {
           const isBan = !entry.is_pick;
@@ -4134,7 +4135,7 @@ function MatchDetailInner() {
   })();
 
   return (
-    <div>
+    <div className="pb-match">
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
         <Link to="/matches" className="back-link">&larr; Back to matches</Link>
         {/* Task #260 — Share button. Mirrors the Player Profile Share popover
@@ -4377,6 +4378,7 @@ function MatchDetailInner() {
       <SponsorshipBanner slug="match_sidebar" style={{ margin: '12px 0' }} />
 
       <div className="match-detail-header">
+        <div className="pb-match-eyebrow">Post-Game Breakdown</div>
         <h1>Match #{match.match_id}</h1>
         <div className="match-meta">
           <span className={`match-result ${match.radiant_win ? 'radiant' : 'dire'}`}>

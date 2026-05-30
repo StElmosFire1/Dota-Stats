@@ -34,6 +34,7 @@ import useProStatus from '../hooks/useProStatus';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
+import '../styles/pressbox-profile.css';
 
 const POS_NAMES = { 1: 'Pos 1 (Safe)', 2: 'Pos 2 (Mid)', 3: 'Pos 3 (Off)', 4: 'Pos 4 (Sup)', 5: 'Pos 5 (Hard Sup)' };
 
@@ -1462,7 +1463,7 @@ export default function PlayerProfile() {
   };
   const coverFlair = (showProfileCustomization && ex.flair_unlocked && ex.flair_override) || null;
   return (
-    <div className={`magazine-v3 v3-theme-${layoutTheme}`}>
+    <div className={`magazine-v3 pb-profile v3-theme-${layoutTheme}`}>
       <SponsorshipBanner slug="profile_sidebar" style={{ margin: '12px 0' }} />
       <div id="cover" />
       <MagazineCover

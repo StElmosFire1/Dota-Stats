@@ -1,0 +1,151 @@
+/* Press Box re-skin for the Match Detail page (T004).
+   Scoped to .pb-match so it never leaks into other pages that reuse the
+   shared .scoreboard / .expanded-stats-section / .team-* classes.
+   Re-skin only — no behaviour, layout flow, or data is changed here. */
+
+/* ---- Match header / scoreline -------------------------------------- */
+.pb-match .match-detail-header h1 {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-size: 2rem;
+}
+
+.pb-match .pb-match-eyebrow {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pb-brass);
+  margin-bottom: 0.4rem;
+}
+
+.pb-match .match-result {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+}
+
+/* ---- Panels become Press Box cards --------------------------------- */
+.pb-match .expanded-stats-section {
+  background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
+  border: 1px solid var(--pb-line);
+  border-radius: var(--pb-radius);
+  box-shadow: var(--pb-shadow);
+  padding: 1.25rem 1.5rem;
+}
+
+/* Section / panel headers → condensed brass eyebrow treatment. */
+.pb-match .expanded-stats-section > h3 {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--pb-brass-bright);
+}
+
+/* ---- Team scoreboards ---------------------------------------------- */
+.pb-match .team-section {
+  background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
+  border: 1px solid var(--pb-line);
+  border-radius: var(--pb-radius);
+  box-shadow: var(--pb-shadow);
+  overflow: hidden;
+}
+
+.pb-match .team-header {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  border-radius: 0;
+  border-bottom: 1px solid var(--pb-line) !important;
+  background: var(--pb-bg-2);
+}
+
+.pb-match .team-header.radiant {
+  border: none;
+  border-bottom: 1px solid var(--pb-line) !important;
+  background: var(--pb-bg-2);
+  color: var(--pb-radiant);
+}
+
+.pb-match .team-header.dire {
+  border: none;
+  border-bottom: 1px solid var(--pb-line) !important;
+  background: var(--pb-bg-2);
+  color: var(--pb-dire);
+}
+
+.pb-match .winner-badge {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.7rem;
+  background: rgba(197, 169, 117, 0.12);
+  border: 1px solid var(--pb-line);
+  color: var(--pb-brass-bright);
+}
+
+/* ---- Tables: hairline rows + eyebrow column headers ---------------- */
+.pb-match .scoreboard-wrapper {
+  border: none;
+  border-radius: 0;
+}
+
+.pb-match table.scoreboard {
+  background: transparent;
+}
+
+.pb-match .scoreboard thead {
+  background: var(--pb-surface-2);
+}
+
+.pb-match .scoreboard th {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-weight: 600;
+  font-size: 0.72rem;
+  color: var(--pb-faint);
+  border-bottom: 1px solid var(--pb-line);
+}
+
+.pb-match .scoreboard td {
+  border-bottom: 1px solid var(--pb-line);
+}
+
+.pb-match .scoreboard tbody tr:hover {
+  background: var(--pb-surface-2);
+}
+
+.pb-match .scoreboard tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Net-worth figures rendered as serif brass-bright (the mockup's "Net"). */
+.pb-match .scoreboard td.nw {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  color: var(--pb-brass-bright);
+}
+
+/* ---- Draft & bans panel -------------------------------------------- */
+.pb-match .pb-draft-panel {
+  background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
+  border: 1px solid var(--pb-line);
+  border-radius: var(--pb-radius);
+  box-shadow: var(--pb-shadow);
+  padding: 1.25rem 1.5rem;
+}
+
+.pb-match .pb-draft-panel > h3 {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--pb-brass-bright) !important;
+}
