@@ -19,13 +19,14 @@ function stubModule(specifier, exports, fromPath) {
 
 const SERVER_PATH = require.resolve('../src/web/server.js');
 
-function boot({ claim }) {
+function boot({ claim, dqSummaries }) {
   // Reset module cache so server.js re-binds our stubs every boot.
   delete require.cache[SERVER_PATH];
 
   const notifyCalls = [];
   const dbStub = {
     async claimTournamentCheckinNotifications() { return claim; },
+    async sweepTournamentCheckInDqs() { return dqSummaries || []; },
     // notify.js references these lazily; harmless no-op stubs.
     async isEventEnabled() { return true; },
   };
@@ -85,5 +86,35 @@ test('check-in notify tick is a no-op when nothing is due', async () => {
   const result = await server._runCheckinNotifyTick();
   assert.equal(result.opens, 0);
   assert.equal(result.reminders, 0);
+  assert.equal(notifyCalls.length, 0);
+});
+
+// Task #543 — dropped-player DQ notifications.
+test('DQ sweep tick DMs each dropped player exactly once', async () => {
+  const dqSummaries = [
+    { tournament_id: 7, name: 'Autumn Cup', removed: 2, removed_account_ids: ['111', '222'] },
+    { tournament_id: 9, name: 'Winter Clash', removed: 1, removed_account_ids: ['333'] },
+  ];
+  const { server, notifyCalls } = boot({ claim: { opens: [], reminders: [] }, dqSummaries });
+
+  const result = await server._runCheckinDqSweepTick();
+  assert.equal(result.tournaments, 2);
+  assert.equal(result.notified, 3);
+
+  assert.equal(notifyCalls.length, 3);
+  for (const c of notifyCalls) {
+    assert.equal(c.eventKey, 'tournament_checkin');
+    assert.equal(c.payload.push.data.kind, 'tournament_checkin_dq');
+    assert.ok(c.payload.discord && c.payload.push, 'both channels present');
+  }
+  const recipients = notifyCalls.map(c => c.accountId).sort();
+  assert.deepEqual(recipients, ['111', '222', '333']);
+});
+
+test('DQ sweep tick is a no-op when nobody was dropped', async () => {
+  const { server, notifyCalls } = boot({ claim: { opens: [], reminders: [] }, dqSummaries: [] });
+  const result = await server._runCheckinDqSweepTick();
+  assert.equal(result.tournaments, 0);
+  assert.equal(result.notified, 0);
   assert.equal(notifyCalls.length, 0);
 });

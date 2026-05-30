@@ -27646,7 +27646,7 @@ async function getTournamentCheckIns(tournamentId) {
 async function sweepTournamentCheckInDqs({ now = new Date() } = {}) {
   const p = getPool();
   const r = await p.query(
-    `SELECT id FROM tournaments
+    `SELECT id, name FROM tournaments
      WHERE status = 'upcoming' AND checkin_dq_done = FALSE
        AND starts_at IS NOT NULL AND starts_at <= $1`, [now]);
   const summaries = [];
@@ -27661,7 +27661,12 @@ async function sweepTournamentCheckInDqs({ now = new Date() } = {}) {
          RETURNING account_id`, [tid]);
       await p.query(
         `UPDATE tournaments SET checkin_dq_done = TRUE WHERE id = $1`, [tid]);
-      summaries.push({ tournament_id: tid, removed: removedRes.rowCount });
+      summaries.push({
+        tournament_id: tid,
+        name: row.name,
+        removed: removedRes.rowCount,
+        removed_account_ids: removedRes.rows.map(rr => String(rr.account_id)),
+      });
     } catch (err) {
       console.error(`[swiss] sweep DQ for tournament ${tid}:`, err.message);
     }

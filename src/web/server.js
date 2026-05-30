@@ -405,6 +405,35 @@ async function _runCheckinNotifyTick() {
   return { opens: opens.length, reminders: reminders.length };
 }
 
+// Task #543 — run the no-show DQ sweep and tell each dropped player they were
+// removed for missing check-in. The sweep flips `checkin_dq_done = TRUE` and
+// DELETEs the no-shows in one shot per tournament, so each removed account is
+// surfaced exactly once and these DMs can never duplicate across ticks. Gated
+// per-user by the same `tournament_checkin` preference as the open/reminder
+// signals, so opt-outs are honoured. Best-effort: per-recipient failures are
+// logged but never abort the tick. Exported for tests.
+async function _runCheckinDqSweepTick() {
+  const summaries = await db.sweepTournamentCheckInDqs();
+  let notified = 0;
+  for (const s of summaries) {
+    const url = `/tournaments/${s.tournament_id}`;
+    const title = 'Dropped from tournament';
+    const body = `You were removed from "${s.name}" because you didn't check in before the window closed.`;
+    for (const aid of (s.removed_account_ids || [])) {
+      try {
+        await notify(aid, 'tournament_checkin', {
+          discord: { content: `🚫 **${title}** — ${body}\nView the bracket: ${(process.env.SITE_URL || '')}${url}` },
+          push: { title, body, url, data: { kind: 'tournament_checkin_dq', tournament_id: s.tournament_id } },
+        });
+        notified++;
+      } catch (e) {
+        console.warn('[swiss] check-in DQ notify failed:', e.message);
+      }
+    }
+  }
+  return { tournaments: summaries.length, notified };
+}
+
 // Task #453 — auto-pay tournament winners via Stripe Connect Express.
 //
 // `tournament_payouts` (Task #412) snapshots per-place amounts when an event
@@ -13869,10 +13898,11 @@ NOTES
     }
   });
 
-  // Task #412 — sweep no-show DQs every 60s.
+  // Task #412 — sweep no-show DQs every 60s. Task #543 — and DM / push each
+  // dropped player so the removal isn't silent.
   if (!global.__t412_checkin_sweep) {
     global.__t412_checkin_sweep = setInterval(() => {
-      db.sweepTournamentCheckInDqs().catch(err => {
+      _runCheckinDqSweepTick().catch(err => {
         console.error('[swiss] check-in DQ sweep:', err.message);
       });
     }, 60 * 1000);
@@ -20777,4 +20807,4 @@ function processReplayInternal(filePath, source, opts = {}) {
   });
 }
 
-module.exports = { createServer, processReplayInternal, createApiRouter, _runCheckinNotifyTick };
+module.exports = { createServer, processReplayInternal, createApiRouter, _runCheckinNotifyTick, _runCheckinDqSweepTick };

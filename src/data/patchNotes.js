@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.36",
+    "title": "You're now told when a missed check-in drops you from a tournament",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** Check-in already warns you when the window opens and again 5 minutes before it closes — but if you still didn't check in, the auto-DQ sweep quietly removed you from the bracket with no word. That silent drop was confusing. Now you get told.",
+      "**What.** When the no-show sweep removes you, you get a Discord DM / web-push explaining you were dropped from the named tournament for not checking in, with a link back to the bracket.",
+      "**Opt-outs honoured.** The drop notice goes through the same `tournament_checkin` notification preference as the open/reminder signals, so if you've muted check-in alerts you won't get this one either.",
+      "**No duplicates.** The sweep flips each tournament's DQ flag and removes no-shows in a single shot, so every dropped player is notified exactly once — repeated sweep ticks can't re-send.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.35",
     "title": "Daily mini-games get a professional redesign + Dotadle-style Heroguessr",
     "published_at": "2026-05-30",
