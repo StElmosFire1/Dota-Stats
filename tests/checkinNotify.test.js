@@ -122,6 +122,28 @@ test('DQ sweep tick is a no-op when nobody was dropped', async () => {
   assert.equal(notifyCalls.length, 0);
 });
 
+// Task #579 — dropped players are told they can reclaim their freed spot.
+test('DQ sweep DM invites a reclaim when spots are still open', async () => {
+  const dqSummaries = [
+    { tournament_id: 7, name: 'Autumn Cup', removed: 1, removed_account_ids: ['111'], max_participants: 8, spots_available: 3 },
+  ];
+  const { server, notifyCalls } = boot({ claim: { opens: [], reminders: [] }, dqSummaries });
+  await server._runCheckinDqSweepTick();
+  assert.equal(notifyCalls.length, 1);
+  assert.match(notifyCalls[0].payload.push.body, /reclaim/i);
+});
+
+// Task #579 — when the freed slots have already been refilled, no reclaim hint.
+test('DQ sweep DM omits the reclaim hint when the tournament is full', async () => {
+  const dqSummaries = [
+    { tournament_id: 9, name: 'Winter Clash', removed: 1, removed_account_ids: ['333'], max_participants: 8, spots_available: 0 },
+  ];
+  const { server, notifyCalls } = boot({ claim: { opens: [], reminders: [] }, dqSummaries });
+  await server._runCheckinDqSweepTick();
+  assert.equal(notifyCalls.length, 1);
+  assert.doesNotMatch(notifyCalls[0].payload.push.body, /reclaim/i);
+});
+
 // Task #545 — connect-a-payout-account nudge for winners with unclaimed prizes.
 test('payout connect-nudge DMs each unconnected winner once and stamps them', async () => {
   const payoutNudges = [

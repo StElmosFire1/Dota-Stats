@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.44",
+    "title": "Reclaim your tournament spot if you missed check-in",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** When the no-show sweep drops players who missed check-in, their slots were sitting empty even though the tournament hadn't started yet — and the people who paid for those slots had no way back in.",
+      "**What.** Freed slots are now genuinely re-claimable. A dropped player can reclaim their spot from the bracket link at no extra charge (their original payment is preserved), and any open slots are offered to other eligible players — all bounded to before the tournament starts.",
+      "**Spots-available state.** The sign-ups panel now shows how many spots are open, and the drop notification tells you that you can reclaim yours while spots remain.",
+      "**Capacity stays honest.** Re-registration and reclaim both enforce the cap server-side, so a freed slot can't be over-sold if someone else grabs it first.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.43",
     "title": "A new look across the site — the \"Press Box\" redesign",
     "published_at": "2026-05-30",

@@ -1577,6 +1577,11 @@ function TournamentSelfSignupPanel({ tournament, onChange }) {
   // (added in v5.92) — never from `reason` string parsing.
   const entry = eligibility?.existingEntry || null;
   const alreadyEntered = entry?.status === 'paid';
+  // Task #579 — a player the no-show DQ sweep dropped has their entry parked as
+  // 'dq_noshow'. They already paid, so the CTA offers a no-charge reclaim.
+  const dropped = (eligibility?.dropped === true) || entry?.status === 'dq_noshow';
+  // Freed-slot count (null = no cap / unknown). Surfaced as "X spots open".
+  const spotsAvailable = eligibility?.spotsAvailable;
 
   const handleRegister = async () => {
     if (!accountId) {
@@ -1590,7 +1595,12 @@ function TournamentSelfSignupPanel({ tournament, onChange }) {
         window.location.href = res.url;
         return;
       }
-      setMsg({ kind: 'ok', text: 'Registered! You are entered.' });
+      setMsg({
+        kind: 'ok',
+        text: res?.reclaimed
+          ? "Reclaimed — you're back in the bracket!"
+          : 'Registered! You are entered.',
+      });
       reload();
       if (typeof onChange === 'function') onChange();
     } catch (e) {
@@ -1629,11 +1639,21 @@ function TournamentSelfSignupPanel({ tournament, onChange }) {
         <div style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           <span><strong style={{ color: 'var(--text-primary)' }}>Entry:</strong> {feeLabel}</span>
           {cap ? <span><strong style={{ color: 'var(--text-primary)' }}>Cap:</strong> {cap} players</span> : null}
+          {typeof spotsAvailable === 'number' && spotsAvailable > 0 && (
+            <span style={{ color: '#4ade80', fontWeight: 600 }}>
+              {spotsAvailable} spot{spotsAvailable === 1 ? '' : 's'} open
+            </span>
+          )}
           {tournament.signup_close_at && (
             <span><strong style={{ color: 'var(--text-primary)' }}>Closes:</strong> {new Date(tournament.signup_close_at).toLocaleString()}</span>
           )}
         </div>
       </div>
+      {dropped && (
+        <p style={{ fontSize: 13, color: '#f59e0b', margin: '0 0 10px' }}>
+          You were dropped for missing check-in. You already paid, so you can reclaim your spot at no extra charge while the tournament hasn't started.
+        </p>
+      )}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         {alreadyEntered ? (
           <>
@@ -1646,7 +1666,7 @@ function TournamentSelfSignupPanel({ tournament, onChange }) {
         ) : (
           <button onClick={handleRegister} disabled={busy || !!blockReason}
             style={{ background: blockReason ? 'var(--bg-secondary)' : 'var(--accent-blue)', color: blockReason ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 7, padding: '8px 18px', cursor: busy || blockReason ? 'not-allowed' : 'pointer', fontSize: 14, fontWeight: 600 }}>
-            {busy ? '…' : fee > 0 ? `Register (${feeLabel})` : 'Register (free)'}
+            {busy ? '…' : dropped ? 'Reclaim your spot' : fee > 0 ? `Register (${feeLabel})` : 'Register (free)'}
           </button>
         )}
         {blockReason && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{blockReason}</span>}

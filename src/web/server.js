@@ -418,7 +418,13 @@ async function _runCheckinDqSweepTick() {
   for (const s of summaries) {
     const url = `/tournaments/${s.tournament_id}`;
     const title = 'Dropped from tournament';
-    const body = `You were removed from "${s.name}" because you didn't check in before the window closed.`;
+    // Task #579 — if slots are still open (and the event hasn't started), tell
+    // the dropped player they can reclaim their spot from the bracket link.
+    const canReclaim = s.spots_available == null || s.spots_available > 0;
+    const reclaimHint = canReclaim
+      ? ` Spots are still open — you can reclaim yours from the bracket while the tournament hasn't started.`
+      : '';
+    const body = `You were removed from "${s.name}" because you didn't check in before the window closed.${reclaimHint}`;
     for (const aid of (s.removed_account_ids || [])) {
       try {
         await notify(aid, 'tournament_checkin', {
@@ -10157,7 +10163,22 @@ NOTES
       const result = await db.isPlayerEligibleForTournament(req.params.id, accountId);
       // Also include any existing entry status so UI can show the right CTA.
       const existing = await db.getTournamentEntry(req.params.id, accountId);
-      res.json({ ...result, existingEntry: _publicEntryFields(existing, isSu) || null });
+      // Task #579 — surface freed-slot state so the UI can show "X spots
+      // available" and offer a no-charge reclaim to players the no-show DQ
+      // sweep dropped (entry left as 'dq_noshow').
+      let spotsAvailable = null;
+      const t = await db.getTournamentById(req.params.id);
+      if (t && t.max_participants && t.max_participants > 0) {
+        const paidCount = await db.getTournamentPaidEntryCount(req.params.id);
+        spotsAvailable = Math.max(0, t.max_participants - paidCount);
+      }
+      const dropped = existing?.status === 'dq_noshow';
+      res.json({
+        ...result,
+        existingEntry: _publicEntryFields(existing, isSu) || null,
+        spotsAvailable,
+        dropped,
+      });
     } catch (err) {
       res.status(500).json({ error: 'Failed to check eligibility' });
     }
@@ -10194,6 +10215,16 @@ NOTES
 
       const t = await db.getTournamentById(tournamentId);
       if (!t) return res.status(404).json({ error: 'Tournament not found' });
+
+      // Task #579 — if this player was dropped by the no-show DQ sweep, their
+      // paid entry is parked as 'dq_noshow'. Reclaim the slot in place (no new
+      // charge) instead of opening a second checkout that would double-bill.
+      const existingForReclaim = await db.getTournamentEntry(tournamentId, finalAccountId);
+      if (existingForReclaim && existingForReclaim.status === 'dq_noshow') {
+        const reclaimed = await db.reclaimTournamentEntry(tournamentId, finalAccountId);
+        return res.json({ ok: true, reclaimed: true, entry: _publicEntryFields(reclaimed, isSuperuser) });
+      }
+
       if (!t.entry_fee_cents || t.entry_fee_cents <= 0) {
         return res.status(400).json({ error: 'This tournament is free — no checkout needed' });
       }
@@ -10269,6 +10300,16 @@ NOTES
 
       const t = await db.getTournamentById(tournamentId);
       if (!t) return res.status(404).json({ error: 'Tournament not found' });
+
+      // Task #579 — reclaim a slot freed by the no-show DQ sweep in place
+      // (entry parked as 'dq_noshow') rather than re-running the signup flow.
+      const existingForReclaim = await db.getTournamentEntry(tournamentId, finalAccountId);
+      if (existingForReclaim && existingForReclaim.status === 'dq_noshow') {
+        // reclaimTournamentEntry already recomputes the prize pool.
+        const reclaimed = await db.reclaimTournamentEntry(tournamentId, finalAccountId);
+        return res.json({ ok: true, reclaimed: true, entry: reclaimed });
+      }
+
       if (t.entry_fee_cents && t.entry_fee_cents > 0) {
         return res.status(400).json({ error: 'This tournament has an entry fee — use checkout instead.' });
       }
@@ -10388,6 +10429,41 @@ NOTES
     } catch (err) {
       console.error('[API] tournament withdraw error:', err.message);
       res.status(500).json({ error: err.message || 'Failed to withdraw' });
+    }
+  });
+
+  // Task #579 — reclaim a slot freed by the no-show DQ sweep. A player the
+  // sweep dropped has their paid entry parked as 'dq_noshow'; this restores
+  // them to the roster with no fresh charge, bounded by status='upcoming' and
+  // server-side capacity. Bound to the authenticated Steam session (a
+  // superuser may act on another account). Returns 409 on user-safe failures
+  // (full / already started / nothing to reclaim) so the UI can show them.
+  router.post('/tournaments/:id/reclaim', express.json(), async (req, res) => {
+    try {
+      if (!(await _selfSignupVisible(req))) return res.status(404).json({ error: 'Not found' });
+      const isSu = _isSelfSignupSuperuser(req);
+      const tournamentId = parseInt(req.params.id);
+      const { accountId } = req.body || {};
+      const sessionAccountId = req.session?.accountId;
+      let finalAccountId = sessionAccountId;
+      if (accountId && String(accountId) !== String(sessionAccountId || '')) {
+        if (!isSu) return res.status(403).json({ error: 'You can only reclaim your own slot.' });
+        finalAccountId = accountId;
+      }
+      if (!finalAccountId) return res.status(401).json({ error: 'Sign in with Steam to reclaim your slot.' });
+
+      let reclaimed;
+      try {
+        reclaimed = await db.reclaimTournamentEntry(tournamentId, finalAccountId);
+      } catch (e) {
+        // db.reclaimTournamentEntry throws user-safe messages for the expected
+        // failure modes (full, already started, nothing to reclaim).
+        return res.status(409).json({ error: e.message || 'Could not reclaim your slot.' });
+      }
+      res.json({ ok: true, reclaimed: true, entry: _publicEntryFields(reclaimed, isSu) });
+    } catch (err) {
+      console.error('[API] tournament reclaim error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to reclaim slot' });
     }
   });
 

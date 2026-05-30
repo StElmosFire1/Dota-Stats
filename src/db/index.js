@@ -25555,6 +25555,8 @@ module.exports = {
   markTournamentEntryPaid,
   markTournamentEntryRefunded,
   getTournamentPaidEntryCount,
+  getTournamentParticipantCount,
+  reclaimTournamentEntry,
   isPlayerEligibleForTournament,
   recomputeTournamentPrizePool,
   updateTournamentStatus,
@@ -26819,6 +26821,70 @@ async function markTournamentEntryRefunded(tournamentId, accountId) {
   return entry;
 }
 
+// Task #579 — count the live roster (participants), independent of the paid
+// entry count. After a no-show DQ sweep the participant count drops below the
+// paid-entry count, so this is what the "spots available" UI should reflect.
+async function getTournamentParticipantCount(tournamentId) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT COUNT(*)::int AS n FROM tournament_participants WHERE tournament_id = $1`,
+    [parseInt(tournamentId)]
+  );
+  return r.rows[0]?.n || 0;
+}
+
+// Task #579 — reclaim a slot freed by the no-show DQ sweep. A dropped player's
+// entry is left as 'dq_noshow' with its payment record intact; this restores it
+// to 'paid' and re-adds them to the roster WITHOUT a fresh charge, bounded by
+// the tournament still being 'upcoming' and capacity not having been refilled
+// by someone else. Returns the reclaimed entry or throws a user-safe Error.
+async function reclaimTournamentEntry(tournamentId, accountId) {
+  const p = getPool();
+  const tid = parseInt(tournamentId);
+  const t = await getTournamentById(tid);
+  if (!t) throw new Error('Tournament not found');
+  if (t.status !== 'upcoming') {
+    throw new Error('Re-registration is closed — the tournament has already started.');
+  }
+  const entry = await getTournamentEntry(tid, accountId);
+  if (!entry) throw new Error('No previous entry to reclaim — register normally.');
+  if (entry.status === 'paid') {
+    // Idempotent: already active. Make sure the roster row exists and bail.
+    await p.query(
+      `INSERT INTO tournament_participants (tournament_id, account_id)
+       VALUES ($1, $2) ON CONFLICT (tournament_id, account_id) DO NOTHING`,
+      [tid, BigInt(entry.account_id)]
+    );
+    return entry;
+  }
+  if (entry.status !== 'dq_noshow') {
+    throw new Error('Your entry cannot be reclaimed — please register again.');
+  }
+  // Capacity gate — never let a reclaim oversell a slot another player took.
+  if (t.max_participants && t.max_participants > 0) {
+    const paidCount = await getTournamentPaidEntryCount(tid);
+    if (paidCount >= t.max_participants) {
+      throw new Error('Tournament is full — your freed slot was already taken.');
+    }
+  }
+  const upd = await p.query(
+    `UPDATE tournament_entries
+        SET status = 'paid', paid_at = COALESCE(paid_at, NOW())
+      WHERE tournament_id = $1 AND account_id = $2 AND status = 'dq_noshow'
+      RETURNING *`,
+    [tid, String(accountId)]
+  );
+  const reclaimed = upd.rows[0];
+  if (!reclaimed) throw new Error('Could not reclaim your slot — it may have just been taken.');
+  await p.query(
+    `INSERT INTO tournament_participants (tournament_id, account_id)
+     VALUES ($1, $2) ON CONFLICT (tournament_id, account_id) DO NOTHING`,
+    [tid, BigInt(reclaimed.account_id)]
+  );
+  await recomputeTournamentPrizePool(tid).catch(() => {});
+  return reclaimed;
+}
+
 // Eligibility check — returns { eligible: bool, reason: string|null, tier: int|null }
 async function isPlayerEligibleForTournament(tournamentId, accountId) {
   const t = await getTournamentById(tournamentId);
@@ -27791,7 +27857,7 @@ async function getTournamentCheckIns(tournamentId) {
 async function sweepTournamentCheckInDqs({ now = new Date() } = {}) {
   const p = getPool();
   const r = await p.query(
-    `SELECT id, name FROM tournaments
+    `SELECT id, name, max_participants FROM tournaments
      WHERE status = 'upcoming' AND checkin_dq_done = FALSE
        AND starts_at IS NOT NULL AND starts_at <= $1`, [now]);
   const summaries = [];
@@ -27804,13 +27870,37 @@ async function sweepTournamentCheckInDqs({ now = new Date() } = {}) {
            SELECT account_id FROM tournament_checkins WHERE tournament_id = $1
          )
          RETURNING account_id`, [tid]);
+      const removedIds = removedRes.rows.map(rr => rr.account_id);
+      // Task #579 — release the dropped no-shows' paid entries so the freed
+      // slot is actually re-claimable. A 'dq_noshow' entry no longer counts
+      // toward the capacity gate (getTournamentPaidEntryCount) nor trips the
+      // "Already entered" eligibility block, while the original payment record
+      // (amount_cents / stripe_payment_intent_id / paid_at) is preserved so a
+      // dropped player can reclaim their slot later without paying twice.
+      if (removedIds.length) {
+        await p.query(
+          `UPDATE tournament_entries SET status = 'dq_noshow'
+           WHERE tournament_id = $1 AND status = 'paid' AND account_id = ANY($2::bigint[])`,
+          [tid, removedIds]);
+      }
       await p.query(
         `UPDATE tournaments SET checkin_dq_done = TRUE WHERE id = $1`, [tid]);
+      // Keep the live prize pool in sync with the now-smaller paid roster; the
+      // money rejoins the pool if/when a dropped player reclaims their slot.
+      try { await recomputeTournamentPrizePool(tid); } catch (_) { /* best-effort */ }
+      // Surface how many slots opened up so the caller can message players.
+      let spotsAvailable = null;
+      if (row.max_participants && row.max_participants > 0) {
+        const paidCount = await getTournamentPaidEntryCount(tid);
+        spotsAvailable = Math.max(0, row.max_participants - paidCount);
+      }
       summaries.push({
         tournament_id: tid,
         name: row.name,
         removed: removedRes.rowCount,
-        removed_account_ids: removedRes.rows.map(rr => String(rr.account_id)),
+        removed_account_ids: removedIds.map(String),
+        max_participants: row.max_participants || null,
+        spots_available: spotsAvailable,
       });
     } catch (err) {
       console.error(`[swiss] sweep DQ for tournament ${tid}:`, err.message);
