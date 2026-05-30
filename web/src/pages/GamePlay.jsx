@@ -3,11 +3,17 @@ import { useParams, Link } from 'react-router-dom';
 import {
   getGameDaily, getGameEndless, getGameLeaderboard, submitGameGuess, gameImageUrl, gameAudioUrl,
 } from '../api';
+import { getHeroImageUrl } from '../heroNames';
+import './games.css';
 
 // Task #451 — Daily Dota mini-games play surface. One component drives all
 // games; the clue renderer switches on the puzzle's clue shape. The backend
 // keeps the answer secret until the player finishes, so this component only
 // ever knows the choices list + a leak-free clue.
+//
+// Heroguessr is the exception: it's a Dotadle-style attribute game. There is no
+// upfront clue — each guess returns a `compare` row (server-computed) telling
+// the player how their pick stacks up against the mystery hero.
 
 const TITLES = {
   heroguessr: 'Heroguessr',
@@ -17,6 +23,9 @@ const TITLES = {
   voiceline: 'Voiceline daily',
 };
 
+// Games whose guesses/answers are heroes (so we can show hero portraits).
+const HERO_GAMES = new Set(['heroguessr', 'statline', 'talent', 'voiceline']);
+
 function fmtDuration(sec) {
   if (!sec) return '—';
   const m = Math.floor(sec / 60);
@@ -24,46 +33,88 @@ function fmtDuration(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// ── Clue renderers ──────────────────────────────────────────────────────────
-function HeroguessrClue({ clue, revealCount }) {
-  if (!clue || !clue.hints) return null;
-  const shown = clue.hints.slice(0, revealCount);
+// ── Dotadle comparison grid (Heroguessr) ────────────────────────────────────
+const DL_COLS = ['Attribute', 'Attack', 'Roles', 'Legs', 'Move spd', 'Atk range'];
+
+function tileClass(f) {
+  if (f.verdict === 'match') return 'dl-tile dl-tile--match';
+  if (f.verdict === 'partial' || f.close) return 'dl-tile dl-tile--warm';
+  return 'dl-tile';
+}
+
+function fieldAria(f) {
+  if (f.kind === 'num') {
+    if (f.verdict === 'match') return `${f.label}: ${f.value}, exact match`;
+    const dir = f.verdict === 'higher' ? 'the answer is higher' : 'the answer is lower';
+    return `${f.label}: ${f.value}, ${dir}${f.close ? ', close' : ''}`;
+  }
+  if (f.kind === 'roles') {
+    const list = (f.value || []).join(', ') || 'none';
+    const v = f.verdict === 'match' ? 'all roles match'
+      : f.verdict === 'partial' ? 'some roles match' : 'no roles match';
+    return `${f.label}: ${list}; ${v}`;
+  }
+  return `${f.label}: ${f.value}, ${f.verdict === 'match' ? 'match' : 'no match'}`;
+}
+
+function CompareTile({ f }) {
   return (
-    <div style={{ display: 'grid', gap: 10 }}>
-      {shown.map(h => (
-        <div key={h.key} className="card" style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            {h.label}
-          </div>
-          {h.abilityTokens ? (
-            <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-              {h.abilityTokens.map((t, i) => (
-                <img
-                  key={i}
-                  src={gameImageUrl(t)}
-                  alt={`Ability icon ${i + 1}`}
-                  width={48}
-                  height={48}
-                  style={{ borderRadius: 6, background: 'var(--bg-secondary)' }}
-                />
-              ))}
-            </div>
-          ) : (
-            <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>{h.value}</div>
-          )}
+    <div className={tileClass(f)} role="img" aria-label={fieldAria(f)}>
+      {f.kind === 'roles' ? (
+        <div className="dl-chips" aria-hidden="true">
+          {(f.value || []).length
+            ? f.value.map((r, i) => (
+                <span key={i} className={`dl-chip${(f.shared || []).includes(r) ? ' dl-chip--on' : ''}`}>{r}</span>
+              ))
+            : <span className="dl-chip">—</span>}
         </div>
-      ))}
+      ) : (
+        <>
+          <span className="dl-tile__val" aria-hidden="true">{f.value == null ? '—' : f.value}</span>
+          {f.kind === 'num' && (f.verdict === 'higher' || f.verdict === 'lower') && (
+            <span className="dl-tile__arrow" aria-hidden="true">{f.verdict === 'higher' ? '▲' : '▼'}</span>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
+function HeroCompareGrid({ guessed }) {
+  const rows = guessed.filter(g => g.compare).slice().reverse(); // newest first
+  if (!rows.length) return null;
+  return (
+    <div className="dotadle__scroll">
+      <div className="dotadle__grid" aria-hidden="true">
+        <div className="dl-head dl-head--hero">Hero</div>
+        {DL_COLS.map(c => <div key={c} className="dl-head">{c}</div>)}
+      </div>
+      {rows.map((g, i) => (
+        <div className="dotadle__grid" key={`${g.id}-${i}`}>
+          <div className="dl-hero">
+            <img className="dl-hero__img" src={getHeroImageUrl(g.id, g.name)} alt="" loading="lazy" />
+            <span className="dl-hero__name">{g.name}</span>
+          </div>
+          {(g.compare.fields || []).map(f => <CompareTile key={f.key} f={f} />)}
+        </div>
+      ))}
+      <div className="dl-legend">
+        <span><span className="dl-swatch dl-swatch--match" aria-hidden="true" /> Exact match</span>
+        <span><span className="dl-swatch dl-swatch--warm" aria-hidden="true" /> Partial / close</span>
+        <span><span aria-hidden="true">▲▼</span> Arrow points toward the answer</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Clue renderers (non-heroguessr games) ───────────────────────────────────
 function ItemZoomClue({ clue, zoomLevel }) {
   if (!clue || !clue.imageToken) return null;
   return (
     <div
       style={{
         width: 260, height: 260, margin: '0 auto', overflow: 'hidden',
-        borderRadius: 10, border: '2px solid var(--brass)', background: 'var(--bg-secondary)',
+        borderRadius: 12, border: '2px solid var(--brass)', background: 'var(--bg-secondary)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
     >
@@ -83,8 +134,6 @@ function ItemZoomClue({ clue, zoomLevel }) {
 
 function TalentClue({ clue, revealCount }) {
   if (!clue || !clue.talents) return null;
-  // Reveal from the top of the tree (25) downward as guesses are spent, so the
-  // most distinctive talents show first.
   const ordered = clue.talents.slice().sort((a, b) => b.level - a.level);
   const shown = ordered.slice(0, Math.max(1, revealCount));
   return (
@@ -148,8 +197,6 @@ function VoicelineClue({ clue }) {
   const [err, setErr] = useState(false);
   const src = clue && clue.audioToken ? gameAudioUrl(clue.audioToken) : null;
 
-  // Reset transient UI state whenever the clip (token) changes — e.g. on an
-  // endless "Next puzzle" or daily/endless mode switch.
   useEffect(() => {
     setPlaying(false);
     setErr(false);
@@ -211,9 +258,7 @@ function VoicelineClue({ clue }) {
 }
 
 function ClueArea({ game, clue, guessCount }) {
-  if (game === 'heroguessr') return <HeroguessrClue clue={clue} revealCount={Math.min(6, guessCount + 1)} />;
   if (game === 'item-zoom') {
-    // Zoom out a bit with each wrong guess to make it progressively easier.
     const base = clue && clue.zoom ? clue.zoom : 8;
     const zoom = Math.max(1.2, base - guessCount * 1.1);
     return <ItemZoomClue clue={clue} zoomLevel={zoom} />;
@@ -224,8 +269,8 @@ function ClueArea({ game, clue, guessCount }) {
   return null;
 }
 
-// ── Guess input with autocomplete from the choices list ────────────────────
-function GuessInput({ choices, disabled, onGuess, guessedIds }) {
+// ── Guess input with autocomplete from the choices list ──────────────────────
+function GuessInput({ choices, disabled, onGuess, guessedIds, showPortraits }) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -257,7 +302,7 @@ function GuessInput({ choices, disabled, onGuess, guessedIds }) {
   };
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', maxWidth: 420, margin: '16px auto 0' }}>
+    <div ref={wrapRef} style={{ position: 'relative', maxWidth: 440, margin: '14px auto 0' }}>
       <label htmlFor="game-guess" style={{ display: 'block', fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
         Type your guess
       </label>
@@ -276,7 +321,7 @@ function GuessInput({ choices, disabled, onGuess, guessedIds }) {
         aria-controls="game-guess-list"
         aria-autocomplete="list"
         style={{
-          width: '100%', padding: '10px 12px', fontSize: 15, borderRadius: 8,
+          width: '100%', padding: '11px 13px', fontSize: 15, borderRadius: 9,
           border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text)',
         }}
       />
@@ -287,7 +332,7 @@ function GuessInput({ choices, disabled, onGuess, guessedIds }) {
           style={{
             listStyle: 'none', margin: '4px 0 0', padding: 4, position: 'absolute', zIndex: 20,
             width: '100%', background: 'var(--bg-primary)', border: '1px solid var(--border)',
-            borderRadius: 8, maxHeight: 280, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+            borderRadius: 9, maxHeight: 300, overflowY: 'auto', boxShadow: '0 12px 30px rgba(0,0,0,0.4)',
           }}
         >
           {matches.map((c, i) => (
@@ -298,12 +343,19 @@ function GuessInput({ choices, disabled, onGuess, guessedIds }) {
                 onMouseEnter={() => setActive(i)}
                 onFocus={() => setActive(i)}
                 style={{
-                  display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px',
-                  background: i === active ? 'var(--bg-secondary)' : 'transparent',
-                  border: 'none', borderRadius: 6, color: 'var(--text)', cursor: 'pointer', fontSize: 14,
+                  display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+                  padding: '7px 10px', background: i === active ? 'var(--bg-secondary)' : 'transparent',
+                  border: 'none', borderRadius: 7, color: 'var(--text)', cursor: 'pointer', fontSize: 14,
                 }}
               >
-                {c.name}
+                {showPortraits && (
+                  <img
+                    src={getHeroImageUrl(c.id, c.name)}
+                    alt=""
+                    style={{ width: 40, height: 23, objectFit: 'cover', borderRadius: 4, flex: '0 0 auto' }}
+                  />
+                )}
+                <span>{c.name}</span>
               </button>
             </li>
           ))}
@@ -313,8 +365,8 @@ function GuessInput({ choices, disabled, onGuess, guessedIds }) {
   );
 }
 
-// ── Leaderboard ─────────────────────────────────────────────────────────────
-function Leaderboard({ game }) {
+// ── Leaderboard ──────────────────────────────────────────────────────────────
+function Leaderboard({ game, maxGuesses }) {
   const [data, setData] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -331,7 +383,7 @@ function Leaderboard({ game }) {
             {data.today.map((r, i) => (
               <li key={i} style={{ padding: '3px 0' }}>
                 <span>{r.name || `Player ${r.account_id}`}</span>
-                <span style={{ float: 'right', color: 'var(--amber)', fontWeight: 600 }}>{r.guesses}/6</span>
+                <span style={{ float: 'right', color: 'var(--amber)', fontWeight: 600 }}>{r.guesses}/{maxGuesses}</span>
               </li>
             ))}
           </ol>
@@ -360,18 +412,32 @@ function Leaderboard({ game }) {
   );
 }
 
-// ── Main page ───────────────────────────────────────────────────────────────
+// ── Guess-progress pips ──────────────────────────────────────────────────────
+function ProgressPips({ used, max, won }) {
+  return (
+    <span className="gp-pips" aria-hidden="true">
+      {Array.from({ length: max }).map((_, i) => {
+        let cls = 'gp-pip';
+        if (i < used) cls += won && i === used - 1 ? ' gp-pip--win' : ' gp-pip--used';
+        return <span key={i} className={cls} />;
+      })}
+    </span>
+  );
+}
+
+// ── Main page ────────────────────────────────────────────────────────────────
 export default function GamePlay() {
   const { game } = useParams();
   const title = TITLES[game] || 'Mini-Game';
+  const isHeroguessr = game === 'heroguessr';
+  const heroPortraits = HERO_GAMES.has(game);
 
   const [mode, setMode] = useState('daily');
   const [puzzle, setPuzzle] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Per-attempt state.
-  const [guessed, setGuessed] = useState([]); // [{id, name, correct}]
+  const [guessed, setGuessed] = useState([]); // [{id, name, correct, compare?}]
   const [finished, setFinished] = useState(false);
   const [won, setWon] = useState(false);
   const [answer, setAnswer] = useState(null);
@@ -391,7 +457,6 @@ export default function GamePlay() {
     fetcher
       .then(d => {
         setPuzzle(d);
-        // Daily puzzle the player already finished: hydrate the end state.
         if (d.finished) {
           setFinished(true);
           setWon(d.won);
@@ -413,22 +478,20 @@ export default function GamePlay() {
     const nextCount = guessed.length + 1;
     try {
       const willFinish = nextCount >= maxGuesses;
-      // Optimistically we don't know correctness until the server responds.
       const resp = await submitGameGuess(game, {
         mode,
         guessId: choice.id,
         guesses: nextCount,
-        finished: false, // determined after we know correctness
+        finished: false,
         answerToken: puzzle.answerToken,
       });
       const correct = resp.correct;
-      const entry = { id: choice.id, name: choice.name, correct };
+      const entry = { id: choice.id, name: choice.name, correct, compare: resp.compare || null };
       const newGuessed = [...guessed, entry];
       setGuessed(newGuessed);
 
       const done = correct || willFinish;
       if (done) {
-        // Submit the terminal result so it's recorded + revealed.
         const finalResp = await submitGameGuess(game, {
           mode,
           guessId: choice.id,
@@ -458,124 +521,115 @@ export default function GamePlay() {
     }
   }, [share, game]);
 
-  // Voiceline / unavailable game.
+  // Unavailable game (e.g. coming-soon).
   if (puzzle && puzzle.available === false) {
     return (
-      <div className="container" style={{ padding: '24px 0', maxWidth: 640 }}>
-        <Link to="/games" style={{ fontSize: 14 }}>← All games</Link>
-        <h1>{puzzle.title || title}</h1>
-        <div className="card" style={{ padding: 24, textAlign: 'center' }}>
+      <div className="container games-root" style={{ padding: '24px 0', maxWidth: 640 }}>
+        <Link to="/games" className="gp-back">← All games</Link>
+        <h1 className="gp-title">{puzzle.title || title}</h1>
+        <div className="gp-reveal">
           <div style={{ fontSize: 48 }} aria-hidden="true">🔊</div>
           <h2>Coming soon</h2>
           <p style={{ color: 'var(--text-muted)' }}>{puzzle.blurb}</p>
           <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-            We’re still sourcing the audio clips for this one. Check back later.
+            We’re still sourcing the clips for this one. Check back later.
           </p>
         </div>
       </div>
     );
   }
 
+  const answerImg = answer && answer.heroId ? getHeroImageUrl(answer.heroId, answer.name) : null;
+
   return (
-    <div className="container" style={{ padding: '24px 0', maxWidth: 720 }}>
-      <Link to="/games" style={{ fontSize: 14 }}>← All games</Link>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-        <h1 style={{ margin: '8px 0' }}>
-          {title}
-          {puzzle && puzzle.number ? (
-            <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> #{String(puzzle.number).padStart(3, '0')}</span>
-          ) : null}
-        </h1>
-        <div role="group" aria-label="Game mode" style={{ display: 'flex', gap: 4 }}>
-          <button
-            type="button"
-            className="btn"
-            aria-pressed={mode === 'daily'}
-            onClick={() => setMode('daily')}
-            style={{ background: mode === 'daily' ? 'var(--accent)' : undefined }}
-          >
+    <div className="container games-root" style={{ padding: '24px 0', maxWidth: 760 }}>
+      <Link to="/games" className="gp-back">← All games</Link>
+      <header className="gp-head">
+        <div>
+          <h1 className="gp-title">
+            {title}
+            {puzzle && puzzle.number ? <span className="gp-num"> #{String(puzzle.number).padStart(3, '0')}</span> : null}
+          </h1>
+          {isHeroguessr && (
+            <p className="gp-sub">Guess any hero — each guess reveals how its attributes compare to the mystery hero.</p>
+          )}
+        </div>
+        <div className="gp-modes" role="group" aria-label="Game mode">
+          <button type="button" className="gp-mode-btn" aria-pressed={mode === 'daily'} onClick={() => setMode('daily')}>
             Daily
           </button>
-          <button
-            type="button"
-            className="btn"
-            aria-pressed={mode === 'endless'}
-            onClick={() => setMode('endless')}
-            style={{ background: mode === 'endless' ? 'var(--accent)' : undefined }}
-          >
+          <button type="button" className="gp-mode-btn" aria-pressed={mode === 'endless'} onClick={() => setMode('endless')}>
             Endless
           </button>
         </div>
       </header>
 
-      {error && <p style={{ color: '#e57373' }}>{error}</p>}
+      {error && <p style={{ color: 'var(--accent-red)' }}>{error}</p>}
       {loading && <p className="loading">Loading puzzle…</p>}
 
       {puzzle && puzzle.notReady && (
-        <div className="card" style={{ padding: 24, textAlign: 'center' }}>
+        <div className="gp-reveal">
           <p>{puzzle.message || 'No puzzle available yet — check back soon.'}</p>
         </div>
       )}
 
       {puzzle && !loading && !puzzle.notReady && puzzle.available !== false && (
         <>
-          <div style={{ margin: '20px 0' }}>
-            <ClueArea game={game} clue={puzzle.clue} guessCount={guessed.length} />
+          <div className="gp-panel">
+            {isHeroguessr ? (
+              <HeroCompareGrid guessed={guessed} />
+            ) : (
+              <>
+                <ClueArea game={game} clue={puzzle.clue} guessCount={guessed.length} />
+                {guessed.length > 0 && (
+                  <ul className="gp-history">
+                    {guessed.slice().reverse().map((g, i) => (
+                      <li key={i} className={`gp-history__item ${g.correct ? 'gp-history__item--right' : 'gp-history__item--wrong'}`}>
+                        {heroPortraits && (
+                          <img className="gp-history__img" src={getHeroImageUrl(g.id, g.name)} alt="" loading="lazy" />
+                        )}
+                        <span className="gp-history__name">{g.name}</span>
+                        <span aria-hidden="true">{g.correct ? '✅' : '❌'}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+
+            {!finished && (
+              <>
+                <p className="gp-progress">
+                  Guess {guessed.length + 1} of {maxGuesses}
+                  <ProgressPips used={guessed.length} max={maxGuesses} won={false} />
+                </p>
+                <GuessInput
+                  choices={puzzle.choices || []}
+                  guessedIds={guessedIds}
+                  disabled={finished}
+                  onGuess={handleGuess}
+                  showPortraits={heroPortraits}
+                />
+              </>
+            )}
           </div>
 
-          {/* Guess history */}
-          {guessed.length > 0 && (
-            <ul style={{ listStyle: 'none', padding: 0, maxWidth: 420, margin: '12px auto', display: 'grid', gap: 4 }}>
-              {guessed.map((g, i) => (
-                <li
-                  key={i}
-                  className="card"
-                  style={{
-                    padding: '8px 12px', display: 'flex', justifyContent: 'space-between',
-                    borderLeft: `4px solid ${g.correct ? '#4caf50' : '#e57373'}`,
-                  }}
-                >
-                  <span>{g.name}</span>
-                  <span aria-hidden="true">{g.correct ? '✅' : '❌'}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {!finished && (
-            <>
-              <p style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                Guess {guessed.length + 1} of {maxGuesses}
-              </p>
-              <GuessInput
-                choices={puzzle.choices || []}
-                guessedIds={guessedIds}
-                disabled={finished}
-                onGuess={handleGuess}
-              />
-            </>
-          )}
-
           {finished && (
-            <div className="card" style={{ padding: 20, textAlign: 'center', marginTop: 12 }}>
-              <h2 style={{ marginTop: 0 }}>{won ? '🎉 Solved!' : '😖 Out of guesses'}</h2>
+            <div className={`gp-reveal${won ? ' gp-reveal--win' : ''}`}>
+              <h2 className="gp-reveal__title">{won ? '🎉 Solved!' : '😖 Out of guesses'}</h2>
               {answer && (
-                <p style={{ fontSize: 18 }}>
-                  The answer was <strong>{answer.name}</strong>
-                  {won ? ` — in ${guessed.length} ${guessed.length === 1 ? 'guess' : 'guesses'}.` : '.'}
-                </p>
+                <div className="gp-reveal__hero">
+                  {answerImg && <img src={answerImg} alt="" />}
+                  <span>
+                    The answer was <strong>{answer.name}</strong>
+                    {won ? ` — in ${guessed.length} ${guessed.length === 1 ? 'guess' : 'guesses'}.` : '.'}
+                  </span>
+                </div>
               )}
               {share && (
-                <div style={{ marginTop: 12 }}>
-                  <pre
-                    style={{
-                      fontFamily: 'var(--font)', whiteSpace: 'pre-wrap', background: 'var(--bg-secondary)',
-                      padding: 12, borderRadius: 8, display: 'inline-block', margin: 0, fontSize: 14,
-                    }}
-                  >
-                    {share}
-                  </pre>
-                  <div style={{ marginTop: 10 }}>
+                <div>
+                  <pre className="gp-share">{share}</pre>
+                  <div>
                     <button type="button" className="btn btn-primary" onClick={copyShare}>
                       {copied ? 'Copied!' : 'Copy result'}
                     </button>
@@ -601,7 +655,7 @@ export default function GamePlay() {
 
       <section style={{ marginTop: 32 }}>
         <h2>Leaderboard</h2>
-        <Leaderboard game={game} />
+        <Leaderboard game={game} maxGuesses={maxGuesses} />
       </section>
     </div>
   );

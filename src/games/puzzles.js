@@ -19,7 +19,7 @@ const GAMES = ['heroguessr', 'item-zoom', 'statline', 'talent', 'voiceline'];
 
 const GAME_META = {
   heroguessr: { title: 'Heroguessr', kind: 'hero', maxGuesses: 6, emoji: '🦸', available: true,
-    blurb: 'Guess the mystery hero from progressive hint reveals.' },
+    blurb: 'Crack the mystery hero Dotadle-style — each guess reveals how its attributes compare.' },
   'item-zoom': { title: 'Item-zoom', kind: 'item', maxGuesses: 6, emoji: '🔍', available: true,
     blurb: 'Identify the item from an 800%-zoomed icon.' },
   statline: { title: 'Statline', kind: 'hero', maxGuesses: 6, emoji: '📊', available: true,
@@ -66,16 +66,9 @@ function selectDailyAnswer(game, dateStr) {
 // never appear in client-readable form).
 function buildClue(game, answer, tokenFor) {
   if (game === 'heroguessr') {
-    const hints = heroData.heroHints(answer.heroId).map(h => {
-      if (h.abilitySlugs) {
-        return {
-          key: h.key, label: h.label,
-          abilityTokens: h.abilitySlugs.map(s => tokenFor('ability', s)),
-        };
-      }
-      return { key: h.key, label: h.label, value: h.value };
-    });
-    return { hints };
+    // Dotadle-style: no upfront clue. The player deduces the hero purely from
+    // the per-guess attribute comparison the guess endpoint returns.
+    return {};
   }
   if (game === 'talent') {
     return { talents: heroData.heroTalents(answer.heroId) };
@@ -143,9 +136,8 @@ function generateEndless(game, tokenFor) {
     const slug = voiceData.slugForHero(id);
     clue = { audioToken: slug ? tokenFor('voice', slug) : null };
   } else {
-    clue = { hints: heroData.heroHints(id).map(h => h.abilitySlugs
-      ? { key: h.key, label: h.label, abilityTokens: h.abilitySlugs.map(x => tokenFor('ability', x)) }
-      : { key: h.key, label: h.label, value: h.value }) };
+    // heroguessr — Dotadle-style, no upfront clue.
+    clue = {};
   }
   return {
     number: null,
@@ -164,6 +156,13 @@ function answerKey(game) {
 function isCorrect(game, answer, guessId) {
   const key = answerKey(game);
   return Number(answer[key]) === Number(guessId);
+}
+
+// Dotadle-style per-guess feedback for Heroguessr: how the guessed hero's
+// attributes compare to the (hidden) answer. Returns null for other games.
+function compareGuess(game, answer, guessId) {
+  if (game !== 'heroguessr') return null;
+  return heroData.compareHero(Number(guessId), Number(answer.heroId));
 }
 
 // Resolves the display info for a finished puzzle's answer (for the reveal).
@@ -203,6 +202,7 @@ module.exports = {
   generateStatline,
   generateEndless,
   isCorrect,
+  compareGuess,
   answerKey,
   revealAnswer,
   shareString,

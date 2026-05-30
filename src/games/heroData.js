@@ -136,6 +136,82 @@ function heroTalents(id) {
     .map(level => ({ level, options: byLevel.get(level).slice(0, 2) }));
 }
 
+// ── Dotadle-style attribute comparison ──────────────────────────────────────
+// The comparison-relevant attributes for a hero, used to render the Heroguessr
+// guess grid. All values are public hero facts, so exposing the *guessed* hero's
+// attributes never leaks the answer's identity.
+function heroCompareAttrs(id) {
+  _load();
+  const h = getHero(id);
+  if (!h) return null;
+  return {
+    primaryAttr: h.primary_attr || null,
+    primaryAttrLabel: ATTR_LABEL[h.primary_attr] || h.primary_attr || '—',
+    attackType: h.attack_type || null,
+    roles: Array.isArray(h.roles) ? h.roles.slice() : [],
+    legs: h.legs == null ? null : h.legs,
+    moveSpeed: h.move_speed == null ? null : h.move_speed,
+    attackRange: h.attack_range == null ? null : h.attack_range,
+  };
+}
+
+// Numeric verdict for a guessed value vs the answer's value. Returns
+// { verdict, close } where verdict is 'match' (equal), 'higher' (answer larger
+// — show an up arrow) or 'lower' (answer smaller — down arrow), and `close` is
+// true when the guess is within `tol` of the answer (Dotadle's amber "warm"
+// state). `tol` revealing nearness only leaks a bounded range, never the value.
+function _numVerdict(guessVal, answerVal, tol) {
+  if (guessVal == null || answerVal == null) return { verdict: 'unknown', close: false };
+  const g = Number(guessVal);
+  const a = Number(answerVal);
+  if (g === a) return { verdict: 'match', close: false };
+  return {
+    verdict: a > g ? 'higher' : 'lower',
+    close: Math.abs(a - g) <= tol,
+  };
+}
+
+// Compares a guessed hero against the (hidden) answer hero and returns a
+// Dotadle-style row of per-attribute verdicts. Only the *intersection* of roles
+// is ever revealed, so the answer's full role set never leaks from a single
+// guess — exactly like Dotadle's colour feedback.
+function compareHero(guessId, answerId) {
+  const g = heroCompareAttrs(guessId);
+  const a = heroCompareAttrs(answerId);
+  if (!g || !a) return null;
+  const sharedRoles = g.roles.filter(r => a.roles.includes(r));
+  let rolesVerdict;
+  if (g.roles.length && a.roles.length &&
+      sharedRoles.length === g.roles.length && sharedRoles.length === a.roles.length) {
+    rolesVerdict = 'match';
+  } else if (sharedRoles.length) {
+    rolesVerdict = 'partial';
+  } else {
+    rolesVerdict = 'miss';
+  }
+  const legs = _numVerdict(g.legs, a.legs, 2);
+  const ms = _numVerdict(g.moveSpeed, a.moveSpeed, 20);
+  const range = _numVerdict(g.attackRange, a.attackRange, 125);
+  return {
+    heroId: guessId,
+    name: heroName(guessId),
+    fields: [
+      { key: 'attr', label: 'Attribute', kind: 'text',
+        value: g.primaryAttrLabel, verdict: g.primaryAttr === a.primaryAttr ? 'match' : 'miss' },
+      { key: 'attack', label: 'Attack', kind: 'text',
+        value: g.attackType || '—', verdict: g.attackType === a.attackType ? 'match' : 'miss' },
+      { key: 'roles', label: 'Roles', kind: 'roles',
+        value: g.roles, shared: sharedRoles, verdict: rolesVerdict },
+      { key: 'legs', label: 'Legs', kind: 'num',
+        value: g.legs, verdict: legs.verdict, close: legs.close },
+      { key: 'ms', label: 'Move spd', kind: 'num',
+        value: g.moveSpeed, verdict: ms.verdict, close: ms.close },
+      { key: 'range', label: 'Atk range', kind: 'num',
+        value: g.attackRange, verdict: range.verdict, close: range.close },
+    ],
+  };
+}
+
 // Compact, leak-free hint set for Heroguessr. The hero name itself is never
 // included; ability icons are referenced by slug (the API proxies them so the
 // slug never reaches the client as a clue to the answer).
@@ -165,4 +241,6 @@ module.exports = {
   heroTalents,
   talentReadyHeroIds,
   heroHints,
+  heroCompareAttrs,
+  compareHero,
 };

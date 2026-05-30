@@ -201,7 +201,11 @@ function mountGamesRoutes({ router, express, db }) {
         date,
         number: row.number,
         maxGuesses: payload.maxGuesses,
-        clue: payload.clue,
+        // Heroguessr is a Dotadle-style deduction game: no upfront clue. Force
+        // it empty here so older cached rows (generated before the redesign,
+        // when the clue carried attribute/role/letter hints) can never leak the
+        // answer in the network payload.
+        clue: game === 'heroguessr' ? {} : payload.clue,
         choices: payload.choices,
       };
       // If the player already finished today, reveal the answer + their result.
@@ -289,6 +293,10 @@ function mountGamesRoutes({ router, express, db }) {
 
       const correct = puzzles.isCorrect(game, answer, gid);
       const out = { correct };
+
+      // Dotadle-style attribute feedback for Heroguessr (other games ignore it).
+      const compare = puzzles.compareGuess(game, answer, gid);
+      if (compare) out.compare = compare;
 
       if (finished) {
         const finalGuesses = Math.max(1, Math.min(maxGuesses, Number(guesses) || 1));

@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.35",
+    "title": "Daily mini-games get a professional redesign + Dotadle-style Heroguessr",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** The daily mini-games worked but looked unfinished. This is a full visual pass plus a redesign of Heroguessr from a one-hint-per-guess game into a Dotadle-style attribute-deduction puzzle.",
+      "**Heroguessr is now Dotadle-style.** There are no upfront hints. Each guess returns a color-coded comparison row against the mystery hero across six attributes — Primary attribute, Attack type, Roles, Legs, Move speed and Attack range. Green = exact match, amber = partial (shared roles) or numerically close, neutral = miss, and ▲/▼ arrows on numeric attributes point toward the answer. Roles only ever reveal the *intersection*, so a single guess can't expose the answer's full role set.",
+      "**Answer never leaks.** The clue is forced empty server-side for Heroguessr (daily + endless), so even daily rows cached before this redesign can no longer carry the old attribute/role/first-letter hints in the network payload.",
+      "**Polished UI across the suite.** New branded stylesheet for the hub and play surfaces — gradient hero header, lifted game cards with streak/solve stats, segmented Daily/Endless toggle, guess-progress pips, hero portraits in the autocomplete, guess history and reveal cards, and a clean comparison grid with a legend. Fully keyboard- and screen-reader-accessible (compare tiles expose their verdict via `aria-label`).",
+      "**Scope.** Full edition games suite only — no payment, schema, or community-edition changes."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.34",
     "title": "Daily mini-games now reward Season Pass XP",
     "published_at": "2026-05-30",

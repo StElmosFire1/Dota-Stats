@@ -1,0 +1,297 @@
+/* Daily mini-games — professional visual layer + Dotadle-style compare grid.
+   Scoped under .games-root so these rules never leak into other pages. */
+
+.games-root {
+  --dl-match-bg: color-mix(in srgb, var(--accent-green) 20%, transparent);
+  --dl-match-bd: var(--accent-green);
+  --dl-warm-bg: color-mix(in srgb, var(--amber) 22%, transparent);
+  --dl-warm-bd: var(--amber);
+  --dl-miss-bg: var(--bg-secondary);
+  --dl-miss-bd: var(--border);
+}
+
+/* ── Page header ─────────────────────────────────────────────────────────── */
+.games-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  padding: 28px 28px 26px;
+  margin-bottom: 24px;
+  background:
+    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--brass) 16%, transparent) 0%, transparent 55%),
+    linear-gradient(160deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+}
+.games-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--brass), var(--amber), transparent);
+}
+.games-hero__eyebrow {
+  font-family: var(--font-condensed, var(--font));
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-size: 12px;
+  color: var(--amber);
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+.games-hero h1 {
+  margin: 0 0 8px;
+  font-family: var(--font-condensed, var(--font));
+  font-size: clamp(28px, 4vw, 40px);
+  line-height: 1.05;
+}
+.games-hero p { margin: 0; color: var(--text-muted); max-width: 60ch; }
+.games-hero .signin-nudge { color: var(--amber); font-size: 13px; margin-top: 10px; }
+
+/* ── Hub grid of game cards ──────────────────────────────────────────────── */
+.games-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 18px;
+}
+.game-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: linear-gradient(165deg, var(--bg-secondary) 0%, var(--bg-primary) 120%);
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.game-card:hover,
+.game-card:focus-within {
+  transform: translateY(-3px);
+  border-color: var(--brass);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, .28);
+}
+.game-card--soon { opacity: .65; }
+.game-card__head { display: flex; align-items: center; gap: 14px; }
+.game-card__icon {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: radial-gradient(120% 120% at 30% 20%, color-mix(in srgb, var(--brass) 28%, transparent), transparent 70%);
+}
+.game-card__title {
+  margin: 0;
+  font-family: var(--font-condensed, var(--font));
+  font-size: 21px;
+  line-height: 1.1;
+}
+.game-card__blurb { margin: 0; color: var(--text-muted); font-size: 14px; flex: 1; }
+.game-card__streak { font-size: 13px; color: var(--amber); font-weight: 600; }
+.game-card__streak .muted { color: var(--text-muted); font-weight: 400; }
+.game-card__nostreak { color: var(--text-muted); font-size: 13px; }
+.game-card__stats {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding-top: 2px;
+  border-top: 1px dashed var(--border);
+}
+.game-card__cta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ── Play surface ────────────────────────────────────────────────────────── */
+.gp-back { font-size: 14px; }
+.gp-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 10px 0 18px;
+}
+.gp-title { margin: 6px 0 0; font-family: var(--font-condensed, var(--font)); }
+.gp-title .gp-num { color: var(--text-muted); font-weight: 400; }
+.gp-sub { margin: 4px 0 0; color: var(--text-muted); font-size: 13px; }
+
+.gp-modes {
+  display: inline-flex;
+  padding: 4px;
+  gap: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.gp-mode-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 16px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.gp-mode-btn[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+.gp-mode-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.gp-panel {
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: linear-gradient(170deg, var(--bg-secondary) 0%, var(--bg-primary) 130%);
+  padding: 22px;
+}
+.gp-progress {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 14px 0 4px;
+}
+.gp-pips { display: inline-flex; gap: 5px; margin-left: 8px; vertical-align: middle; }
+.gp-pip { width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
+.gp-pip--used { background: var(--accent-red); }
+.gp-pip--win { background: var(--accent-green); }
+
+/* ── Dotadle comparison grid ─────────────────────────────────────────────── */
+.dotadle__scroll { overflow-x: auto; padding-bottom: 4px; }
+.dotadle__grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) repeat(6, minmax(60px, 1fr));
+  gap: 6px;
+  min-width: 540px;
+}
+.dotadle__grid + .dotadle__grid { margin-top: 6px; }
+.dl-head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-muted);
+  text-align: center;
+  font-weight: 700;
+  padding: 2px 0;
+  align-self: end;
+}
+.dl-head--hero { text-align: left; }
+
+.dl-row { display: contents; }
+.dl-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 58px;
+  padding: 6px 4px;
+  border-radius: 9px;
+  border: 1px solid var(--dl-miss-bd);
+  background: var(--dl-miss-bg);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  animation: dl-pop .32s ease both;
+}
+.dl-tile--match { background: var(--dl-match-bg); border-color: var(--dl-match-bd); }
+.dl-tile--warm  { background: var(--dl-warm-bg);  border-color: var(--dl-warm-bd); }
+.dl-tile__val { line-height: 1.15; }
+.dl-tile__arrow { font-size: 16px; line-height: 1; color: var(--amber); }
+
+.dl-hero {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  animation: dl-pop .32s ease both;
+}
+.dl-hero__img {
+  width: 46px;
+  height: 26px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--bg-primary);
+  flex: 0 0 auto;
+}
+.dl-hero__name { font-size: 13px; font-weight: 700; line-height: 1.1; }
+
+.dl-chips { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; }
+.dl-chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-primary) 60%, transparent);
+  color: var(--text-muted);
+}
+.dl-chip--on {
+  background: var(--dl-match-bg);
+  border-color: var(--dl-match-bd);
+  color: var(--text);
+}
+
+.dl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.dl-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dl-swatch { width: 13px; height: 13px; border-radius: 4px; border: 1px solid var(--dl-miss-bd); background: var(--dl-miss-bg); }
+.dl-swatch--match { background: var(--dl-match-bg); border-color: var(--dl-match-bd); }
+.dl-swatch--warm  { background: var(--dl-warm-bg);  border-color: var(--dl-warm-bd); }
+
+@keyframes dl-pop {
+  from { opacity: 0; transform: translateY(6px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dl-tile, .dl-hero { animation: none; }
+}
+
+/* ── Generic guess history (non-heroguessr games) ────────────────────────── */
+.gp-history { list-style: none; padding: 0; margin: 14px auto 0; max-width: 440px; display: grid; gap: 6px; }
+.gp-history__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  border-left-width: 4px;
+}
+.gp-history__item--right { border-left-color: var(--accent-green); }
+.gp-history__item--wrong { border-left-color: var(--accent-red); }
+.gp-history__img { width: 40px; height: 23px; object-fit: cover; border-radius: 4px; flex: 0 0 auto; }
+.gp-history__name { font-weight: 600; flex: 1; }
+
+/* ── Reveal card ─────────────────────────────────────────────────────────── */
+.gp-reveal { text-align: center; padding: 24px; margin-top: 16px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg-secondary); }
+.gp-reveal--win { border-color: var(--accent-green); }
+.gp-reveal__title { margin: 0 0 6px; font-family: var(--font-condensed, var(--font)); }
+.gp-reveal__hero { display: inline-flex; align-items: center; gap: 12px; margin: 12px 0; padding: 8px 16px 8px 8px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-primary); }
+.gp-reveal__hero img { width: 86px; height: 48px; object-fit: cover; border-radius: 6px; }
+.gp-reveal__hero strong { font-size: 20px; font-family: var(--font-condensed, var(--font)); }
+.gp-share {
+  font-family: var(--font);
+  white-space: pre-wrap;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  padding: 12px 16px;
+  border-radius: 10px;
+  display: inline-block;
+  margin: 6px 0 12px;
+  font-size: 14px;
+}
