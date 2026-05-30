@@ -15,6 +15,8 @@ The evidence below is necessarily partial because of how both sites behaved on t
 
 So the side-by-side is: **clone home (screenshot + full text)** vs **our home (full text + source)**, plus a structural/IA/data comparison that does not depend on live subpages.
 
+> **Update — these two constraints have since changed (see §7 "Re-verification, second pass").** The `oceinhouse.gg` lockdown was lifted, so our full equivalent page set is now captured (`ours-<page>.jpg`). The clone, meanwhile, has moved from the sleep gate to an active password `/gate`, so its subpages remain un-capturable. The notes below reflect the original first-pass state.
+
 ---
 
 ## 1. Brand identity — logo & name — `independent` (NOT copied)
@@ -110,38 +112,42 @@ A full-text search of our repo for the clone's headlines and section names retur
 
 ## 7. Per-page status (enumerated, mostly un-capturable)
 
-| Page | Clone URL | Status | Equivalent on ours |
-|---|---|---|---|
-| Home | `/` | ✅ captured (screenshot + `clone-home-fulltext.md`) | `/` (`ours-home-fulltext.md`) |
-| Standings | `/standings` | ⛔ preview asleep | `/leaderboard` |
-| Leaderboard | `/leaderboard` | ⛔ preview asleep | `/leaderboard` |
-| Matches | `/matches` | ⛔ preview asleep | `/matches` |
-| Players | `/players` | ⛔ preview asleep | `/players` |
-| Heroes | `/heroes` | ⛔ preview asleep | `/heroes` |
-| Hero Meta | `/hero-meta` | ⛔ preview asleep | `/hero-position-meta` |
-| Synergy | `/synergy` | ⛔ preview asleep | `/synergy` |
-| Positions | `/positions` | ⛔ preview asleep | `/positions` |
-| Records | `/records` | ⛔ preview asleep | `/records` |
-| Compare | `/compare` | ⛔ preview asleep | `/compare` |
-| Draft AI | `/draft-ai` | ⛔ preview asleep | `/draft-assistant` |
-| Roster | `/roster` | ⛔ preview asleep | `/players` |
-| Hall of Fame | `/hall-of-fame` | ⛔ preview asleep | `/hall-of-fame` |
-| FAQ | `/league/faq` | ⛔ preview asleep | `/join` (FAQ section) |
-| Overview | `/overview` | ⛔ preview asleep | `/stats` |
-| About / Founder | `/about` · `/founder` | ⛔ preview asleep | (no direct equivalent) |
-| Play | `/play` | ⛔ preview asleep (sign-in-gated flow) | `/inhouse` |
-| Join the League | `/join` | ⛔ preview asleep | `/join` |
-| Upload Replay | `/upload` | ⛔ preview asleep | `/upload` |
-| Account / Sign in | `/account` | ⛔ auth-gated (not attempted) | Steam sign-in |
+| Page | Clone URL | Clone status | Ours status | Equivalent on ours |
+|---|---|---|---|---|
+| Home | `/` | ✅ captured (`clone-home.jpg` + `clone-home-fulltext.md`) | ✅ `ours-home.jpg` | `/` |
+| Standings / Leaderboard | `/standings` · `/leaderboard` | ⛔ password-gated (`/gate`) | ✅ `ours-standings.jpg` | `/leaderboard` |
+| Matches | `/matches` | ⛔ password-gated (`/gate`) | ✅ `ours-matches.jpg` | `/matches` |
+| Players / Roster | `/players` · `/roster` | ⛔ password-gated (`/gate`) | ✅ `ours-players.jpg` | `/players` |
+| Heroes | `/heroes` | ⛔ password-gated (`/gate`) | ✅ `ours-heroes.jpg` | `/heroes` |
+| Hero Meta | `/hero-meta` | ⛔ password-gated (`/gate`) | ✅ `ours-hero-meta.jpg` | `/hero-position-meta` |
+| Synergy | `/synergy` | ⛔ password-gated (`/gate`) | ✅ `ours-synergy.jpg` | `/synergy` |
+| Positions | `/positions` | ⛔ password-gated (`/gate`) | ✅ `ours-positions.jpg` | `/positions` |
+| Records | `/records` | ⛔ password-gated (`/gate`) | ✅ `ours-records.jpg` | `/records` |
+| Compare | `/compare` | ⛔ password-gated (`/gate`) | ✅ `ours-compare.jpg` | `/compare` |
+| Draft AI | `/draft-ai` | ⛔ password-gated (`/gate`) | ✅ `ours-draft-ai.jpg` | `/draft-assistant` |
+| Hall of Fame | `/hall-of-fame` | ⛔ password-gated (`/gate`) | ⚠️ `ours-hall-of-fame.jpg` (live shows "Failed to load Hall of Fame data" for anon) | `/hall-of-fame` |
+| FAQ | `/league/faq` | ⛔ password-gated (`/gate`) | ✅ `ours-join.jpg` (FAQ section) | `/join` |
+| Overview | `/overview` | ⛔ password-gated (`/gate`) | ✅ `ours-overview.jpg` | `/stats` |
+| About / Founder | `/about` · `/founder` | ⛔ password-gated (`/gate`) | — (no direct equivalent) | n/a |
+| Play | `/play` | ⛔ password-gated (`/gate`); sign-in-gated flow | ⚠️ `ours-play.jpg` (renders blank for anon — sign-in-gated) | `/inhouse` |
+| Join the League | `/join` | ⛔ password-gated (`/gate`) | ✅ `ours-join.jpg` | `/join` |
+| Upload Replay | `/upload` | ⛔ password-gated (`/gate`) | ✅ `ours-upload.jpg` | `/upload` |
+| Account / Sign in | `/account` | ⛔ auth-gated (not attempted) | n/a | Steam sign-in |
 
-Re-run the screenshot pass when the Emergent preview is awake (someone clicks "Wake up servers" and visits each route within the keep-alive window) to fill in the clone-side subpage images; the equivalent `oceinhouse.gg` shots need the private-preview lockdown lifted (or a signed-in session, which is out of scope here).
+**Re-verification (2026-05-30, second pass — partial completion):** The owner lifted the `oceinhouse.gg` private-preview lockdown, so **our entire equivalent page set is now captured** (16 full-page JPEGs, `ours-<page>.jpg`, captured headless at 1440px width via `scripts/capture-ours-clone-evidence.js`). The clone side, however, **flipped from "asleep" to actively gated**: every clone route now 307-redirects to `/gate?next=…`, a **password sign-in page** (the cloner appears to have locked the site down — itself notable, as it mirrors our own private-preview behaviour). So the side-by-side is now complete on **our** half; the clone half remains the single archived `clone-home.jpg` plus `clone-home-fulltext.md` captured before the gate went up.
+
+Notes:
+- **`ours-play.jpg` is intentionally near-blank.** Our `/inhouse` ("Play") route renders an empty body for unauthenticated visitors (sign-in required) — the same sign-in-gated posture as the clone's `/play`. The blank capture documents the public anon state; a populated capture would need a signed-in session (out of scope).
+- **To capture the clone subpages** now requires the clone's `/gate` password (unknown / not attempted) rather than just waking the Emergent preview. Should the cloner remove the gate, re-run a clone-side pass and drop `clone-<page>.jpg` files alongside the `ours-<page>.jpg` set.
 
 ---
 
 ## Evidence inventory
 
 - `screenshots/clone-home.jpg` — clone landing page (hero + full left-rail nav + live stat cards).
-- `screenshots/clone-subpage-preview-asleep.jpg` — proves clone subpages are gated behind Emergent's "Wake up servers" interstitial.
-- `screenshots/ours-home-lockdown.jpg` — current `oceinhouse.gg` state (private-preview sign-in gate).
+- `screenshots/clone-subpage-preview-asleep.jpg` — proves clone subpages were gated behind Emergent's "Wake up servers" interstitial (first pass); the clone has since moved behind a password `/gate`.
+- `screenshots/ours-home-lockdown.jpg` — earlier `oceinhouse.gg` state during private-preview lockdown (sign-in gate); superseded by `ours-home.jpg` once the lockdown was lifted.
+- `screenshots/ours-<page>.jpg` — full-page captures of our equivalent pages (second pass, lockdown lifted): `home, standings, matches, players, heroes, hero-meta, synergy, positions, records, compare, draft-ai, hall-of-fame, overview, join, upload` (15 populated) + `play` (anon-blank, sign-in-gated). Captured headless at 1440px width.
 - `clone-home-fulltext.md` — complete rendered text of the clone home page (primary evidence).
 - `ours-home-fulltext.md` — our home page text captured just before lockdown.
+- `scripts/capture-ours-clone-evidence.js` — repeatable Playwright capture script for the `ours-<page>.jpg` set (run with the clone-side equivalent when the `/gate` password is available).
