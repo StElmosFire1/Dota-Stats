@@ -155,3 +155,5 @@ replays/
 # directory's contents instead of the directory itself, then un-ignore the jar.
 odota-parser/target/*
 !odota-parser/target/stats-0.1.0.jar
+# Browser-smoke synthetic-session storageState (live session cookie — never commit)
+tests/smoke/.auth/
