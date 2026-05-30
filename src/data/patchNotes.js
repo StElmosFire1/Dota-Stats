@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.42",
+    "title": "Voiceline daily now covers nearly the whole hero roster",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** The Voiceline daily only drew from 25 heroes, so answers repeated quickly and most of the roster never showed up.",
+      "**What.** Added 100 more heroes — the game now spans 125 heroes, almost the entire roster. Daily and endless modes pick them up automatically.",
+      "**Same licensing-clean approach.** Every clip is our own short text-to-speech rendition of an un-copyrightable catchphrase — we never rehost Valve's audio, and the answer is never sent to your browser. A new script (scripts/generate-voice-lines.sh) makes the clips reproducible.",
+      "**Graceful by design.** Only heroes whose clip actually exists on disk are ever used, so a partial asset set can't point the game at a missing sound."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.41",
     "title": "Get pinged when a real person hits the locked site",
     "published_at": "2026-05-30",
