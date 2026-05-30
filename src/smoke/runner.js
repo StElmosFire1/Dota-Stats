@@ -184,50 +184,16 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
     // var is missing the login is skipped — auth: true journeys then
     // record as 'skipped' with a clear reason rather than crashing the
     // whole run.
-    let authReady = false, authSkipReason = null;
-    if (!authConfigured) {
-      authSkipReason = 'SMOKE_TEST_LOGIN_TOKEN / SMOKE_TEST_ACCOUNT_IDS not configured';
-    } else {
-      // If we loaded a stored session, confirm it still resolves to a
-      // logged-in account before trusting it. /api/auth/me returns the user
-      // object when authenticated and null otherwise — a stale cookie reads as
-      // null and we fall through to a fresh login.
-      if (reuseStoredState) {
-        try {
-          const meRes = await context.request.get(url + '/api/auth/me', { timeout: 10_000 });
-          if (meRes.ok()) {
-            const me = await meRes.json().catch(() => null);
-            if (me && me.accountId) authReady = true;
-          }
-        } catch (_) { /* reuse failed — fresh login below */ }
-      }
-      // Fresh synthetic login when we couldn't reuse a valid session. On
-      // success, capture the authenticated storageState so the next run can
-      // reuse it instead of logging in again.
-      if (!authReady) {
-        try {
-          const loginRes = await context.request.post(url + '/auth/steam/test-login', {
-            headers: {
-              'Authorization': `Bearer ${process.env.SMOKE_TEST_LOGIN_TOKEN}`,
-              'Content-Type': 'application/json',
-            },
-            data: {},
-            timeout: 10_000,
-          });
-          if (loginRes.ok()) {
-            authReady = true;
-            try {
-              _ensureDir(AUTH_STATE_DIR);
-              await context.storageState({ path: AUTH_STATE_PATH });
-            } catch (_) { /* state capture is best-effort — login still valid */ }
-          } else {
-            authSkipReason = `test-login returned HTTP ${loginRes.status()}`;
-          }
-        } catch (e) {
-          authSkipReason = `test-login request failed: ${e.message}`;
-        }
-      }
-    }
+    const { authReady, authSkipReason } = await _resolveAuthReadiness({
+      context, url, authConfigured, reuseStoredState,
+      loginToken: process.env.SMOKE_TEST_LOGIN_TOKEN,
+      // Best-effort: capture the authenticated storageState after a fresh login
+      // so the next run can reuse it instead of logging in again.
+      onCaptureState: async () => {
+        _ensureDir(AUTH_STATE_DIR);
+        await context.storageState({ path: AUTH_STATE_PATH });
+      },
+    });
 
     try {
       for (const j of JOURNEYS) {
@@ -246,36 +212,12 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
         try {
           if (j.asJson) {
             // JSON probe — fetch the URL and confirm 2xx + parseable.
-            const res = await context.request.get(url + j.path);
-            if (!res.ok()) throw new Error(`HTTP ${res.status()}`);
-            await res.json();
+            const probe = await _probeJsonJourney({ context, fullUrl: url + j.path });
+            if (!probe.ok) throw new Error(probe.reason);
           } else {
             const page = await context.newPage();
-            const navResp = await page.goto(url + j.path, { waitUntil: 'domcontentloaded', timeout: 20_000 });
-            if (!navResp || navResp.status() >= 400) {
-              throw new Error(`navigation returned HTTP ${navResp ? navResp.status() : 'no-response'}`);
-            }
-            if (j.expect) {
-              // Wait up to 5s for any of the comma-separated selectors.
-              const selectors = j.expect.split(',').map(s => s.trim()).filter(Boolean);
-              let matched = false;
-              for (const sel of selectors) {
-                const found = await page.locator(sel).first().count().catch(() => 0);
-                if (found > 0) { matched = true; break; }
-              }
-              if (!matched) {
-                // The count() pass above races SPA hydration — a page that
-                // shows a "Loading…" state first (e.g. /inhouse) may not have
-                // mounted its real content yet. Wait (up to 5s) for ANY of the
-                // listed selectors, not just the first, so selector order can't
-                // turn a slow render into a false failure.
-                try {
-                  await Promise.any(selectors.map(sel => page.waitForSelector(sel, { timeout: 5_000 })));
-                  matched = true;
-                } catch (_) { /* AggregateError — none appeared in time */ }
-              }
-              if (!matched) throw new Error(`expected selector not found: "${j.expect}"`);
-            }
+            const load = await _checkPageLoad({ page, fullUrl: url + j.path, expect: j.expect });
+            if (!load.ok) throw new Error(load.reason);
             // Screenshot the viewport only (not full page) — full page
             // screenshots make diffs noisy on infinite-scroll pages.
             screenshotPath = path.join(runDir, `${j.key}.png`);
@@ -342,6 +284,114 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
   } finally {
     _runInFlight = false;
   }
+}
+
+// JSON-probe decision, factored out of runSmoke so the non-2xx branch is
+// unit-testable without a real browser. `context.request.get` is the only
+// dependency, so a test can pass a fake context whose request.get returns the
+// status it wants to exercise. Returns { ok: true } on a parseable 2xx, or
+// { ok: false, reason } when the response is non-2xx.
+async function _probeJsonJourney({ context, fullUrl }) {
+  const res = await context.request.get(fullUrl);
+  if (!res.ok()) return { ok: false, reason: `HTTP ${res.status()}` };
+  await res.json();
+  return { ok: true };
+}
+
+// Expected-selector match, factored out so the "wait for any of N selectors"
+// logic is testable with a fake page. Tries a fast count() pass first, then
+// falls back to waitForSelector (up to selectorTimeoutMs) for any of the
+// comma-separated selectors so SPA hydration / selector order can't turn a
+// slow render into a false failure. Returns true when any selector is present.
+async function _matchExpectedSelectors(page, expect, selectorTimeoutMs = 5_000) {
+  const selectors = expect.split(',').map(s => s.trim()).filter(Boolean);
+  let matched = false;
+  for (const sel of selectors) {
+    const found = await page.locator(sel).first().count().catch(() => 0);
+    if (found > 0) { matched = true; break; }
+  }
+  if (!matched) {
+    try {
+      await Promise.any(selectors.map(sel => page.waitForSelector(sel, { timeout: selectorTimeoutMs })));
+      matched = true;
+    } catch (_) { /* AggregateError — none appeared in time */ }
+  }
+  return matched;
+}
+
+// Navigation + expected-selector decision, factored out of runSmoke so the
+// HTTP >= 400 branch and the selector-not-found branch are unit-testable with a
+// fake page (no real browser). Navigates `page` to fullUrl and, when `expect`
+// is set, asserts one of the selectors rendered. Returns { ok: true } on a
+// clean load, or { ok: false, reason } describing the first failure. Throwing
+// is deliberately left to the caller so it can attach the reason to the step.
+async function _checkPageLoad({ page, fullUrl, expect, navTimeoutMs = 20_000, selectorTimeoutMs = 5_000 }) {
+  const navResp = await page.goto(fullUrl, { waitUntil: 'domcontentloaded', timeout: navTimeoutMs });
+  if (!navResp || navResp.status() >= 400) {
+    return { ok: false, reason: `navigation returned HTTP ${navResp ? navResp.status() : 'no-response'}` };
+  }
+  if (expect) {
+    const matched = await _matchExpectedSelectors(page, expect, selectorTimeoutMs);
+    if (!matched) return { ok: false, reason: `expected selector not found: "${expect}"` };
+  }
+  return { ok: true };
+}
+
+// Auth-readiness decision, factored out of runSmoke so the reuse-stored-state,
+// fresh-login success/failure, and "not configured" branches are testable
+// without a real browser. `context.request` (get/post) and the env-derived
+// `loginToken` are the only dependencies. Returns:
+//   - not configured        → { authReady: false, authSkipReason: '<reason>' }
+//   - stored state validates → { authReady: true } (no fresh login)
+//   - fresh login ok         → { authReady: true } (onCaptureState invoked)
+//   - fresh login non-2xx    → { authReady: false, authSkipReason: 'HTTP …' }
+//   - fresh login throws     → { authReady: false, authSkipReason: '… failed' }
+// onCaptureState is best-effort: a throw inside it does not unset authReady.
+async function _resolveAuthReadiness({
+  context, url, authConfigured, reuseStoredState, loginToken, onCaptureState = null,
+}) {
+  let authReady = false, authSkipReason = null;
+  if (!authConfigured) {
+    authSkipReason = 'SMOKE_TEST_LOGIN_TOKEN / SMOKE_TEST_ACCOUNT_IDS not configured';
+    return { authReady, authSkipReason };
+  }
+  // If we loaded a stored session, confirm it still resolves to a logged-in
+  // account before trusting it. /api/auth/me returns the user object when
+  // authenticated and null otherwise — a stale cookie reads as null and we
+  // fall through to a fresh login.
+  if (reuseStoredState) {
+    try {
+      const meRes = await context.request.get(url + '/api/auth/me', { timeout: 10_000 });
+      if (meRes.ok()) {
+        const me = await meRes.json().catch(() => null);
+        if (me && me.accountId) authReady = true;
+      }
+    } catch (_) { /* reuse failed — fresh login below */ }
+  }
+  // Fresh synthetic login when we couldn't reuse a valid session.
+  if (!authReady) {
+    try {
+      const loginRes = await context.request.post(url + '/auth/steam/test-login', {
+        headers: {
+          'Authorization': `Bearer ${loginToken}`,
+          'Content-Type': 'application/json',
+        },
+        data: {},
+        timeout: 10_000,
+      });
+      if (loginRes.ok()) {
+        authReady = true;
+        if (onCaptureState) {
+          try { await onCaptureState(); } catch (_) { /* state capture is best-effort — login still valid */ }
+        }
+      } else {
+        authSkipReason = `test-login returned HTTP ${loginRes.status()}`;
+      }
+    } catch (e) {
+      authSkipReason = `test-login request failed: ${e.message}`;
+    }
+  }
+  return { authReady, authSkipReason };
 }
 
 // Pure perceptual-diff decision, factored out of runSmoke so the threshold,
@@ -420,4 +470,8 @@ function isLatestPatchNoteMajor() {
   } catch (_) { return false; }
 }
 
-module.exports = { runSmoke, isLatestPatchNoteMajor, JOURNEYS, _diffAgainstBaseline, _alertOwner };
+module.exports = {
+  runSmoke, isLatestPatchNoteMajor, JOURNEYS,
+  _diffAgainstBaseline, _alertOwner,
+  _probeJsonJourney, _matchExpectedSelectors, _checkPageLoad, _resolveAuthReadiness,
+};

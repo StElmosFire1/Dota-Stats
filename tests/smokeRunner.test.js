@@ -377,6 +377,214 @@ test('runSmoke: SUPERUSER_PASSWORD set → context carries x-superuser-key heade
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// _probeJsonJourney — JSON probe non-2xx branch
+// ──────────────────────────────────────────────────────────────────────────
+
+// A fake Playwright context whose request.get returns a response with the
+// supplied status. `jsonImpl` lets a test make .json() throw if needed.
+function fakeContext({ getStatus = 200, getJson = async () => ({}), get, post } = {}) {
+  const mkRes = (status, json) => ({
+    status: () => status,
+    ok: () => status >= 200 && status < 300,
+    json: json,
+  });
+  return {
+    request: {
+      get: get || (async () => mkRes(getStatus, getJson)),
+      post: post || (async () => mkRes(200, async () => ({}))),
+    },
+  };
+}
+
+test('_probeJsonJourney: 2xx → ok', async () => {
+  const runner = freshRunner();
+  const res = await runner._probeJsonJourney({
+    context: fakeContext({ getStatus: 200 }),
+    fullUrl: 'http://x/api/health',
+  });
+  cleanup();
+  assert.equal(res.ok, true);
+});
+
+test('_probeJsonJourney: non-2xx → not ok with HTTP reason', async () => {
+  const runner = freshRunner();
+  const res = await runner._probeJsonJourney({
+    context: fakeContext({ getStatus: 503 }),
+    fullUrl: 'http://x/api/health',
+  });
+  cleanup();
+  assert.equal(res.ok, false);
+  assert.match(res.reason, /HTTP 503/);
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// _checkPageLoad — navigation + selector branches
+// ──────────────────────────────────────────────────────────────────────────
+
+// A fake Playwright page. `gotoStatus` drives navResp.status(); pass
+// gotoStatus=null to simulate a no-response navigation. `present` is the set of
+// selectors that count()>0; anything else is treated as not found and never
+// resolves from waitForSelector (rejects after the supplied timeout fires).
+function fakePage({ gotoStatus = 200, present = [] } = {}) {
+  return {
+    goto: async () => (gotoStatus === null ? null : { status: () => gotoStatus }),
+    locator: (sel) => ({ first: () => ({ count: async () => (present.includes(sel) ? 1 : 0) }) }),
+    waitForSelector: (sel) => (present.includes(sel)
+      ? Promise.resolve({})
+      : new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 0))),
+  };
+}
+
+test('_checkPageLoad: nav HTTP >= 400 → not ok', async () => {
+  const runner = freshRunner();
+  const res = await runner._checkPageLoad({
+    page: fakePage({ gotoStatus: 500 }),
+    fullUrl: 'http://x/',
+    selectorTimeoutMs: 5,
+  });
+  cleanup();
+  assert.equal(res.ok, false);
+  assert.match(res.reason, /navigation returned HTTP 500/);
+});
+
+test('_checkPageLoad: no navigation response → not ok', async () => {
+  const runner = freshRunner();
+  const res = await runner._checkPageLoad({
+    page: fakePage({ gotoStatus: null }),
+    fullUrl: 'http://x/',
+    selectorTimeoutMs: 5,
+  });
+  cleanup();
+  assert.equal(res.ok, false);
+  assert.match(res.reason, /navigation returned HTTP no-response/);
+});
+
+test('_checkPageLoad: selector not found → not ok', async () => {
+  const runner = freshRunner();
+  const res = await runner._checkPageLoad({
+    page: fakePage({ gotoStatus: 200, present: [] }),
+    fullUrl: 'http://x/',
+    expect: '#root, main',
+    selectorTimeoutMs: 5,
+  });
+  cleanup();
+  assert.equal(res.ok, false);
+  assert.match(res.reason, /expected selector not found: "#root, main"/);
+});
+
+test('_checkPageLoad: selector present (fast count pass) → ok', async () => {
+  const runner = freshRunner();
+  const res = await runner._checkPageLoad({
+    page: fakePage({ gotoStatus: 200, present: ['main'] }),
+    fullUrl: 'http://x/',
+    expect: '#root, main',
+    selectorTimeoutMs: 5,
+  });
+  cleanup();
+  assert.equal(res.ok, true);
+});
+
+test('_checkPageLoad: no expect → ok on clean nav', async () => {
+  const runner = freshRunner();
+  const res = await runner._checkPageLoad({
+    page: fakePage({ gotoStatus: 200 }),
+    fullUrl: 'http://x/',
+    selectorTimeoutMs: 5,
+  });
+  cleanup();
+  assert.equal(res.ok, true);
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// _resolveAuthReadiness — auth-readiness branches
+// ──────────────────────────────────────────────────────────────────────────
+
+test('_resolveAuthReadiness: not configured → skipped with clear reason', async () => {
+  const runner = freshRunner();
+  const res = await runner._resolveAuthReadiness({
+    context: fakeContext(),
+    url: 'http://x',
+    authConfigured: false,
+    reuseStoredState: false,
+    loginToken: undefined,
+  });
+  cleanup();
+  assert.equal(res.authReady, false);
+  assert.match(res.authSkipReason, /SMOKE_TEST_LOGIN_TOKEN \/ SMOKE_TEST_ACCOUNT_IDS not configured/);
+});
+
+test('_resolveAuthReadiness: stored state validates against /api/auth/me → reused, no fresh login', async () => {
+  const runner = freshRunner();
+  let postCalled = false;
+  const context = fakeContext({
+    get: async () => ({ status: () => 200, ok: () => true, json: async () => ({ accountId: '123' }) }),
+    post: async () => { postCalled = true; return { status: () => 200, ok: () => true, json: async () => ({}) }; },
+  });
+  const res = await runner._resolveAuthReadiness({
+    context, url: 'http://x', authConfigured: true, reuseStoredState: true, loginToken: 'tok',
+  });
+  cleanup();
+  assert.equal(res.authReady, true);
+  assert.equal(postCalled, false, 'fresh login should be skipped when stored state validates');
+});
+
+test('_resolveAuthReadiness: stale stored state → falls through to fresh login success', async () => {
+  const runner = freshRunner();
+  let captured = false;
+  const context = fakeContext({
+    // /api/auth/me reads as null (stale cookie)
+    get: async () => ({ status: () => 200, ok: () => true, json: async () => null }),
+    post: async () => ({ status: () => 200, ok: () => true, json: async () => ({}) }),
+  });
+  const res = await runner._resolveAuthReadiness({
+    context, url: 'http://x', authConfigured: true, reuseStoredState: true, loginToken: 'tok',
+    onCaptureState: async () => { captured = true; },
+  });
+  cleanup();
+  assert.equal(res.authReady, true);
+  assert.equal(captured, true, 'onCaptureState should run after a fresh login');
+});
+
+test('_resolveAuthReadiness: fresh login non-2xx → recorded as skip reason', async () => {
+  const runner = freshRunner();
+  const context = fakeContext({
+    post: async () => ({ status: () => 401, ok: () => false, json: async () => ({}) }),
+  });
+  const res = await runner._resolveAuthReadiness({
+    context, url: 'http://x', authConfigured: true, reuseStoredState: false, loginToken: 'tok',
+  });
+  cleanup();
+  assert.equal(res.authReady, false);
+  assert.match(res.authSkipReason, /test-login returned HTTP 401/);
+});
+
+test('_resolveAuthReadiness: fresh login throws → recorded as skip reason', async () => {
+  const runner = freshRunner();
+  const context = fakeContext({
+    post: async () => { throw new Error('connection refused'); },
+  });
+  const res = await runner._resolveAuthReadiness({
+    context, url: 'http://x', authConfigured: true, reuseStoredState: false, loginToken: 'tok',
+  });
+  cleanup();
+  assert.equal(res.authReady, false);
+  assert.match(res.authSkipReason, /test-login request failed: connection refused/);
+});
+
+test('_resolveAuthReadiness: onCaptureState throwing does not unset authReady', async () => {
+  const runner = freshRunner();
+  const context = fakeContext({
+    post: async () => ({ status: () => 200, ok: () => true, json: async () => ({}) }),
+  });
+  const res = await runner._resolveAuthReadiness({
+    context, url: 'http://x', authConfigured: true, reuseStoredState: false, loginToken: 'tok',
+    onCaptureState: async () => { throw new Error('disk full'); },
+  });
+  cleanup();
+  assert.equal(res.authReady, true, 'state-capture is best-effort; login still valid');
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // _alertOwner — no-op when Discord bot unavailable
 // ──────────────────────────────────────────────────────────────────────────
 
