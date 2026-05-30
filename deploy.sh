@@ -68,6 +68,15 @@ echo "==> Verifying money-path test coverage (Task #416)..."
 # replace a working production process with a broken one.
 npm run check:money-paths
 
+echo "==> Installing backend (root) dependencies..."
+# The bot process (src/index.js) runs from the repo root and needs the root
+# package.json deps installed — e.g. `dotaconstants`, added for the daily
+# mini-games suite (Task #451). This step previously only ran inside web/,
+# so any new ROOT dependency shipped in a commit was never installed on prod,
+# and the bot crashed at runtime with "Cannot find module 'dotaconstants/...'".
+# Installing at the root here keeps the bot's deps in lockstep with the code.
+npm install --silent
+
 echo "==> Installing frontend dependencies..."
 cd web
 npm install --silent

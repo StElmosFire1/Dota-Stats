@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.32",
+    "title": "Fix daily mini-games crashing on production",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** Every daily mini-game (Heroguessr, Item Zoom, Talent, etc.) showed 'Failed to load daily puzzle' on the live site. The games read hero/item data from the `dotaconstants` package, which was added to the *root* `package.json` for the mini-games suite — but the production deploy script only ran `npm install` inside `web/`, so the bot's root dependencies were never installed on prod. The bot crashed at runtime with `Cannot find module 'dotaconstants/build/heroes.json'`, and the daily route returned a 500.",
+      "**Fix.** `deploy.sh` now runs `npm install` at the repository root (where the bot process runs) before building the frontend, keeping the bot's runtime dependencies in lockstep with the committed code on every deploy. A new root dependency shipped in a commit can no longer slip past the deploy.",
+      "**Scope.** Full edition only — the community edition has no mini-games and does not depend on `dotaconstants`."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.31",
     "title": "Brute-force protection on the lockdown sign-in page",
     "published_at": "2026-05-30",
