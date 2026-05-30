@@ -22,6 +22,7 @@ import DiscordLinkModal from './components/DiscordLinkModal';
 import DiscordRetryBanner from './components/DiscordRetryBanner';
 import SideBanners from './components/SideBanner';
 import { WatchLiveBadge } from './components/HomeWidgets';
+import GlobalSearch from './components/CommandPalette';
 import { getLivePresenceCount } from './api';
 
 const MatchList = lazy(() => import('./pages/MatchList'));
@@ -808,6 +809,7 @@ function Nav() {
           ★ Pro
         </Link>
       </div>
+      <GlobalSearch />
       <SeasonSelector />
       <ThemeToggle />
       <SteamButton />

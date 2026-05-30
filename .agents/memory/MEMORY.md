@@ -1,2 +1,1 @@
-- [Public API SDKs](public-api-sdks.md) — official clients in packages/sdk-{js,python}; webhook verifiers must mirror webhookDispatcher.signPayload; new endpoints need an SDK method + Developers SDK_CALLS sample (drift test).
-- [Smoke baseline capture vs lockdown](smoke-baseline-capture.md) — browser-smoke runner uses a normal-user test-login that does NOT bypass the lockdown gate; capture/runs need lockdown OFF or they screenshot the sign-in page.
+- [Dialog focus-trap & options](dialog-focus-trap.md) — shared <Dialog> trap treats every enabled <button> as focusable regardless of tabIndex=-1; listbox options must be non-button.
