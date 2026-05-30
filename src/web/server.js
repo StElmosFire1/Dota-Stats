@@ -4127,6 +4127,17 @@ function createServer(startupStatus = {}) {
     );
   });
 
+  // Task #491 — Brand-asset hotlink protection. Mounted just before the
+  // static handler so it can 403 hotlinked logo / favicon / badge / voice-pack
+  // / scoreboard requests whose Referer points off-domain. Generic bundled
+  // assets (JS/CSS/fonts) pass straight through. Full edition only.
+  try {
+    const { hotlinkMiddleware } = require('../security/assetHotlink');
+    app.use(hotlinkMiddleware);
+  } catch (e) {
+    console.warn('[AssetHotlink] failed to mount:', e.message);
+  }
+
   const staticPath = path.join(__dirname, '../../web/dist');
   if (fs.existsSync(staticPath)) {
     app.use(express.static(staticPath));
@@ -7631,6 +7642,23 @@ function createApiRouter(startupStatus = {}, _app = null) {
   router.get('/admin/agent-traffic-report', requireSuperuser, (req, res) => {
     try {
       const { buildReport } = require('../security/agentClassifier');
+      const days = Math.max(1, Math.min(30, parseInt(req.query.days, 10) || 7));
+      const report = buildReport({ windowMs: days * 24 * 60 * 60 * 1000 });
+      res.set('Cache-Control', 'no-store');
+      res.json({ days, ...report });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #491 — Brand-asset hotlink report. Aggregates the in-memory ring
+  // buffer maintained by src/security/assetHotlink.js by referer host for the
+  // last N days (default 7, capped at 30 — the ring buffer holds ~5000 entries
+  // anyway). Lets the owner see whether a clone (or anything else) has been
+  // hotlinking our logo / badges / scoreboard renders off oceinhouse.gg.
+  router.get('/admin/asset-hotlink-report', requireSuperuser, (req, res) => {
+    try {
+      const { buildReport } = require('../security/assetHotlink');
       const days = Math.max(1, Math.min(30, parseInt(req.query.days, 10) || 7));
       const report = buildReport({ windowMs: days * 24 * 60 * 60 * 1000 });
       res.set('Cache-Control', 'no-store');

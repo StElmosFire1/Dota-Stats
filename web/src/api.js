@@ -136,6 +136,12 @@ export async function getAgentTrafficReport(superuserKey, days = 7) {
   return superuserJson(`/admin/agent-traffic-report${qs}`, { superuserKey });
 }
 
+// Task #491 — Brand-asset hotlink report (superuser).
+export async function getAssetHotlinkReport(superuserKey, days = 7) {
+  const qs = days ? `?days=${encodeURIComponent(days)}` : '';
+  return superuserJson(`/admin/asset-hotlink-report${qs}`, { superuserKey });
+}
+
 // Task #497 — Lockdown gate runtime toggle (superuser).
 export async function getLockdownState(superuserKey) {
   return superuserJson('/admin/lockdown', { superuserKey });

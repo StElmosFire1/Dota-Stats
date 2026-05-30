@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.25",
+    "title": "Block hotlinking of our logo & branded assets (Task #491)",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** A clone site has been mimicking OCE Inhouse, and AI builders (or the humans prompting them) commonly hotlink a target site's logo / favicon / imagery straight off its domain. Distinctive brand assets now refuse to load when requested from another site.",
+      "**Hotlink gate.** New middleware (`src/security/assetHotlink.js`, mounted just before the static handler) inspects the `Referer` on requests for our distinctive assets — `/oa-logo.png`, `/favicon.png`, `/favicon.ico`, `/badges/*`, `/voice-packs/*`, `/sounds/*`, and scoreboard renders (`*/recap-card.png`, `/overlay/scoreboard/*`). Empty/unparseable referer, same-origin, our own domains, and known social unfurlers (Discord/Twitter/Slack/Telegram/etc.) are allowed; anything else gets a 403. Generic bundled assets (JS/CSS/fonts, the Dota minimap, `sw.js`, `robots.txt`) are deliberately NOT gated.",
+      "**Configurable allow-list.** `BRAND_ASSET_REFERER_ALLOWLIST` (comma-separated host suffixes) extends the built-in default so partner domains can embed our imagery without code changes.",
+      "**Owner visibility.** Every decision (allowed/blocked) lands in an in-memory ring buffer (5000 cap, no schema, no new dependency). The superuser-only `GET /api/admin/asset-hotlink-report` aggregates the last N days grouped by referer host, surfaced in a new \"🖼️ Brand-asset hotlinks\" card in the AdminPanel Overview tab so the owner can see whether the clone (or anything else) has been pulling assets off oceinhouse.gg.",
+      "**Scope.** Full edition only — community edition is untouched. No watermarking, signed URLs, or takedown automation."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.24",
     "title": "Browser-smoke: fix match/tournament not-found false-failures (Task #489)",
     "published_at": "2026-05-30",
