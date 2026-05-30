@@ -158,6 +158,11 @@ export async function setLockdownState(superuserKey, enabled) {
     body: { enabled: !!enabled },
   });
 }
+// Task #507 — historical audit trail of lockdown/unlock flips.
+export async function getLockdownAudit(superuserKey, limit = 20) {
+  const qs = limit ? `?limit=${encodeURIComponent(limit)}` : '';
+  return superuserJson(`/admin/lockdown-audit${qs}`, { superuserKey });
+}
 
 // Task #425 — Feature health dashboard helpers.
 export async function getFeatureHealth(superuserKey) {

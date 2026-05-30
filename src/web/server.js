@@ -673,6 +673,28 @@ async function refreshLockdownStateFromDb() {
   }
 }
 
+// Task #507 — when the gate is forced ON by the env var, record a single audit
+// row so the history shows env-driven locks too. Deduped against the most-recent
+// entry so a process restart (which re-runs this) doesn't append a new row every
+// boot — only a genuine new env-forced lock (when the previous tail isn't already
+// an env lock) is logged.
+async function logEnvForcedLockdownOnBoot() {
+  try {
+    if (process.env.FULL_SITE_LOCKDOWN !== '1') return;
+    const dbMod = require('../db');
+    const recent = await dbMod.getLockdownAuditLog(1);
+    const last = recent && recent[0];
+    if (last && last.action === 'lock' && last.actor === 'env:FULL_SITE_LOCKDOWN') return;
+    await dbMod.insertLockdownAudit({
+      actor: 'env:FULL_SITE_LOCKDOWN',
+      action: 'lock',
+      reason: 'Gate forced ON by FULL_SITE_LOCKDOWN env var at boot',
+    });
+  } catch (e) {
+    console.warn('[Lockdown] logEnvForcedLockdownOnBoot failed:', e?.message || e);
+  }
+}
+
 function createServer(startupStatus = {}) {
   const app = express();
 
@@ -925,6 +947,7 @@ function createServer(startupStatus = {}) {
   // the row is loaded; that's the safe direction (open) for the brief
   // window during boot.
   refreshLockdownStateFromDb();
+  logEnvForcedLockdownOnBoot();
 
   function lockdownMiddleware(req, res, next) {
     const envForced = process.env.FULL_SITE_LOCKDOWN === '1';
@@ -7741,6 +7764,18 @@ function createApiRouter(startupStatus = {}, _app = null) {
       lockdownState.enabled = payload.enabled;
       lockdownState.since = payload.since;
       lockdownState.actor = payload.actor;
+      // Task #507 — append an audit row on every *state change* (no-op
+      // writes are skipped so re-saving the same state doesn't pollute the
+      // trail). Best-effort: never let an audit failure break the toggle.
+      if (stateChanged) {
+        const rawReason = req.body && typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+        const reason = rawReason ? rawReason.slice(0, 500) : null;
+        try {
+          await db.insertLockdownAudit({ actor, action: enabled ? 'lock' : 'unlock', reason });
+        } catch (auditErr) {
+          console.warn('[Lockdown] audit insert failed:', auditErr?.message || auditErr);
+        }
+      }
       const envForced = process.env.FULL_SITE_LOCKDOWN === '1';
       const resolvedSource = envForced ? 'env' : (lockdownState.enabled ? 'db' : 'off');
       console.log(`[Lockdown] toggle by ${actor}: db=${enabled}, resolved=${resolvedSource}`);
@@ -7753,6 +7788,20 @@ function createApiRouter(startupStatus = {}, _app = null) {
       });
     } catch (err) {
       console.error('[Lockdown] PUT failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #507 — historical audit trail of every lockdown/unlock flip. Returns
+  // the most-recent entries newest-first (default 20, capped at 200).
+  router.get('/admin/lockdown-audit', requireSuperuser, async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit, 10) : 20;
+      const entries = await db.getLockdownAuditLog(Number.isFinite(limit) ? limit : 20);
+      res.set('Cache-Control', 'no-store');
+      res.json({ entries });
+    } catch (err) {
+      console.error('[Lockdown] audit fetch failed:', err);
       res.status(500).json({ error: err.message });
     }
   });

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getLockdownState, setLockdownState, getLockdownAttempts, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
@@ -367,6 +367,10 @@ function LockdownCard({ superuserKey }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
 
   const load = useCallback(() => {
     if (!superuserKey) return;
@@ -378,6 +382,20 @@ function LockdownCard({ superuserKey }) {
   }, [superuserKey]);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadHistory = useCallback(() => {
+    if (!superuserKey) return;
+    setHistoryLoading(true); setHistoryError('');
+    getLockdownAudit(superuserKey, 20)
+      .then(r => setHistory(r.entries || []))
+      .catch(e => setHistoryError(e.message || 'Failed to load history'))
+      .finally(() => setHistoryLoading(false));
+  }, [superuserKey]);
+
+  // Lazily load the audit trail the first time the section is expanded.
+  useEffect(() => {
+    if (historyOpen && history === null && !historyLoading) loadHistory();
+  }, [historyOpen, history, historyLoading, loadHistory]);
 
   const onToggle = async () => {
     if (!state || saving) return;
@@ -392,6 +410,9 @@ function LockdownCard({ superuserKey }) {
       setMsg(next
         ? '🔒 Site is now locked. Visitors will see the sign-in gate.'
         : '🔓 Site is now open. Visitors can browse normally.');
+      // The flip just added an audit row — refresh the trail if it's open.
+      if (historyOpen) loadHistory();
+      else setHistory(null);
     } catch (e) {
       setError(e.message || 'Failed to update lockdown');
     } finally {
@@ -466,6 +487,59 @@ function LockdownCard({ superuserKey }) {
             )}
             {saving && <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Saving…</div>}
           </div>
+        </div>
+
+        {/* Task #507 — collapsible audit trail of every lock/unlock flip. */}
+        <div style={{ marginTop: 16, borderTop: '1px solid var(--border, rgba(255,255,255,0.08))', paddingTop: 12 }}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setHistoryOpen(o => !o)}
+            aria-expanded={historyOpen}
+            aria-controls="ap-lockdown-history"
+            style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <span aria-hidden="true">{historyOpen ? '▾' : '▸'}</span>
+            History
+          </button>
+          {historyOpen && (
+            <div id="ap-lockdown-history" style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Last 20 changes (newest first)</span>
+                <button type="button" className="btn" onClick={loadHistory} disabled={historyLoading} aria-label="Refresh lockdown history" style={{ fontSize: 12 }}>
+                  {historyLoading ? '…' : '↻'}
+                </button>
+              </div>
+              {historyError && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{historyError}</div>}
+              {historyLoading && history === null && <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Loading…</div>}
+              {!historyLoading && Array.isArray(history) && history.length === 0 && (
+                <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>No lockdown changes recorded yet.</div>
+              )}
+              {Array.isArray(history) && history.length > 0 && (
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 280, overflowY: 'auto', fontSize: 12 }}>
+                  {history.map(entry => (
+                    <li key={entry.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border, rgba(255,255,255,0.05))' }}>
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          fontWeight: 700,
+                          color: entry.action === 'lock' ? '#ef4444' : '#22c55e',
+                          textTransform: 'uppercase',
+                          fontSize: 11,
+                          minWidth: 56,
+                        }}
+                      >
+                        {entry.action === 'lock' ? '🔒 Lock' : '🔓 Unlock'}
+                      </span>
+                      <span style={{ flexShrink: 0, color: 'var(--text-muted)' }}>{fmtTs(entry.created_at)}</span>
+                      <code style={{ flex: 1, wordBreak: 'break-all' }}>{entry.actor}</code>
+                      {entry.reason && <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>{entry.reason}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </section>

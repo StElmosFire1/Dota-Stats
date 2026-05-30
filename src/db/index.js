@@ -1111,6 +1111,23 @@ async function init() {
        ON CONFLICT (key) DO NOTHING`
     );
 
+    // Task #507 — Lockdown audit log. Historical trail of every site
+    // lockdown/unlock flip (the live `site_settings.site_lockdown` value only
+    // ever holds the *current* state). Sibling to feature_flags above.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS lockdown_audit_log (
+        id BIGSERIAL PRIMARY KEY,
+        actor TEXT NOT NULL,
+        action TEXT NOT NULL CHECK (action IN ('lock', 'unlock')),
+        reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(
+      `CREATE INDEX IF NOT EXISTS idx_lockdown_audit_created
+       ON lockdown_audit_log (created_at DESC)`
+    );
+
     // v5.93 — Coaching Marketplace launch. One-shot migration: flip the flag
     // from the original 'off' seed to 'on' for existing deployments where the
     // ON CONFLICT DO NOTHING above would otherwise leave the row at its
@@ -5464,6 +5481,37 @@ async function setFeatureFlag(key, { state, description } = {}) {
     [key, state ?? null, description ?? null]
   );
   return res.rows[0];
+}
+
+// ── Lockdown audit log (Task #507) ──────────────────────────────────────────
+// Append-only history of every site lockdown/unlock flip. The caller passes the
+// resolved actor string ('steam:<id>' or 'superuser'); `action` is 'lock' or
+// 'unlock'; `reason` is optional free text (env-forced boot notes, etc.).
+async function insertLockdownAudit({ actor, action, reason = null } = {}) {
+  if (action !== 'lock' && action !== 'unlock') {
+    throw new Error(`invalid lockdown audit action: ${action}`);
+  }
+  const p = getPool();
+  const res = await p.query(
+    `INSERT INTO lockdown_audit_log (actor, action, reason)
+     VALUES ($1, $2, $3)
+     RETURNING id, actor, action, reason, created_at`,
+    [actor || 'unknown', action, reason]
+  );
+  return res.rows[0];
+}
+
+async function getLockdownAuditLog(limit = 20) {
+  const p = getPool();
+  const n = Math.min(Math.max(1, limit | 0), 200);
+  const res = await p.query(
+    `SELECT id, actor, action, reason, created_at
+     FROM lockdown_audit_log
+     ORDER BY created_at DESC, id DESC
+     LIMIT $1`,
+    [n]
+  );
+  return res.rows;
 }
 
 // Returns a flat { key: bool } map resolved for the caller. Preview flags are
@@ -24740,6 +24788,8 @@ module.exports = {
   setFeatureFlag,
   getResolvedFeatureFlags,
   flipPreviewFlagsToOn,
+  insertLockdownAudit,
+  getLockdownAuditLog,
   executeSeason10Launch,
   getSeasonTiers,
   ensureSeasonTiers,

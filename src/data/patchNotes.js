@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.30",
+    "title": "Audit log of who locked/unlocked the site and when",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** The one-click site-lockdown toggle records only the *current* 'ON since … by …' state — every flip overwrote the previous one, so there was no way to answer 'who took the site dark at 2am?'. For a switch that can blank the public site, a historical trail matters.",
+      "**Audit trail.** New `lockdown_audit_log` table (actor, action lock/unlock, optional reason, created_at). The lockdown PUT handler now appends a row on every genuine state change (no-op re-saves are skipped so the trail stays clean). When the `FULL_SITE_LOCKDOWN` env var forces the gate ON, a single deduped boot-time row is recorded too, so env-driven locks show up in the same history.",
+      "**Admin visibility.** The 🔒 Site lockdown card in the AdminPanel Overview tab gains a collapsible 'History' section that lazy-loads the last ~20 changes (newest first) via a new superuser-only `GET /api/admin/lockdown-audit` — each row shows the lock/unlock action, timestamp, actor, and reason.",
+      "**Scope.** Full edition only — community edition has no lockdown gate and is untouched."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.29",
     "title": "Lock down the smurf detector's fingerprint overlap math with tests",
     "published_at": "2026-05-30",
