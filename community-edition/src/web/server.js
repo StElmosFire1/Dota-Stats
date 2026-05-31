@@ -150,16 +150,60 @@ function createServer(startupStatus = {}) {
     credentials: true,
   }));
 
-  const sessionSecret = process.env.SESSION_SECRET || (() => {
-    console.warn('[Session] SESSION_SECRET not set — using insecure default. Add it as an environment secret.');
-    return 'dota2-inhouse-default-secret-please-change';
-  })();
+  // When SESSION_SECRET isn't supplied via env, persist a generated secret to a
+  // gitignored file and REUSE it across boots instead of falling back to a
+  // predictable hardcoded default (which is forgeable) or a fresh random per
+  // boot (which logs everyone out on restart). The file is untracked, so it
+  // survives `git reset --hard` between deploys.
+  function loadOrCreatePersistentSessionSecret() {
+    const crypto = require('crypto');
+    const fs = require('fs');
+    const path = require('path');
+    const file = path.join(__dirname, '..', '..', '.session-secret');
+    try {
+      const existing = fs.readFileSync(file, 'utf8').trim();
+      if (existing.length >= 32) {
+        console.log('[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.');
+        return existing;
+      }
+    } catch (_) { /* missing/unreadable — create below */ }
+    const generated = crypto.randomBytes(48).toString('hex');
+    try {
+      // Exclusive create ('wx') so concurrent worker starts can't clobber each
+      // other; if another worker won the race, read theirs so all agree.
+      fs.writeFileSync(file, generated, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      console.warn('[Session] SESSION_SECRET not set — generated and persisted a new secret to .session-secret. Set SESSION_SECRET (32+ chars) to manage it via env.');
+      return generated;
+    } catch (e) {
+      if (e && e.code === 'EEXIST') {
+        try {
+          const other = fs.readFileSync(file, 'utf8').trim();
+          if (other.length >= 32) return other;
+        } catch (_) { /* fall through to ephemeral */ }
+      }
+      console.warn('[Session] SESSION_SECRET not set and could not persist a secret (' + (e && e.message) + '); using an ephemeral secret. Sessions will NOT survive a restart.');
+      return generated;
+    }
+  }
+  // SECURITY: SESSION_SECRET is mandatory in production — hard-fail rather than
+  // fall back to a generated file secret, so a missing env secret can never go
+  // unnoticed in prod. In dev / when NODE_ENV isn't set we persist a generated
+  // secret (see helper above) so sessions survive restarts.
+  const inProd = process.env.NODE_ENV === 'production';
+  let sessionSecret = process.env.SESSION_SECRET;
+  if (inProd) {
+    if (!sessionSecret || sessionSecret.length < 32) {
+      console.error('[Session] FATAL: SESSION_SECRET is missing or shorter than 32 chars in production. Refusing to start.');
+      process.exit(1);
+    }
+  } else if (!sessionSecret) {
+    sessionSecret = loadOrCreatePersistentSessionSecret();
+  }
 
   // Session cookie hardening: in production we serve over HTTPS (deploy.sh +
   // PM2 → reverse proxy), so we mark the cookie Secure to prevent it being
   // sent over plain HTTP. Locally (NODE_ENV !== 'production') we keep
   // `secure: false` so dev over plain HTTP still works.
-  const inProd = process.env.NODE_ENV === 'production';
   if (inProd) app.set('trust proxy', 1); // honour X-Forwarded-Proto from reverse proxy
   app.use(session({
     secret: sessionSecret,

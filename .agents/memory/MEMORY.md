@@ -10,3 +10,4 @@
 - [Notification stamp backfill](notification-stamp-backfill.md) — adding a NULL one-shot notify marker to an existing table needs a migration-time backfill or the first sweep blasts historical rows.
 - [Steam avatar source](avatar-source.md) — avatars aren't in our DB; only OpenDota (rate-limited ~1.1s/req). Cache + background-warm, never resolve many synchronously in a hot path.
 - [Lazy-route chunk blank screen](lazy-route-error-boundary.md) — lazy routes blank the whole app after a deploy (stale chunk 404); root error boundary + one-shot reload heals it.
+- [Session secret persistence](session-secret-persistence.md) — rotating SESSION_SECRET on each boot logs everyone out every deploy; persist to gitignored file in non-prod, fail-closed in prod.

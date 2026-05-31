@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.75",
+    "title": "Stay signed in — no more being logged out after an update",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**What was happening.** Every time the site shipped an update it could quietly sign everyone out — bouncing you back to the sign-in screen (and, on the private-preview gate, the password prompt) even though you'd only just logged in.",
+      "**Why.** Your signed-in session is protected by a secret signing key. When the server wasn't explicitly told it was running in production, it was inventing a brand-new key on every restart — and a new key makes all existing logins invalid. Because updates restart the server, that meant a fresh logout on every deploy.",
+      "**The fix.** The signing key is now kept stable across restarts, so your login (and the private-preview pass) survives updates and refreshes for the full 7 days as intended. Tip: setting a permanent SESSION_SECRET on the server is still the recommended way to manage this.",
+      "**Scope.** Both editions. Community edition also stops using a predictable fallback key, which is a security improvement."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.73",
     "title": "No more blank pages when clicking around after an update",
     "published_at": "2026-05-31",

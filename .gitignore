@@ -157,3 +157,6 @@ odota-parser/target/*
 !odota-parser/target/stats-0.1.0.jar
 # Browser-smoke synthetic-session storageState (live session cookie — never commit)
 tests/smoke/.auth/
+
+# Persisted session signing secret (generated at runtime when SESSION_SECRET env is unset)
+.session-secret

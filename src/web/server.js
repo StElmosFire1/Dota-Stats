@@ -1010,12 +1010,51 @@ function createServer(startupStatus = {}) {
     '/api/players/:accountId/recent-matches',
   ], twitchExtCors);
 
+  // When SESSION_SECRET isn't supplied via env (e.g. NODE_ENV isn't
+  // 'production' on the host, or local dev), persist a generated secret to a
+  // gitignored file and REUSE it across boots. Minting a fresh random secret on
+  // every restart invalidates all session cookies, which silently logs everyone
+  // out — re-triggering the lockdown gate + Steam sign-in — after every
+  // deploy/restart. The file is untracked, so it survives `git reset --hard`
+  // between deploys. (In production we still require the env-supplied secret
+  // below and never reach this helper.)
+  function loadOrCreatePersistentSessionSecret() {
+    const crypto = require('crypto');
+    const fs = require('fs');
+    const path = require('path');
+    const file = path.join(__dirname, '..', '..', '.session-secret');
+    try {
+      const existing = fs.readFileSync(file, 'utf8').trim();
+      if (existing.length >= 32) {
+        console.log('[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.');
+        return existing;
+      }
+    } catch (_) { /* missing/unreadable — create below */ }
+    const generated = crypto.randomBytes(48).toString('hex');
+    try {
+      // Exclusive create ('wx') so concurrent worker starts can't clobber each
+      // other; if another worker won the race, read theirs so all agree.
+      fs.writeFileSync(file, generated, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+      console.warn('[Session] SESSION_SECRET not set — generated and persisted a new secret to .session-secret. Set SESSION_SECRET (32+ chars) to manage it via env.');
+      return generated;
+    } catch (e) {
+      if (e && e.code === 'EEXIST') {
+        try {
+          const other = fs.readFileSync(file, 'utf8').trim();
+          if (other.length >= 32) return other;
+        } catch (_) { /* fall through to ephemeral */ }
+      }
+      console.warn('[Session] SESSION_SECRET not set and could not persist a secret (' + (e && e.message) + '); using an ephemeral secret. Sessions will NOT survive a restart.');
+      return generated;
+    }
+  }
+
   // SECURITY (v5.66): SESSION_SECRET is mandatory in production. Without a
   // strong, secret, env-supplied value the session cookie can be forged by an
   // attacker who knows the default — letting them impersonate any logged-in
   // Steam user. We hard-fail at startup in prod so a missing/short secret
   // can never silently fall back to a known string. In dev we still allow a
-  // generated ephemeral secret so local boots work without configuration.
+  // generated secret so local boots work without configuration.
   const inProd = process.env.NODE_ENV === 'production';
   let sessionSecret = process.env.SESSION_SECRET;
   if (inProd) {
@@ -1024,8 +1063,7 @@ function createServer(startupStatus = {}) {
       process.exit(1);
     }
   } else if (!sessionSecret) {
-    sessionSecret = require('crypto').randomBytes(48).toString('hex');
-    console.warn('[Session] SESSION_SECRET not set — generated a random ephemeral secret for this dev boot. Sessions will not survive a restart.');
+    sessionSecret = loadOrCreatePersistentSessionSecret();
   }
 
   // Session cookie hardening: in production we serve over HTTPS (deploy.sh +
