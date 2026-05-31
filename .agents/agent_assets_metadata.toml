@@ -84,6 +84,48 @@ uri = "file://artifacts/mockup-sandbox/public/images/pressbox-hero.png"
 type = "image"
 title = "Press Box Hero Background"
 
+[[generated]]
+id = "nYItT1a3rFOxvF1qkw7fL"
+uri = "file://attached_assets/tutorial/bg_intro.png"
+type = "image"
+title = "tutorial intro"
+
+[[generated]]
+id = "z4Rv9o07IIFFIeHENtJYX"
+uri = "file://attached_assets/tutorial/bg_what.png"
+type = "image"
+title = "tutorial what"
+
+[[generated]]
+id = "TP1UevRor9zGFsf53Gy4A"
+uri = "file://attached_assets/tutorial/bg_steam.png"
+type = "image"
+title = "tutorial steam"
+
+[[generated]]
+id = "3kVtvJpm2tza55YJiEHCR"
+uri = "file://attached_assets/tutorial/bg_lobby.png"
+type = "image"
+title = "tutorial lobby"
+
+[[generated]]
+id = "FFJzQmTgd2CecXM1wwH-k"
+uri = "file://attached_assets/tutorial/bg_mmr.png"
+type = "image"
+title = "tutorial mmr"
+
+[[generated]]
+id = "8D8bQL7JT2U3SSxhBEZ42"
+uri = "file://attached_assets/tutorial/bg_coaching.png"
+type = "image"
+title = "tutorial coaching"
+
+[[generated]]
+id = "mbfVsQg1xwQh9_qNVPI8O"
+uri = "file://attached_assets/tutorial/bg_outro.png"
+type = "image"
+title = "tutorial outro"
+
 [[outputs]]
 id = "4nBf5s_DOIub3AejPTlsx"
 uri = "file://web/public/voice-packs/cinematic/level-up.mp3"
@@ -329,3 +371,45 @@ id = "uXmGPf86od3jGO3CLZ8Ks"
 uri = "file://web/public/games/voiceline-demo.mp3"
 type = "audio"
 title = "voiceline hub demo"
+
+[[outputs]]
+id = "UQ5NAF34GOxcH-FKn5dI2"
+uri = "file://attached_assets/tutorial/music_bed.mp3"
+type = "audio"
+title = "tutorial music bed"
+
+[[outputs]]
+id = "ayCFnaxfr3GEkI8GQ6KEj"
+uri = "file://attached_assets/tutorial/vo_intro.mp3"
+type = "audio"
+title = "tutorial vo intro"
+
+[[outputs]]
+id = "IeYsdUqA4bbAL1j0udj-d"
+uri = "file://attached_assets/tutorial/vo_steam.mp3"
+type = "audio"
+title = "tutorial vo steam"
+
+[[outputs]]
+id = "StJ1mH5bSGNFjwZauN8tV"
+uri = "file://attached_assets/tutorial/vo_what.mp3"
+type = "audio"
+title = "tutorial vo what"
+
+[[outputs]]
+id = "huzMrbvQ11waaLQyS5rBy"
+uri = "file://attached_assets/tutorial/vo_lobby.mp3"
+type = "audio"
+title = "tutorial vo lobby"
+
+[[outputs]]
+id = "QBR07QZ4XCvd7-12lK8Li"
+uri = "file://attached_assets/tutorial/vo_coaching.mp3"
+type = "audio"
+title = "tutorial vo coaching"
+
+[[outputs]]
+id = "9PpjMsB6vdqSiZrKrFG2m"
+uri = "file://attached_assets/tutorial/vo_outro.mp3"
+type = "audio"
+title = "tutorial vo outro"

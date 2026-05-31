@@ -13,3 +13,4 @@
 - [Session secret persistence](session-secret-persistence.md) — rotating SESSION_SECRET on each boot logs everyone out every deploy; persist to gitignored file in non-prod, fail-closed in prod.
 - [Lootbox catalog single-source](lootbox-catalog-source.md) — server catalog is the only odds/cosmetic authority; web/src/profileCosmetics.js lootbox metadata is render-only, no server mirror (equip validates against catalog).
 - [Games answer tokens & kinds](games-suite-answer-tokens.md) — endless answerToken is signed-not-secret (daily keeps answer server-side); per-game logic switches on GAME_META.kind; exclude anonymized via player_profiles join.
+- [ffmpeg zoompan -loop explosion](ffmpeg-zoompan-loop-explosion.md) — never pair `-loop 1 -t` with zoompan `d=` on a still (frames×frames hang); feed one image + `-frames:v`. Build clips in stages.

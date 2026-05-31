@@ -9,11 +9,16 @@
 // Video URL config point.
 //
 // Set this to a YouTube/Vimeo/file URL to populate the embedded player on
-// /how-it-works. Leave it empty to show the graceful "coming soon"
-// placeholder — producing the video is intentionally out of scope, so the
-// page degrades cleanly until an operator drops a URL in here.
+// /how-it-works. Leave it empty to fall back to the graceful "coming soon"
+// placeholder so the page degrades cleanly when no URL is set.
+//
+// Currently a narrated, on-brand walkthrough served from the full edition's
+// static dir (web/public/). It covers what OCE Inhouse is, Steam sign-in,
+// joining an inhouse lobby, MMR/stats, and coaching. Rebuild it with
+// `node scripts/build-tutorial-video.mjs` (source assets in attached_assets/tutorial/).
+// Swap in a YouTube/Vimeo share link or another hosted file any time.
 // ---------------------------------------------------------------------------
-export const TUTORIAL_VIDEO_URL = '';
+export const TUTORIAL_VIDEO_URL = '/tutorial-walkthrough.mp4';
 
 // ---------------------------------------------------------------------------
 // Guest "intro seen" memory (cookie + localStorage).

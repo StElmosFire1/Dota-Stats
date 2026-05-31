@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.91",
+    "title": "A real walkthrough video on the How It Works guide",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Watch the tour.** The `/how-it-works` guide page now plays a real narrated walkthrough instead of the old \"video coming soon\" placeholder. It's a short ~90s on-brand tour covering what OCE Inhouse is, signing in with Steam, joining an inhouse lobby, the TrueSkill MMR ladder and stats, and the coaching marketplace.",
+      "**On-brand and self-hosted.** The video uses the OCE Inhouse palette and type, ships from our own static dir (no third-party embed or tracker), and the player degrades gracefully back to the placeholder if the URL is ever cleared.",
+      "**Scope.** Full edition only — community edition is untouched."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "8.90",
     "title": "Mystery Player — guess who's behind the scoreboard line",
     "published_at": "2026-05-31",
