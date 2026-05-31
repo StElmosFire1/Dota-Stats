@@ -7552,6 +7552,44 @@ function TournamentBracketPanel() {
 // Task #582) so operators can confirm a winner actually got their "prize
 // landed" DM/push and chase anomalies (paid but never notified). Hidden when
 // no prizes have been paid out yet.
+// Lightweight fixed-position toast, modelled on QuestTracker's CompletionToast
+// (role="status" + aria-live for screen readers, bottom-right, auto-dismiss).
+function AdminToast({ toast, onDismiss }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 5000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+  const ok = toast.ok;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+        background: 'var(--bg-card)',
+        border: `1px solid ${ok ? 'var(--accent-green, #22c55e)' : 'var(--amber)'}`,
+        borderRadius: 8, padding: '12px 16px', maxWidth: 320,
+        boxShadow: '0 6px 16px rgba(0,0,0,0.4)',
+        display: 'flex', gap: 12, alignItems: 'flex-start',
+      }}
+    >
+      <span style={{ fontSize: 22 }} aria-hidden="true">{ok ? '✅' : '⚠️'}</span>
+      <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+        {toast.text}
+      </div>
+      <button
+        type="button"
+        aria-label="Dismiss notification"
+        onClick={onDismiss}
+        style={{
+          background: 'transparent', border: 0, color: 'var(--text-muted)',
+          fontSize: 16, cursor: 'pointer', padding: 0,
+        }}
+      >×</button>
+    </div>
+  );
+}
+
 function PaidPayoutReceiptsPanel() {
   const { superuserKey } = useSuperuser();
   const [rows, setRows] = useState(null);
@@ -7559,6 +7597,7 @@ function PaidPayoutReceiptsPanel() {
   const [feedback, setFeedback] = useState(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkFeedback, setBulkFeedback] = useState(null);
+  const [toast, setToast] = useState(null);
 
   const load = useCallback(() => {
     if (!superuserKey) return;
@@ -7589,10 +7628,14 @@ function PaidPayoutReceiptsPanel() {
     try {
       const d = await resendAllPayoutReceipts(superuserKey);
       const n = d?.notified || 0;
-      setBulkFeedback({ ok: true, text: n === 0 ? 'Nothing to send' : `Sent ${n} receipt${n === 1 ? '' : 's'}` });
+      const text = n === 0 ? 'Nothing to send' : `Sent ${n} receipt${n === 1 ? '' : 's'}`;
+      setBulkFeedback({ ok: true, text });
+      setToast({ id: Date.now(), ok: true, text: `Prize receipts: ${text}` });
       load();
     } catch (e) {
-      setBulkFeedback({ ok: false, text: e.message || 'Failed to resend' });
+      const text = e.message || 'Failed to resend';
+      setBulkFeedback({ ok: false, text });
+      setToast({ id: Date.now(), ok: false, text: `Prize receipts: ${text}` });
     } finally {
       setBulkBusy(false);
     }
@@ -7681,6 +7724,9 @@ function PaidPayoutReceiptsPanel() {
           ))}
         </tbody>
       </table>
+      {toast && (
+        <AdminToast key={toast.id} toast={toast} onDismiss={() => setToast(null)} />
+      )}
     </div>
   );
 }

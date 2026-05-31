@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "8.87",
+    "title": "Bulk prize-receipt resend now pops a toast when it finishes",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Harder to miss.** The admin **Resend all unsent** button in the *Prize receipts sent* card now raises a corner toast reporting how many receipts went out (or the error), on top of the small inline result text — so when several receipts fly out at once you get a clear, unmissable confirmation.",
+      "**Scope.** Full edition admin panel only — community edition untouched. The toast is screen-reader announced (`role=status`) and auto-dismisses; a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.86",
     "title": "The top-bar search is now an obvious search box",
     "published_at": "2026-05-31",
