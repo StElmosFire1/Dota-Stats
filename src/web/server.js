@@ -5315,6 +5315,18 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #580 — admin visibility into pending prize payouts whose winner has
+  // no payout-ready Connect account. Shows who's been nudged (Task #545) and
+  // when, so operators can chase the long-tail directly (e.g. ping in Discord).
+  router.get('/admin/tournament-payouts/awaiting-connect', requireSuperuser, async (req, res) => {
+    try {
+      const payouts = await db.listPayoutsAwaitingConnect();
+      res.json({ payouts });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to fetch payouts awaiting connect' });
+    }
+  });
+
   router.post('/admin/tournament-payouts/:payoutId/retry', requireSuperuser, async (req, res) => {
     try {
       const row = await db.getTournamentPayoutRow(req.params.payoutId);

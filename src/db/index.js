@@ -25587,6 +25587,7 @@ module.exports = {
   getPendingTournamentPayouts,
   getTournamentPayoutRow,
   getPayoutsNeedingConnectNotification,
+  listPayoutsAwaitingConnect,
   markTournamentPayoutConnectNotified,
   setTournamentPayoutTransfer,
   getTournamentsWithPendingPayouts,
@@ -28182,6 +28183,37 @@ async function getPayoutsNeedingConnectNotification() {
                            AND c.status = 'active' AND c.stripe_account_id IS NOT NULL
                            AND c.stripe_account_id NOT LIKE 'acct_test_%')
       ORDER BY tp.tournament_id DESC, tp.place ASC`);
+  return r.rows;
+}
+
+// Task #580 — admin visibility into pending prize payouts whose winner has no
+// payout-ready Connect account, regardless of whether they've been nudged yet.
+// Mirrors `getPayoutsNeedingConnectNotification`'s "not connected" predicate
+// (the NOT EXISTS pair) but DROPS the `connect_notified_at IS NULL` filter and
+// SELECTs `connect_notified_at` so the admin card can show nudged/when. Lets
+// operators chase the long-tail of winners who never connected an account.
+async function listPayoutsAwaitingConnect() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT tp.id, tp.tournament_id, tp.account_id::text AS account_id, tp.place,
+            tp.amount_cents, tp.currency, tp.connect_notified_at,
+            t.name AS tournament_name,
+            COALESCE(n.nickname,
+              (SELECT ps.persona_name FROM player_stats ps WHERE ps.account_id = tp.account_id ORDER BY ps.id DESC LIMIT 1),
+              tp.account_id::text) AS display_name
+       FROM tournament_payouts tp
+       JOIN tournaments t ON t.id = tp.tournament_id
+       LEFT JOIN nicknames n ON n.account_id = tp.account_id
+      WHERE t.payouts_finalized_at IS NOT NULL
+        AND tp.transfer_status = 'pending'
+        AND tp.amount_cents > 0
+        AND NOT EXISTS (SELECT 1 FROM payout_accounts pa
+                         WHERE pa.account_id = tp.account_id AND pa.payouts_enabled = TRUE)
+        AND NOT EXISTS (SELECT 1 FROM coaches c
+                         WHERE c.account_id = tp.account_id
+                           AND c.status = 'active' AND c.stripe_account_id IS NOT NULL
+                           AND c.stripe_account_id NOT LIKE 'acct_test_%')
+      ORDER BY tp.connect_notified_at IS NULL DESC, tp.tournament_id DESC, tp.place ASC`);
   return r.rows;
 }
 

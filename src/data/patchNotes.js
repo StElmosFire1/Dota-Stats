@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.48",
+    "title": "See which winners still need to connect a payout account",
+    "published_at": "2026-05-30",
+    "notes": [
+      "**Why.** When a prize is finalized but the winner has never connected a Stripe payout account, the money sits in limbo. Winners get a one-time nudge to connect, but admins had no way to see how many prizes were still stuck or who to chase.",
+      "**What.** A new Admin Panel card lists every pending prize whose winner hasn't connected a payout-ready account — tournament, place, amount, player, and whether/when they were nudged — so operators can ping the long-tail directly (e.g. in Discord).",
+      "**Stays out of the way.** The card only appears when someone's actually stuck waiting to connect.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.47",
     "title": "Press Box rebuild — Playfair headlines, Newsreader figures, magazine layouts",
     "published_at": "2026-05-31",

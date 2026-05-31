@@ -1850,6 +1850,9 @@ export async function startPayoutOnboarding(country = 'AU') {
 export async function getFailedTournamentPayouts(superuserKey) {
   return superuserJson('/admin/tournament-payouts/failed', { superuserKey });
 }
+export async function getPayoutsAwaitingConnect(superuserKey) {
+  return superuserJson('/admin/tournament-payouts/awaiting-connect', { superuserKey });
+}
 export async function retryFailedTournamentPayout(payoutId, superuserKey) {
   const res = await superuserFetch(BASE + `/admin/tournament-payouts/${payoutId}/retry`, {
     method: 'POST', headers: { 'x-superuser-key': superuserKey },
