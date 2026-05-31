@@ -7,6 +7,7 @@ import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
 import ProfileCard from '../components/ProfileCard';
 import ProfileHeader from '../components/ProfileHeader';
+import { getTier } from './Leaderboard';
 import RivalCard from '../components/RivalCard';
 import MoodFormWidget from '../components/MoodFormWidget';
 import ProfileV3Panels from '../components/ProfileV3Panels';
@@ -1505,6 +1506,7 @@ export default function PlayerProfile() {
         winRate={headerWinRate}
         totalMatches={headerTotalMatches}
         nameAdornments={headerNameAdornments}
+        tier={headerMmr != null ? getTier(headerMmr, { isLeader }) : null}
         founderRing={showProfileCustomization && profileCard?.equipped_founder_ring ? profileCard.equipped_founder_ring : null}
       />
       {/* upscale-2026 redesign — the magazine cover is replaced by the

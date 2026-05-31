@@ -53,7 +53,7 @@ export const MMR_TIERS = [
   { name: 'Peasant',       badge: '/badges/tier-sub-3-peasant.png',  emoji: '🌾', description: "Tilling the fields. Pick up a sword — every Knight begins here.",                       min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
 ];
 
-function getTier(mmr, { isLeader = false } = {}) {
+export function getTier(mmr, { isLeader = false } = {}) {
   if (isLeader) {
     const king = MMR_TIERS.find(t => t.leaderOnly);
     if (king) return king;

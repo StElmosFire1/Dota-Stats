@@ -22,6 +22,9 @@ import FounderRing from './founderRings/FounderRing';
  *  - totalMatches: number | null
  *  - nameAdornments: ReactNode      — Pro / Verified / Rank badges row
  *  - rankLabel: string | null       — optional ladder rank badge, e.g. "#4"
+ *  - tier: object | null            — resolved MMR_TIERS row { name, badge, emoji }
+ *                                     for the top-left heraldic emblem. Null/unranked
+ *                                     renders no emblem.
  */
 export default function ProfileHeader({
   displayName,
@@ -33,6 +36,7 @@ export default function ProfileHeader({
   nameAdornments = null,
   rankLabel = null,
   founderRing = null,
+  tier = null,
 }) {
   const meta = FRAME_META[frameId] || {};
   const portrait = heroPortraitId ? getHeroImageUrl(heroPortraitId) : null;
@@ -107,6 +111,39 @@ export default function ProfileHeader({
               borderRadius: '50%',
             }}>
               {portraitFill}
+            </div>
+          )}
+          {tier && (
+            <div
+              style={{
+                position: 'absolute', top: -10, left: -10, width: 48, height: 48,
+                zIndex: 2, filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.6))',
+              }}
+            >
+              {tier.badge ? (
+                <img
+                  src={tier.badge}
+                  alt={`${tier.name} tier`}
+                  title={`${tier.name} tier`}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                  onError={(e) => {
+                    const span = document.createElement('span');
+                    span.style.cssText = 'font-size:34px;line-height:1';
+                    span.setAttribute('title', `${tier.name} tier`);
+                    span.setAttribute('aria-label', `${tier.name} tier`);
+                    span.setAttribute('role', 'img');
+                    span.textContent = tier.emoji || '🛡️';
+                    e.target.replaceWith(span);
+                  }}
+                />
+              ) : (
+                <span
+                  role="img"
+                  aria-label={`${tier.name} tier`}
+                  title={`${tier.name} tier`}
+                  style={{ fontSize: 34, lineHeight: 1 }}
+                >{tier.emoji || '🛡️'}</span>
+              )}
             </div>
           )}
           {rankLabel && (
