@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
@@ -7492,7 +7492,76 @@ function TournamentBracketPanel() {
 
       <FailedTournamentPayoutsPanel />
       <PayoutsAwaitingConnectPanel />
+      <PaidPayoutReceiptsPanel />
     </section>
+  );
+}
+
+// Task #614 — admin visibility into prize receipts that were sent. Lists
+// recently-paid prizes with their receipt-sent timestamp (`paid_notified_at`,
+// Task #582) so operators can confirm a winner actually got their "prize
+// landed" DM/push and chase anomalies (paid but never notified). Hidden when
+// no prizes have been paid out yet.
+function PaidPayoutReceiptsPanel() {
+  const { superuserKey } = useSuperuser();
+  const [rows, setRows] = useState(null);
+
+  useEffect(() => {
+    if (!superuserKey) return;
+    getPaidPayoutReceipts(superuserKey)
+      .then(d => setRows(d?.payouts || []))
+      .catch(() => setRows([]));
+  }, [superuserKey]);
+
+  if (!rows || rows.length === 0) return null;
+
+  const total = rows.reduce((s, p) => s + (p.amount_cents || 0), 0);
+  const unsent = rows.filter(p => !p.paid_notified_at).length;
+
+  return (
+    <div style={{ marginTop: 20, background: 'rgba(34,197,94,0.06)', border: '1px solid #22c55e', borderRadius: 10, padding: 16 }}>
+      <h3 style={{ marginTop: 0, marginBottom: 6, fontSize: 14, color: '#22c55e' }}>✅ Prize receipts sent ({rows.length})</h3>
+      <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 12 }}>
+        Recently-paid prizes (totalling ${(total / 100).toFixed(2)}) and whether each winner has been sent their
+        "prize landed" receipt.{unsent > 0 && <> <span style={{ color: 'var(--amber)' }}>{unsent} paid but not yet receipted — chase if this persists.</span></>}
+      </p>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead>
+          <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+            <th style={{ padding: '6px 8px' }}>Tournament</th>
+            <th style={{ padding: '6px 8px' }}>Place</th>
+            <th style={{ padding: '6px 8px' }}>Player</th>
+            <th style={{ padding: '6px 8px', textAlign: 'right' }}>Amount</th>
+            <th style={{ padding: '6px 8px' }}>Transferred</th>
+            <th style={{ padding: '6px 8px' }}>Receipt sent</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(p => (
+            <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ padding: '6px 8px' }}>
+                <Link to={`/tournaments/${p.tournament_id}`} style={{ color: 'var(--accent-blue)', textDecoration: 'none' }}>
+                  {p.tournament_name}
+                </Link>
+              </td>
+              <td style={{ padding: '6px 8px', fontWeight: 700 }}>#{p.place}</td>
+              <td style={{ padding: '6px 8px' }}>{p.display_name}</td>
+              <td style={{ padding: '6px 8px', textAlign: 'right' }}>${((p.amount_cents || 0) / 100).toFixed(2)}</td>
+              <td style={{ padding: '6px 8px', fontSize: 12 }}>
+                {p.transferred_at
+                  ? <span style={{ color: 'var(--text-muted)' }} title={new Date(p.transferred_at).toLocaleString()}>{new Date(p.transferred_at).toLocaleDateString()}</span>
+                  : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+              </td>
+              <td style={{ padding: '6px 8px', fontSize: 12 }}>
+                {p.paid_notified_at
+                  ? <span style={{ color: '#22c55e' }} title={new Date(p.paid_notified_at).toLocaleString()}>✓ {new Date(p.paid_notified_at).toLocaleDateString()}</span>
+                  : <span style={{ color: 'var(--amber)' }}>Not yet</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

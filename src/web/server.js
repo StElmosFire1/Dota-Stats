@@ -5428,6 +5428,20 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #614 — admin visibility into prize receipts that were sent. Lists
+  // recently-paid prizes with their receipt-sent timestamp (`paid_notified_at`,
+  // Task #582) so operators can confirm a winner actually got their "prize
+  // landed" DM/push and chase anomalies (paid but never notified).
+  router.get('/admin/tournament-payouts/paid-receipts', requireSuperuser, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit) || 50;
+      const payouts = await db.listRecentlyPaidPayouts(limit);
+      res.json({ payouts });
+    } catch (err) {
+      res.status(500).json({ error: err.message || 'Failed to fetch paid receipts' });
+    }
+  });
+
   router.post('/admin/tournament-payouts/:payoutId/retry', requireSuperuser, async (req, res) => {
     try {
       const row = await db.getTournamentPayoutRow(req.params.payoutId);

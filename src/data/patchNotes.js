@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.59",
+    "title": "Admins can confirm prize receipts actually reached winners",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** When a tournament prize transfer lands, the winner gets a one-shot 'prize landed' Discord/push receipt — but operators had no way to confirm a given winner actually received it short of reading the database.",
+      "**What.** A new superuser-only Admin Panel card (Overview tab) lists recently-paid prizes — tournament, place, player, amount, when it transferred, and whether/when the receipt was sent — alongside the existing payout cards. It flags any prize that's paid but not yet receipted so anomalies can be chased.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.58",
     "title": "The season notice stays slim everywhere",
     "published_at": "2026-05-31",

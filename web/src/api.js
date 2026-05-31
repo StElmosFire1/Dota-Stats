@@ -1860,6 +1860,9 @@ export async function getFailedTournamentPayouts(superuserKey) {
 export async function getPayoutsAwaitingConnect(superuserKey) {
   return superuserJson('/admin/tournament-payouts/awaiting-connect', { superuserKey });
 }
+export async function getPaidPayoutReceipts(superuserKey) {
+  return superuserJson('/admin/tournament-payouts/paid-receipts', { superuserKey });
+}
 export async function retryFailedTournamentPayout(payoutId, superuserKey) {
   const res = await superuserFetch(BASE + `/admin/tournament-payouts/${payoutId}/retry`, {
     method: 'POST', headers: { 'x-superuser-key': superuserKey },

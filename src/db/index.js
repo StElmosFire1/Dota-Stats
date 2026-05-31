@@ -25734,6 +25734,7 @@ module.exports = {
   markTournamentPayoutConnectNotified,
   getPayoutsNeedingPaidReceipt,
   markTournamentPayoutPaidNotified,
+  listRecentlyPaidPayouts,
   setTournamentPayoutTransfer,
   getTournamentsWithPendingPayouts,
   listFailedTournamentPayouts,
@@ -28452,6 +28453,34 @@ async function markTournamentPayoutPaidNotified(payoutId) {
       WHERE id = $1 AND paid_notified_at IS NULL RETURNING id`,
     [parseInt(payoutId)]);
   return r.rows[0] || null;
+}
+
+// Task #614 — admin visibility into prize receipts that were sent. Lists
+// recently-paid payout rows (transfer_status = 'paid') with the receipt-sent
+// stamp (`paid_notified_at`) so operators can confirm a winner actually got
+// their "prize landed" DM/push and chase anomalies (e.g. paid but never
+// notified). Mirrors `listPayoutsAwaitingConnect`'s joins so the card can name
+// the tournament + recipient. Newest transfers first.
+async function listRecentlyPaidPayouts(limit = 50) {
+  const p = getPool();
+  const lim = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.min(Math.floor(Number(limit)), 200) : 50;
+  const r = await p.query(
+    `SELECT tp.id, tp.tournament_id, tp.account_id::text AS account_id, tp.place,
+            tp.amount_cents, tp.currency, tp.transferred_at, tp.paid_notified_at,
+            tp.stripe_transfer_id,
+            t.name AS tournament_name,
+            COALESCE(n.nickname,
+              (SELECT ps.persona_name FROM player_stats ps WHERE ps.account_id = tp.account_id ORDER BY ps.id DESC LIMIT 1),
+              tp.account_id::text) AS display_name
+       FROM tournament_payouts tp
+       JOIN tournaments t ON t.id = tp.tournament_id
+       LEFT JOIN nicknames n ON n.account_id = tp.account_id
+      WHERE tp.transfer_status = 'paid'
+        AND tp.amount_cents > 0
+      ORDER BY tp.transferred_at DESC NULLS LAST, tp.tournament_id DESC, tp.place ASC
+      LIMIT $1`,
+    [lim]);
+  return r.rows;
 }
 
 // Mark a payout's Stripe Transfer outcome. status ∈ pending|paid|failed.
