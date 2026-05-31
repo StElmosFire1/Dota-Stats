@@ -19,17 +19,20 @@ function stubModule(specifier, exports, fromPath) {
 
 const SERVER_PATH = require.resolve('../src/web/server.js');
 
-function boot({ claim, dqSummaries, payoutNudges }) {
+function boot({ claim, dqSummaries, payoutNudges, payoutReminders }) {
   // Reset module cache so server.js re-binds our stubs every boot.
   delete require.cache[SERVER_PATH];
 
   const notifyCalls = [];
   const markedNotified = [];
+  const markedReminded = [];
   const dbStub = {
     async claimTournamentCheckinNotifications() { return claim; },
     async sweepTournamentCheckInDqs() { return dqSummaries || []; },
     async getPayoutsNeedingConnectNotification() { return payoutNudges || []; },
     async markTournamentPayoutConnectNotified(id) { markedNotified.push(id); return { id }; },
+    async getPayoutsNeedingConnectReminder() { return payoutReminders || []; },
+    async markTournamentPayoutConnectReminded(id) { markedReminded.push(id); return { id }; },
     // notify.js references these lazily; harmless no-op stubs.
     async isEventEnabled() { return true; },
   };
@@ -46,7 +49,7 @@ function boot({ claim, dqSummaries, payoutNudges }) {
   stubModule('../notify', notifyStub, SERVER_PATH);
 
   const server = require('../src/web/server.js');
-  return { server, notifyCalls, markedNotified };
+  return { server, notifyCalls, markedNotified, markedReminded };
 }
 
 test('check-in notify tick fans out open + reminder to each recipient', async () => {
@@ -173,4 +176,38 @@ test('payout connect-nudge is a no-op when no winner needs prompting', async () 
   assert.equal(result.notified, 0);
   assert.equal(notifyCalls.length, 0);
   assert.equal(markedNotified.length, 0);
+});
+
+// Task #581 — bounded follow-up reminder for winners who ignored the first nudge.
+test('payout connect-reminder re-nudges each stale winner once and stamps them', async () => {
+  const payoutReminders = [
+    { id: 11, tournament_id: 7, account_id: '111', place: 1, amount_cents: 5000, currency: 'aud', tournament_name: 'Autumn Cup', display_name: 'Alpha' },
+    { id: 12, tournament_id: 7, account_id: '222', place: 2, amount_cents: 2500, currency: 'aud', tournament_name: 'Autumn Cup', display_name: 'Bravo' },
+  ];
+  const { server, notifyCalls, markedReminded } = boot({ claim: { opens: [], reminders: [] }, payoutReminders });
+
+  const result = await server._remindUnconnectedPayoutWinners();
+  assert.equal(result.notified, 2);
+
+  assert.equal(notifyCalls.length, 2);
+  for (const c of notifyCalls) {
+    // Same event + push kind as the first nudge → same preference gate.
+    assert.equal(c.eventKey, 'tournament_payout_pending');
+    assert.equal(c.payload.push.data.kind, 'tournament_payout_pending');
+    assert.ok(c.payload.discord && c.payload.push, 'both channels present');
+    // Reminder copy is distinguishable from the first nudge.
+    assert.match(c.payload.push.title, /^Reminder:/);
+  }
+  // Each reminded row gets stamped exactly once via the reminder marker.
+  assert.deepEqual(markedReminded.sort(), [11, 12]);
+  const recipients = notifyCalls.map(c => c.accountId).sort();
+  assert.deepEqual(recipients, ['111', '222']);
+});
+
+test('payout connect-reminder is a no-op when no winner is due a reminder', async () => {
+  const { server, notifyCalls, markedReminded } = boot({ claim: { opens: [], reminders: [] }, payoutReminders: [] });
+  const result = await server._remindUnconnectedPayoutWinners();
+  assert.equal(result.notified, 0);
+  assert.equal(notifyCalls.length, 0);
+  assert.equal(markedReminded.length, 0);
 });

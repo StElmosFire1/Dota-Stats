@@ -580,6 +580,27 @@ async function _settleTournamentPayouts(tournamentId, { includeFailed = false } 
 // preference. Best-effort: per-recipient failures are logged but never abort
 // the sweep, and we only stamp after a successful send so a transient failure
 // is retried on the next sweep. Exported for tests.
+// Shared per-recipient send for both the first connect nudge and the Task #581
+// follow-up reminder. `reminder` only changes the copy; both fire the same
+// `tournament_payout_pending` event (so the same notification preference gates
+// them) with the same push `kind`.
+async function _sendPayoutConnectNudge(row, { reminder = false } = {}) {
+  const url = `/tournaments/${row.tournament_id}`;
+  const amount = (Number(row.amount_cents) || 0) / 100;
+  const ccy = (row.currency || 'aud').toUpperCase();
+  const prize = `${ccy} $${amount.toFixed(2)}`;
+  const title = reminder
+    ? 'Reminder: connect a payout account to claim your prize'
+    : 'Connect a payout account to claim your prize';
+  const body = reminder
+    ? `Your ${prize} prize from "${row.tournament_name}" is still unclaimed — connect a payout account to receive it before it's too late.`
+    : `You won ${prize} in "${row.tournament_name}" but we can't pay you yet — connect a payout account to receive it.`;
+  await notify(row.account_id, 'tournament_payout_pending', {
+    discord: { content: `💰 **${title}** — ${body}\nConnect here: ${(process.env.SITE_URL || '')}${url}` },
+    push: { title, body, url, data: { kind: 'tournament_payout_pending', tournament_id: row.tournament_id } },
+  });
+}
+
 async function _notifyUnconnectedPayoutWinners() {
   let notified = 0;
   let rows;
@@ -590,22 +611,45 @@ async function _notifyUnconnectedPayoutWinners() {
     return { notified: 0 };
   }
   for (const row of (rows || [])) {
-    const url = `/tournaments/${row.tournament_id}`;
-    const amount = (Number(row.amount_cents) || 0) / 100;
-    const ccy = (row.currency || 'aud').toUpperCase();
-    const prize = `${ccy} $${amount.toFixed(2)}`;
-    const title = 'Connect a payout account to claim your prize';
-    const body = `You won ${prize} in "${row.tournament_name}" but we can't pay you yet — connect a payout account to receive it.`;
     try {
-      await notify(row.account_id, 'tournament_payout_pending', {
-        discord: { content: `💰 **${title}** — ${body}\nConnect here: ${(process.env.SITE_URL || '')}${url}` },
-        push: { title, body, url, data: { kind: 'tournament_payout_pending', tournament_id: row.tournament_id } },
-      });
+      await _sendPayoutConnectNudge(row, { reminder: false });
       // Stamp only after a successful send so a transient failure retries.
       await db.markTournamentPayoutConnectNotified(row.id);
       notified++;
     } catch (e) {
       console.warn('[TournamentPayout] connect-nudge notify failed:', e.message);
+    }
+  }
+  return { notified };
+}
+
+// Task #581 — one bounded follow-up reminder for winners who got the first
+// connect nudge `PAYOUT_CONNECT_REMINDER_DELAY_DAYS` ago (default 7) and are
+// still pending + unconnected. Stamps `connect_renotified_at` after a successful
+// send so each winner is reminded at most once — the anti-spam guard from
+// Task #545 is preserved (we never re-clear `connect_notified_at`). Gated by the
+// same `tournament_payout_pending` preference. Exported for tests.
+const PAYOUT_CONNECT_REMINDER_DELAY_DAYS = (() => {
+  const n = parseInt(process.env.PAYOUT_CONNECT_REMINDER_DELAY_DAYS, 10);
+  return Number.isFinite(n) && n > 0 ? n : 7;
+})();
+async function _remindUnconnectedPayoutWinners() {
+  let notified = 0;
+  let rows;
+  try {
+    rows = await db.getPayoutsNeedingConnectReminder(PAYOUT_CONNECT_REMINDER_DELAY_DAYS);
+  } catch (e) {
+    console.warn('[TournamentPayout] connect-reminder query failed:', e.message);
+    return { notified: 0 };
+  }
+  for (const row of (rows || [])) {
+    try {
+      await _sendPayoutConnectNudge(row, { reminder: true });
+      // Stamp only after a successful send so a transient failure retries.
+      await db.markTournamentPayoutConnectReminded(row.id);
+      notified++;
+    } catch (e) {
+      console.warn('[TournamentPayout] connect-reminder notify failed:', e.message);
     }
   }
   return { notified };
@@ -630,6 +674,9 @@ async function _runTournamentPayoutSweep(reason = 'cron') {
     // payout-ready account — prompt them (one-shot) to connect one.
     try { await _notifyUnconnectedPayoutWinners(); }
     catch (e) { console.warn('[TournamentPayout] connect-nudge sweep error:', e.message); }
+    // Then re-nudge winners who ignored the first prompt long enough ago.
+    try { await _remindUnconnectedPayoutWinners(); }
+    catch (e) { console.warn('[TournamentPayout] connect-reminder sweep error:', e.message); }
   } catch (e) {
     console.warn('[TournamentPayout] sweep error:', e.message);
   } finally {
@@ -20989,4 +21036,4 @@ function processReplayInternal(filePath, source, opts = {}) {
   });
 }
 
-module.exports = { createServer, processReplayInternal, createApiRouter, _runCheckinNotifyTick, _runCheckinDqSweepTick, _notifyUnconnectedPayoutWinners };
+module.exports = { createServer, processReplayInternal, createApiRouter, _runCheckinNotifyTick, _runCheckinDqSweepTick, _notifyUnconnectedPayoutWinners, _remindUnconnectedPayoutWinners };

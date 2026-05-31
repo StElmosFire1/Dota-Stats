@@ -2679,6 +2679,12 @@ async function init() {
     // connect one. NULL = never nudged; the settlement sweep notifies each
     // such winner exactly once and stamps this so later sweeps don't repeat.
     await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS connect_notified_at TIMESTAMPTZ`);
+    // Task #581 — bounded follow-up nudge. A winner who ignored the one-shot
+    // connect prompt above gets exactly one more reminder after a configurable
+    // delay if they're still pending + unconnected. NULL = no reminder sent yet;
+    // stamped once so it never repeats (preserves the anti-spam guarantee
+    // without re-clearing `connect_notified_at`).
+    await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS connect_renotified_at TIMESTAMPTZ`);
 
     // Task #453 — generic Stripe Connect Express payout accounts for any
     // player (tournament winners who aren't coaches). Mirrors the coaching
@@ -25587,6 +25593,8 @@ module.exports = {
   getPendingTournamentPayouts,
   getTournamentPayoutRow,
   getPayoutsNeedingConnectNotification,
+  getPayoutsNeedingConnectReminder,
+  markTournamentPayoutConnectReminded,
   listPayoutsAwaitingConnect,
   markTournamentPayoutConnectNotified,
   setTournamentPayoutTransfer,
@@ -28224,6 +28232,52 @@ async function markTournamentPayoutConnectNotified(payoutId) {
   const r = await p.query(
     `UPDATE tournament_payouts SET connect_notified_at = NOW()
       WHERE id = $1 AND connect_notified_at IS NULL RETURNING id`,
+    [parseInt(payoutId)]);
+  return r.rows[0] || null;
+}
+
+// Task #581 — bounded follow-up reminder. Returns winners who already got the
+// one-shot connect prompt (`connect_notified_at` set) at least `delayDays` ago,
+// haven't been reminded yet (`connect_renotified_at IS NULL`), and are STILL
+// pending + unconnected. Same "not connected" predicate (the NOT EXISTS pair)
+// as `getPayoutsNeedingConnectNotification`. At most one reminder per payout, so
+// the result set drains permanently once each is stamped.
+async function getPayoutsNeedingConnectReminder(delayDays = 7) {
+  const p = getPool();
+  const days = Number.isFinite(Number(delayDays)) && Number(delayDays) > 0 ? Math.floor(Number(delayDays)) : 7;
+  const r = await p.query(
+    `SELECT tp.id, tp.tournament_id, tp.account_id::text AS account_id, tp.place,
+            tp.amount_cents, tp.currency, t.name AS tournament_name,
+            COALESCE(n.nickname,
+              (SELECT ps.persona_name FROM player_stats ps WHERE ps.account_id = tp.account_id ORDER BY ps.id DESC LIMIT 1),
+              tp.account_id::text) AS display_name
+       FROM tournament_payouts tp
+       JOIN tournaments t ON t.id = tp.tournament_id
+       LEFT JOIN nicknames n ON n.account_id = tp.account_id
+      WHERE t.payouts_finalized_at IS NOT NULL
+        AND tp.transfer_status = 'pending'
+        AND tp.amount_cents > 0
+        AND tp.connect_notified_at IS NOT NULL
+        AND tp.connect_renotified_at IS NULL
+        AND tp.connect_notified_at < NOW() - make_interval(days => $1)
+        AND NOT EXISTS (SELECT 1 FROM payout_accounts pa
+                         WHERE pa.account_id = tp.account_id AND pa.payouts_enabled = TRUE)
+        AND NOT EXISTS (SELECT 1 FROM coaches c
+                         WHERE c.account_id = tp.account_id
+                           AND c.status = 'active' AND c.stripe_account_id IS NOT NULL
+                           AND c.stripe_account_id NOT LIKE 'acct_test_%')
+      ORDER BY tp.tournament_id DESC, tp.place ASC`,
+    [days]);
+  return r.rows;
+}
+
+// Task #581 — stamp the follow-up reminder marker so a winner is reminded at
+// most once. Best-effort: returns the updated row (or null).
+async function markTournamentPayoutConnectReminded(payoutId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE tournament_payouts SET connect_renotified_at = NOW()
+      WHERE id = $1 AND connect_renotified_at IS NULL RETURNING id`,
     [parseInt(payoutId)]);
   return r.rows[0] || null;
 }

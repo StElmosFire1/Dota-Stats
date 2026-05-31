@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.49",
+    "title": "A second reminder for winners who haven't connected a payout account",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** Winners get a one-time nudge to connect a payout account so we can pay out their prize, but anyone who missed or ignored that first message never heard about it again — leaving prizes stuck indefinitely.",
+      "**What.** If a winner is still owed a prize and still hasn't connected an account a week after the first nudge, they now get exactly one follow-up reminder, then we stop. No spam — at most one extra message per prize.",
+      "**Respects preferences.** The reminder uses the same \"tournament payout pending\" notification setting, so anyone who opted out still won't be messaged.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.48",
     "title": "See which winners still need to connect a payout account",
     "published_at": "2026-05-30",
