@@ -265,71 +265,12 @@
 .pb-feed-row:hover { border-color: rgba(197, 169, 117, 0.5); }
 
 /* ---- Slim home notice (admin season banner) -------------------------
-   #4 user feedback: the admin-configurable HomeBanner used to render as a
-   second full-size .oa-home-hero stacked above the serif hero, so the page
-   showed two competing promo blocks. We keep the HomeBanner component and
-   ALL its behaviour (admin-config, dismiss, version) but visually compact it
-   into a single slim notice strip so there is ONE prominent hero + a calm
-   notice. The wrapper has no box of its own, so when HomeBanner returns
-   null the empty wrapper is invisible. */
-.pb-home-notice .oa-home-hero {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 16px;
-  padding: 12px 48px 12px 18px;
-  margin-bottom: 16px;
-  border-radius: var(--pb-radius-sm, 10px);
-  border-color: var(--pb-line);
-  background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
-}
-
-/* Drop the big corner vignette — too heavy for a slim strip. */
-.pb-home-notice .oa-hero-glow::after { display: none; }
-
-/* Thin the brass accent rule so it reads as a hairline, not a hero bar. */
-.pb-home-notice .oa-card-rule::before { top: 10px; bottom: 10px; }
-
-.pb-home-notice .oa-eyebrow {
-  flex: 0 0 auto;
-  font-size: 0.62rem;
-  letter-spacing: 0.2em;
-}
-
-.pb-home-notice .oa-home-hero h1 {
-  flex: 0 0 auto;
-  margin: 0;
-  font-size: 1rem;
-  line-height: 1.2;
-}
-
-.pb-home-notice .oa-home-hero p {
-  flex: 1 1 240px;
-  min-width: 0;
-  margin: 0;
-  max-width: none;
-  font-family: var(--font);
-  font-style: normal;
-  font-size: 0.83rem;
-  line-height: 1.45;
-  color: var(--pb-muted);
-}
-
-.pb-home-notice .oa-home-hero-cta {
-  flex: 0 0 auto;
-  margin-left: auto;
-  gap: 8px;
-}
-
-.pb-home-notice .oa-home-hero-cta .oa-cta-primary,
-.pb-home-notice .oa-home-hero-cta .oa-cta-ghost {
-  padding: 0.38rem 0.85rem;
-  font-size: 0.78rem;
-}
-
-@media (max-width: 640px) {
-  .pb-home-notice .oa-home-hero-cta { margin-left: 0; width: 100%; }
-}
+   The slim styling for the admin-configurable HomeBanner now lives WITH the
+   component (web/src/components/HomeBanner.css, scoped to .home-banner-notice)
+   so the lighter look is consistent on every page that mounts the banner, not
+   just Home. The .pb-home-notice wrapper here is retained only as a harmless
+   layout slot — it has no box of its own, so when HomeBanner returns null the
+   empty wrapper is invisible. */
 
 /* ---- Ladder rows (mirrors HomeSignedOut.tsx LadderRow) --------------
    Replaces the disliked oversized-italic Top-5 numeral list with the

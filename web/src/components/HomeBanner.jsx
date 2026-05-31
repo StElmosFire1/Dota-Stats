@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import './HomeBanner.css';
 
 const DEFAULT_CONFIG = {
   enabled: false,
@@ -55,7 +56,7 @@ export default function HomeBanner() {
   const ctaIsExternal = cfg.ctaHref && /^https?:\/\//.test(cfg.ctaHref);
 
   return (
-    <div className="oa-card oa-card-rule oa-hero-glow oa-home-hero" style={{ paddingRight: '3rem', position: 'relative' }}>
+    <div className="oa-card oa-card-rule oa-hero-glow oa-home-hero home-banner-notice" style={{ paddingRight: '3rem', position: 'relative' }}>
       <button
         onClick={handleDismiss}
         aria-label="Dismiss"

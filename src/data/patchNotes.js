@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.58",
+    "title": "The season notice stays slim everywhere",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The admin season notice had been slimmed to a calm single-line strip on the Home page, but that lighter styling was scoped to the Home page only — anywhere else the same notice could appear it would have reverted to its old full-size hero look.",
+      "**What.** The slim styling now lives with the notice component itself, so it renders as the same compact strip wherever it appears.",
+      "**Kept.** Admin configuration, the dismiss button, and version handling are unchanged.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.57",
     "title": "Draft Sandbox gets the new captain-draft look",
     "published_at": "2026-05-31",

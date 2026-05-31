@@ -1,0 +1,68 @@
+/* Slim season notice — owned by the HomeBanner component so the lighter
+   look is consistent wherever the banner renders, not just on Home.
+
+   History: the admin-configurable HomeBanner used to render as a full-size
+   .oa-home-hero, so on the Home page it stacked a second competing promo
+   block above the serif hero. It was first slimmed via a Home-only
+   .pb-home-notice wrapper in pressbox-home.css; that styling now lives here,
+   scoped to the component's own .home-banner-notice class, so the slim notice
+   is identical on every page that mounts HomeBanner. ALL component behaviour
+   (admin-config, dismiss, version) is unchanged — this is purely visual. */
+.home-banner-notice.oa-home-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 12px 48px 12px 18px;
+  margin-bottom: 16px;
+  border-radius: var(--pb-radius-sm, 10px);
+  border-color: var(--pb-line);
+  background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
+}
+
+/* Drop the big corner vignette — too heavy for a slim strip. */
+.home-banner-notice.oa-hero-glow::after { display: none; }
+
+/* Thin the brass accent rule so it reads as a hairline, not a hero bar. */
+.home-banner-notice.oa-card-rule::before { top: 10px; bottom: 10px; }
+
+.home-banner-notice .oa-eyebrow {
+  flex: 0 0 auto;
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+}
+
+.home-banner-notice.oa-home-hero h1 {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.home-banner-notice.oa-home-hero p {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+  max-width: none;
+  font-family: var(--font);
+  font-style: normal;
+  font-size: 0.83rem;
+  line-height: 1.45;
+  color: var(--pb-muted);
+}
+
+.home-banner-notice .oa-home-hero-cta {
+  flex: 0 0 auto;
+  margin-left: auto;
+  gap: 8px;
+}
+
+.home-banner-notice .oa-home-hero-cta .oa-cta-primary,
+.home-banner-notice .oa-home-hero-cta .oa-cta-ghost {
+  padding: 0.38rem 0.85rem;
+  font-size: 0.78rem;
+}
+
+@media (max-width: 640px) {
+  .home-banner-notice .oa-home-hero-cta { margin-left: 0; width: 100%; }
+}
