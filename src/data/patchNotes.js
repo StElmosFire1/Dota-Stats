@@ -3861,7 +3861,7 @@ module.exports = [
     "author": "System"
   },
   {
-    "version": "8.76",
+    "version": "8.78",
     "title": "Team logos and tournament monograms in the ⌘K search palette",
     "published_at": "2026-05-31",
     "notes": [
