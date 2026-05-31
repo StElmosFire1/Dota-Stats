@@ -158,7 +158,7 @@ function CommandPalette({ open, onClose }) {
       const item = {
         id: `t-${t.id}`, label: t.name,
         sub: `[${t.tag}]${t.member_count ? ` · ${t.member_count} member${t.member_count === 1 ? '' : 's'}` : ''}`,
-        icon: '🤝', kind: 'Team', path: `/teams/${t.id}`,
+        img: t.logo_url || undefined, icon: '🤝', kind: 'Team', path: `/teams/${t.id}`,
       };
       return { item, score: scoreItem(q, t.name, t.tag) };
     }));
@@ -169,7 +169,7 @@ function CommandPalette({ open, onClose }) {
       const item = {
         id: `tn-${t.id}`, label: t.name,
         sub: [t.status, t.season_name].filter(Boolean).join(' · '),
-        icon: '🏅', kind: 'Tournament', path: `/tournaments/${t.id}`,
+        img: t.logo_url || undefined, icon: '🏅', kind: 'Tournament', path: `/tournaments/${t.id}`,
       };
       return { item, score: scoreItem(q, t.name) };
     }));

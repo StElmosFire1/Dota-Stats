@@ -901,6 +901,26 @@ async function _resolveSearchAvatar(accountId) {
   return url;
 }
 
+// Task #633 — initials monogram for command-palette results that have no real
+// image. Teams without a logo_url and all tournaments (which persist no image
+// column) get a small SVG data-URI chip in the OCE Inhouse palette so results
+// stay scannable instead of falling back to a generic emoji. Returns null on an
+// empty name so the palette keeps its emoji fallback.
+function _monogramDataUri(name, { bg = '#0d1424', fg = '#c5a975' } = {}) {
+  const text = String(name || '').trim();
+  if (!text) return null;
+  const words = text.split(/\s+/).filter(Boolean);
+  let initials = words.length >= 2 ? words[0][0] + words[1][0] : text.slice(0, 2);
+  initials = initials.toUpperCase()
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">`
+    + `<rect width="40" height="40" rx="8" fill="${bg}"/>`
+    + `<text x="20" y="21" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" `
+    + `fill="${fg}" text-anchor="middle" dominant-baseline="central">${initials}</text></svg>`;
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
+}
+
 async function refreshLockdownStateFromDb() {
   try {
     const dbMod = require('../db');
@@ -11624,6 +11644,17 @@ NOTES
       }
       for (const p of players) p.avatar = _peekSearchAvatar(p.account_id) || null;
       for (const c of coaches) c.avatar = _peekSearchAvatar(c.account_id) || null;
+      // Task #633 — palette thumbnails for teams + tournaments. Teams use their
+      // user-supplied logo_url; teams without one fall back to a brass initials
+      // monogram. Tournaments persist no image column, so they always get an
+      // amber initials monogram. Both surface as logo_url (a data: URI for
+      // monograms) so the palette renders an image instead of a generic emoji.
+      for (const t of teams) {
+        if (!t.logo_url) t.logo_url = _monogramDataUri(t.tag || t.name, { fg: '#c5a975' });
+      }
+      for (const t of tournaments) {
+        t.logo_url = _monogramDataUri(t.name, { fg: '#f59e0b' });
+      }
       res.json({ query: q, players, coaches, teams, tournaments });
     } catch (err) {
       res.status(500).json({ error: 'Search failed' });

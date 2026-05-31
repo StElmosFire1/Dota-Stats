@@ -3859,5 +3859,16 @@ module.exports = [
     "published_at": "2026-05-30",
     "content": "Task #586: finding a specific player, hero, page, or match meant clicking through the nav and scanning lists. v8.39 adds a site-wide search + command palette so you can jump anywhere in two keystrokes.\n\nA search field now lives in the top header (it collapses to a single magnifier icon on narrow screens where the nav wraps). Click it — or press ⌘K / Ctrl-K from anywhere on the site — to open the command palette. Start typing and results stream in, grouped into Players, Heroes, Pages, and Matches: players match on nickname / display name / persona and deep-link to their profile, heroes show their portrait and open the Heroes page, pages match on both their label and a keyword list (so 'changelog' finds Patch Notes, 'mentor' finds the Coaching Marketplace), and a numeric query offers a direct 'Match #<id>' jump alongside any recent matches whose id contains what you typed. With the field empty the palette shows a Quick links shortcut row.\n\nThe palette is built on the shared <Dialog> primitive, so it inherits focus trap/restore, body-scroll lock, backdrop dismissal, and Escape-to-close for free. The input is wired as an ARIA combobox driving a listbox via aria-activedescendant: arrow keys move the highlight (Home/End jump to the ends) while focus stays in the field, Enter opens the highlighted result, and a polite live region announces the result count for screen readers. The searchable player and recent-match datasets are fetched lazily the first time the palette opens and reused on subsequent opens. Full edition only — the community edition navbar is untouched. A11y gate green.",
     "author": "System"
+  },
+  {
+    "version": "8.75",
+    "title": "Team logos and tournament monograms in the ⌘K search palette",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**What.** When you search teams in the command palette (⌘K / Ctrl-K), any team that has set a logo now shows that logo as its result thumbnail instead of the generic 🤝 emoji — so results are quicker to scan and match the player/coach portraits already shown there.",
+      "**Monograms.** Teams without a logo, and tournaments (which don't store an image), now get a tidy initials chip in the site palette — brass for teams, amber for tournaments — instead of a plain emoji, so every search result has a distinct thumbnail.",
+      "**Scope.** Full edition only — community edition untouched. A11y gate green."
+    ],
+    "author": "System"
   }
 ];

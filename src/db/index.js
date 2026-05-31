@@ -22083,7 +22083,7 @@ async function searchTeams(q, limit = 6) {
   const p = getPool();
   const like = `%${term}%`;
   const r = await p.query(
-    `SELECT t.id, t.name, t.tag,
+    `SELECT t.id, t.name, t.tag, t.logo_url,
             (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id)::int AS member_count
        FROM teams t
       WHERE t.is_active = TRUE
@@ -22096,6 +22096,7 @@ async function searchTeams(q, limit = 6) {
     id: Number(row.id),
     name: row.name,
     tag: row.tag,
+    logo_url: row.logo_url || null,
     member_count: Number(row.member_count) || 0,
   }));
 }
