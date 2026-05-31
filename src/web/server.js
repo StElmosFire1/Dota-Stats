@@ -13864,6 +13864,72 @@ NOTES
     }
   });
 
+  // Task #613 — in-website notification center. Per-user feed read by the bell
+  // dropdown in the top nav; entries are written by the 'inapp' channel of the
+  // central notify() hub. All routes are auth-scoped to the signed-in account.
+
+  // List the signed-in user's notifications (newest first) plus the unread
+  // count. `?before=<id>` pages older entries; `?limit=` clamps the window.
+  router.get('/me/notification-feed', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const limit = req.query.limit ? parseInt(req.query.limit, 10) : 30;
+      const before = req.query.before ? parseInt(req.query.before, 10) : null;
+      const [items, unreadCount] = await Promise.all([
+        db.listInAppNotifications(accountId, { limit, before }),
+        db.getInAppUnreadCount(accountId),
+      ]);
+      res.json({ items, unreadCount });
+    } catch (err) {
+      console.error('[API] me/notification-feed GET:', err.message);
+      res.status(500).json({ error: 'Failed to load notifications' });
+    }
+  });
+
+  // Lightweight unread-count probe for the bell badge poller.
+  router.get('/me/notification-feed/unread-count', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const count = await db.getInAppUnreadCount(accountId);
+      res.json({ count });
+    } catch (err) {
+      console.error('[API] me/notification-feed unread-count:', err.message);
+      res.status(500).json({ error: 'Failed to load unread count' });
+    }
+  });
+
+  // Mark all of the signed-in user's notifications read.
+  router.post('/me/notification-feed/read-all', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const marked = await db.markAllInAppNotificationsRead(accountId);
+      const unreadCount = await db.getInAppUnreadCount(accountId);
+      res.json({ ok: true, marked, unreadCount });
+    } catch (err) {
+      console.error('[API] me/notification-feed read-all:', err.message);
+      res.status(500).json({ error: 'Failed to mark notifications read' });
+    }
+  });
+
+  // Mark a single notification read (scoped to the owner).
+  router.post('/me/notification-feed/:id/read', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid notification id' });
+      await db.markInAppNotificationRead(accountId, id);
+      const unreadCount = await db.getInAppUnreadCount(accountId);
+      res.json({ ok: true, unreadCount });
+    } catch (err) {
+      console.error('[API] me/notification-feed read:', err.message);
+      res.status(500).json({ error: 'Failed to mark notification read' });
+    }
+  });
+
   router.post('/me/notifications', express.json(), async (req, res) => {
     try {
       const accountId = req.session?.accountId;

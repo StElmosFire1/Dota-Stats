@@ -2435,6 +2435,26 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_user_notif_prefs_acct ON user_notification_prefs (account_id)`);
 
+    // Task #613 — in-website notification center. Durable per-user feed of
+    // system-to-user notifications (match recorded, MVP, hot streak, booking
+    // confirmed, queue popped, …) so signed-in users can catch up on anything
+    // they missed over Discord / push. Written by the in-app channel of the
+    // central notify() hub, gated by the user's per-event 'inapp' preference.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS inapp_notifications (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        event_key TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT DEFAULT '',
+        link TEXT DEFAULT NULL,
+        read_at TIMESTAMPTZ DEFAULT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_inapp_notif_acct_created ON inapp_notifications (account_id, created_at DESC)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_inapp_notif_unread ON inapp_notifications (account_id) WHERE read_at IS NULL`);
+
     // Task #316 — engagement loop tables.
     //   hero_mastery       — per (account_id, hero_id, position) games/wins
     //                        + total perf so we can derive a tier on read.
@@ -15069,7 +15089,10 @@ async function setNotificationPref(accountId, category, enabled, value) {
 // scrim, season rollover, coach-of-the-month, quests, predictions — is
 // opt-in. Users with an explicit `user_notification_prefs` (or legacy
 // `notification_prefs`) row are untouched; only the no-row fallback changes.
-const NOTIFICATION_CHANNELS = ['discord', 'push'];
+// Task #613 — 'inapp' is the in-website notification feed (bell + dropdown).
+// It's a passive catch-up surface (no DM, no push), so it defaults ON for
+// every event unless an event explicitly opts out via `defaults.inapp`.
+const NOTIFICATION_CHANNELS = ['discord', 'push', 'inapp'];
 const NOTIFICATION_EVENTS = [
   { key: 'match_result',            label: 'Match result',                desc: 'Post-match report with your stats.',                         legacy: 'post_match_dm',              defaults: { discord: false, push: false } },
   { key: 'mvp_vote',                label: 'MVP vote prompt',             desc: 'DM asking you to nominate a teammate as MVP.',               legacy: 'mvp_vote',                   defaults: { discord: true,  push: false } },
@@ -15110,12 +15133,20 @@ function eventDef(eventKey) {
   return NOTIFICATION_EVENTS.find(e => e.key === eventKey) || null;
 }
 
+// Default for a (def, channel) tuple. Explicit `defaults[channel]` wins;
+// otherwise the in-app feed defaults ON (passive catch-up surface) and every
+// other channel defaults OFF so it can't accidentally fire.
+function channelDefaultEnabled(def, channel) {
+  if (!def) return false;
+  const v = def.defaults?.[channel];
+  if (v !== undefined) return !!v;
+  return channel === 'inapp';
+}
+
 // Per-event default for a given channel. Falls back to `false` for unknown
 // (event, channel) tuples so unrelated channels can't accidentally fire.
 function eventDefaultEnabled(eventKey, channel) {
-  const def = eventDef(eventKey);
-  if (!def) return false;
-  return !!def.defaults?.[channel];
+  return channelDefaultEnabled(eventDef(eventKey), channel);
 }
 
 // Resolve whether the given (account, event, channel) is enabled.
@@ -15189,14 +15220,15 @@ async function getNotificationEventMatrix(accountId) {
       const legacyCat = ch === 'discord' ? e.legacy
                        : ch === 'push'    ? e.legacyPush
                        : null;
+      const chDefault = channelDefaultEnabled(e, ch);
       if (v2.has(key)) {
         enabled = v2.get(key); source = 'user';
       } else if (legacyCat && legacy.has(legacyCat)) {
         enabled = legacy.get(legacyCat); source = 'legacy';
       } else {
-        enabled = !!e.defaults?.[ch]; source = 'default';
+        enabled = chDefault; source = 'default';
       }
-      channels[ch] = { enabled, source, default: !!e.defaults?.[ch] };
+      channels[ch] = { enabled, source, default: chDefault };
     }
     return { key: e.key, label: e.label, desc: e.desc, channels };
   });
@@ -15215,6 +15247,80 @@ async function setNotificationEventPref(accountId, eventKey, channel, enabled) {
     [accountId, eventKey, channel, !!enabled]
   );
   return true;
+}
+
+// ---------- Task #613: In-website notification feed ----------
+// Durable per-user feed written by the 'inapp' channel of notify(). Read by
+// the bell + dropdown in the top nav and the unread badge poller.
+
+async function addInAppNotification(accountId, { eventKey, title, body, link } = {}) {
+  if (!accountId || !title) return null;
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO inapp_notifications (account_id, event_key, title, body, link)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, account_id, event_key, title, body, link, read_at, created_at`,
+    [accountId, eventKey || '', String(title).slice(0, 300), body ? String(body).slice(0, 2000) : '', link || null]
+  );
+  return r.rows[0] || null;
+}
+
+// Newest-first page of a user's notifications. `before` (a numeric id) pages
+// older entries; `limit` is clamped to a sane window.
+async function listInAppNotifications(accountId, { limit = 30, before = null } = {}) {
+  if (!accountId) return [];
+  const p = getPool();
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 30, 1), 100);
+  const params = [accountId];
+  let where = 'account_id = $1';
+  if (before != null && Number.isFinite(Number(before))) {
+    params.push(Number(before));
+    where += ` AND id < $${params.length}`;
+  }
+  params.push(lim);
+  const r = await p.query(
+    `SELECT id, event_key, title, body, link, read_at, created_at
+       FROM inapp_notifications
+      WHERE ${where}
+      ORDER BY id DESC
+      LIMIT $${params.length}`,
+    params
+  );
+  return r.rows || [];
+}
+
+async function getInAppUnreadCount(accountId) {
+  if (!accountId) return 0;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT COUNT(*)::int AS c FROM inapp_notifications WHERE account_id = $1 AND read_at IS NULL`,
+    [accountId]
+  );
+  return r.rows[0]?.c || 0;
+}
+
+// Marks a single notification read, scoped to the owner so one user can't
+// flip another's rows. Returns true when a row was updated.
+async function markInAppNotificationRead(accountId, id) {
+  if (!accountId || id == null) return false;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE inapp_notifications SET read_at = NOW()
+      WHERE id = $1 AND account_id = $2 AND read_at IS NULL`,
+    [Number(id), accountId]
+  );
+  return r.rowCount > 0;
+}
+
+async function markAllInAppNotificationsRead(accountId) {
+  if (!accountId) return 0;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE inapp_notifications SET read_at = NOW()
+      WHERE account_id = $1 AND read_at IS NULL`,
+    [accountId]
+  );
+  return r.rowCount || 0;
 }
 
 // ---------- F5: Tournament live ----------
@@ -25308,6 +25414,12 @@ module.exports = {
   isEventEnabled,
   getNotificationEventMatrix,
   setNotificationEventPref,
+  // Task #613 — in-website notification feed
+  addInAppNotification,
+  listInAppNotifications,
+  getInAppUnreadCount,
+  markInAppNotificationRead,
+  markAllInAppNotificationsRead,
   getTournamentLive,
   setTournamentPrizeSplit,
   getMvpAttitudeTrends,

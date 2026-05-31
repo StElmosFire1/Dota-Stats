@@ -463,6 +463,48 @@ export async function getGiftHistory() {
 export async function getProPricing() {
   return fetchJson('/pro/pricing');
 }
+
+// Task #613 — in-website notification center (bell + feed).
+export async function getNotificationFeed({ before = null, limit = 30 } = {}) {
+  const qs = new URLSearchParams();
+  if (before != null) qs.set('before', String(before));
+  if (limit != null) qs.set('limit', String(limit));
+  const res = await fetch(BASE + '/me/notification-feed' + (qs.toString() ? `?${qs}` : ''), {
+    credentials: 'include',
+  });
+  if (res.status === 401) return { items: [], unreadCount: 0, unauthenticated: true };
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to load notifications');
+  return data; // { items, unreadCount }
+}
+
+export async function getNotificationUnreadCount() {
+  const res = await fetch(BASE + '/me/notification-feed/unread-count', { credentials: 'include' });
+  if (res.status === 401) return { count: 0, unauthenticated: true };
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to load unread count');
+  return data; // { count }
+}
+
+export async function markNotificationRead(id) {
+  const res = await fetch(BASE + `/me/notification-feed/${id}/read`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: '{}',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to mark read');
+  return data; // { ok, unreadCount }
+}
+
+export async function markAllNotificationsRead() {
+  const res = await fetch(BASE + '/me/notification-feed/read-all', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: '{}',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Failed to mark all read');
+  return data; // { ok, marked, unreadCount }
+}
 export async function getProMembers() {
   return fetchJson('/pro/members');
 }

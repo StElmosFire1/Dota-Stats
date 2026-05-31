@@ -24,6 +24,7 @@ import DiscordRetryBanner from './components/DiscordRetryBanner';
 import SideBanners from './components/SideBanner';
 import { WatchLiveBadge } from './components/HomeWidgets';
 import GlobalSearch from './components/CommandPalette';
+import NotificationBell from './components/NotificationBell';
 import { getLivePresenceCount } from './api';
 
 const MatchList = lazy(() => import('./pages/MatchList'));
@@ -853,6 +854,7 @@ function Nav() {
       <GlobalSearch />
       <SeasonSelector />
       <ThemeToggle />
+      <NotificationBell />
       <SteamButton />
       <AdminButton />
       <SuperuserButton />

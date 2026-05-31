@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.82",
+    "title": "Notification center: a bell in the top bar for everything you've missed",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**What.** There's now a **bell icon** in the top navigation (when you're signed in) with an unread badge. Click it for a dropdown feed of your recent notifications — newest first, each with a title, message, timestamp, and a link to the relevant page where one applies. You can mark a single item read, or clear them all at once.",
+      "**How it works.** Every notification the site already sends you (match results, MVP prompts, hot-streak alerts, and so on) is now also saved to this in-website feed. It's a new **In-app** delivery channel that sits alongside Discord DMs and web push, so the things you care about are waiting for you on the site even if you missed the DM. The bell quietly checks for new items in the background while you browse.",
+      "**You're in control.** The notification preferences page (`/me/notifications`) gains an **In-app** column next to Discord and Web push, so you can switch the feed on or off per event type. Your existing Discord and push settings are completely unchanged.",
+      "**Scope.** Full edition only — community edition untouched. Keyboard- and screen-reader-accessible; a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.81",
     "title": "New-visitor tutorial: guide page + interactive site tour",
     "published_at": "2026-05-31",

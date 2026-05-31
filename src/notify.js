@@ -112,7 +112,11 @@ async function isEventEnabled(accountId, eventKey, channel) {
 }
 
 async function notify(accountId, eventKey, payload = {}) {
-  const out = { discord: { sent: 0, skipped: true }, push: { sent: 0, skipped: true } };
+  const out = {
+    discord: { sent: 0, skipped: true },
+    push: { sent: 0, skipped: true },
+    inapp: { saved: 0, skipped: true },
+  };
   if (!accountId || !eventKey) return out;
 
   // ---- Discord branch ----
@@ -191,6 +195,38 @@ async function notify(accountId, eventKey, payload = {}) {
           out.push.sent += r?.sent || 0;
         } catch (_) {}
       }
+    }
+  }
+
+  // ---- In-app feed branch (Task #613) ----
+  // The in-website notification center is a passive catch-up surface: it runs
+  // for every notify() call (not just when an `inapp` payload is supplied), so
+  // anything a user misses over Discord / push is still recorded — gated only
+  // by their per-event 'inapp' preference. Content is taken from an explicit
+  // `payload.inapp`, else derived from the push payload, else the event's
+  // catalogue label/description.
+  {
+    const allowed = await isEventEnabled(accountId, eventKey, 'inapp');
+    if (allowed) {
+      out.inapp.skipped = false;
+      try {
+        let title, body, link;
+        if (payload.inapp && typeof payload.inapp === 'object') {
+          title = payload.inapp.title;
+          body = payload.inapp.body;
+          link = payload.inapp.link || payload.inapp.url || null;
+        } else if (payload.push && typeof payload.push === 'object') {
+          title = payload.push.title;
+          body = payload.push.body;
+          link = payload.push.url || null;
+        }
+        let ev = null;
+        try { ev = db.eventDef(eventKey); } catch (_) {}
+        if (!title) title = ev?.label || 'Notification';
+        if (!body && ev?.desc) body = ev.desc;
+        const row = await db.addInAppNotification(accountId, { eventKey, title, body, link });
+        if (row) out.inapp.saved = 1;
+      } catch (e) { out.inapp.error = e?.message; }
     }
   }
 

@@ -14,6 +14,7 @@ import SignInPrompt from '../components/SignInPrompt';
 const CHANNEL_LABELS = {
   discord: 'Discord DM',
   push: 'Web push',
+  inapp: 'In-app',
 };
 
 export default function MeNotifications() {
