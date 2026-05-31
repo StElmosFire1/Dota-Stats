@@ -146,6 +146,72 @@ test('isSubsequence: out-of-order or absent letters do not match', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// highlightRanges / highlightSegments — which chars of a label are emphasised.
+// ---------------------------------------------------------------------------
+
+test('highlightRanges: prefix match highlights the leading chars', async () => {
+  const { highlightRanges } = await load();
+  assert.deepEqual(highlightRanges('Invoker', 'inv'), [[0, 3]]);
+});
+
+test('highlightRanges: exact match highlights the whole string', async () => {
+  const { highlightRanges } = await load();
+  assert.deepEqual(highlightRanges('Lina', 'lina'), [[0, 4]]);
+});
+
+test('highlightRanges: word-start prefix highlights the matched word', async () => {
+  const { highlightRanges } = await load();
+  // "fiend" starts the second word of "Shadow Fiend" → offset 7.
+  assert.deepEqual(highlightRanges('Shadow Fiend', 'fiend'), [[7, 12]]);
+});
+
+test('highlightRanges: substring highlights the first occurrence', async () => {
+  const { highlightRanges } = await load();
+  // "ect" first appears at index 2 of "Spectre" (S-p-e-c-t-r-e).
+  assert.deepEqual(highlightRanges('Spectre', 'ect'), [[2, 5]]);
+});
+
+test('highlightRanges: fuzzy match highlights the individual matched chars', async () => {
+  const { highlightRanges } = await load();
+  // "invk" → i,n,v (0,1,2) then k (4) in "Invoker".
+  assert.deepEqual(highlightRanges('Invoker', 'invk'), [[0, 1], [1, 2], [2, 3], [4, 5]]);
+});
+
+test('highlightRanges: a true non-match (or empty query) highlights nothing', async () => {
+  const { highlightRanges } = await load();
+  assert.deepEqual(highlightRanges('Axe', 'zzz'), []);
+  assert.deepEqual(highlightRanges('Axe', ''), []);
+  assert.deepEqual(highlightRanges(null, 'a'), []);
+});
+
+test('highlightSegments: splits a prefix match, preserving original casing', async () => {
+  const { highlightSegments } = await load();
+  assert.deepEqual(highlightSegments('Invoker', 'inv'), [
+    { text: 'Inv', match: true },
+    { text: 'oker', match: false },
+  ]);
+});
+
+test('highlightSegments: merges contiguous fuzzy ranges into one segment', async () => {
+  const { highlightSegments } = await load();
+  // i,n,v are contiguous (0-3) and merge; k (5) is its own segment.
+  assert.deepEqual(highlightSegments('Invoker', 'invk'), [
+    { text: 'Inv', match: true },
+    { text: 'o', match: false },
+    { text: 'k', match: true },
+    { text: 'er', match: false },
+  ]);
+});
+
+test('highlightSegments: no match returns the whole label as one unmatched segment', async () => {
+  const { highlightSegments } = await load();
+  // Models the alias-only case: the query matched an alias, not this label.
+  assert.deepEqual(highlightSegments('Some Player', 'storm'), [
+    { text: 'Some Player', match: false },
+  ]);
+});
+
+// ---------------------------------------------------------------------------
 // rankAndCap — ordering, drop-misses, and the per-group cap.
 // ---------------------------------------------------------------------------
 

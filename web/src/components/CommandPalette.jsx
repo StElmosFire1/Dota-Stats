@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Dialog from './Dialog';
 import { globalSearch } from '../api';
 import { ALL_HEROES, getHeroImageUrl } from '../heroNames';
-import { scoreText, scoreItem, rankAndCap } from './commandPaletteRanking';
+import { scoreText, scoreItem, rankAndCap, highlightSegments } from './commandPaletteRanking';
 
 // Task #586 / #588 — global search + ⌘K / Ctrl-K command palette (full edition).
 //
@@ -41,6 +41,22 @@ function formatRate(cents, currency) {
   if (cents == null) return '';
   const amount = Math.round(cents / 100);
   return `$${amount} ${(currency || 'aud').toUpperCase()}/hr`;
+}
+
+// Render a result label with the portion that matched the query wrapped in a
+// <mark> so users see *why* a result surfaced. Falls back to the plain label
+// when nothing in it matched (e.g. an alias-only hit) — see highlightSegments.
+function HighlightedLabel({ text, query }) {
+  const segs = highlightSegments(text, query);
+  return (
+    <>
+      {segs.map((seg, i) => (
+        seg.match
+          ? <mark className="cmdk-opt-mark" key={i}>{seg.text}</mark>
+          : <React.Fragment key={i}>{seg.text}</React.Fragment>
+      ))}
+    </>
+  );
 }
 
 function CommandPalette({ open, onClose }) {
@@ -210,6 +226,8 @@ function CommandPalette({ open, onClose }) {
   };
 
   const safeActive = Math.min(activeIndex, Math.max(flat.length - 1, 0));
+  // Lower-cased trimmed query used to highlight the matched chars in each label.
+  const highlightQuery = query.trim().toLowerCase();
   let counter = -1;
 
   // Empty-state copy depends on what the user has typed and whether a request
@@ -288,7 +306,7 @@ function CommandPalette({ open, onClose }) {
                         : item.icon}
                     </span>
                     <span className="cmdk-opt-main">
-                      <span className="cmdk-opt-label">{item.label}</span>
+                      <span className="cmdk-opt-label"><HighlightedLabel text={item.label} query={highlightQuery} /></span>
                       {item.sub ? <span className="cmdk-opt-sub">{item.sub}</span> : null}
                     </span>
                     <span className="cmdk-opt-kind">{item.kind}</span>

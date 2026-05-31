@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.65",
+    "title": "Search results now highlight the matching text",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The ⌘K command palette ranks results by where and how your query matches, but every result label looked the same — you couldn't see at a glance *why* a result surfaced.",
+      "**What.** The portion of each result's label that matched your query is now emphasised in accent colour and bold. It works for prefix matches (typing 'inv' bolds the 'Inv' in 'Invoker'), mid-string substrings, and fuzzy/typo matches (the individual matched letters light up).",
+      "**Graceful.** When a result only matched on a hidden alias (e.g. a player's persona name) rather than the visible label, the label renders plain — no misleading highlight. The accessible option markup is unchanged.",
+      "**Scope.** Full edition only. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.64",
     "title": "Profile redesign + draft order numbering fix",
     "published_at": "2026-05-31",
