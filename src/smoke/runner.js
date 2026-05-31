@@ -195,12 +195,33 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
       },
     });
 
+    // Task #626 — superuser session for admin-only diagnostic journeys.
+    //
+    // The x-superuser-key header on the context bypasses the lockdown gate but
+    // does NOT flip req.session.isSuperuser, and admin-only pages like the
+    // Draft Sandbox read /api/admin/session-status (session-only) to decide
+    // whether to render. So we POST /api/admin/superuser-login once with the
+    // password to mint a real superuser session on the same cookie jar — every
+    // `superuser: true` journey then renders the real page instead of the
+    // "🚫 Admin only" fallback. When SUPERUSER_PASSWORD is unset those
+    // journeys record as 'skipped' with a clear reason.
+    const { superuserReady, superuserSkipReason } = await _resolveSuperuserReadiness({
+      context, url, superuserPassword: superuserKey,
+    });
+
     try {
       for (const j of JOURNEYS) {
         if (j.auth && !authReady) {
           await db.recordBrowserSmokeStep({
             runId, stepKey: j.key, label: j.label, status: 'skipped',
             reason: `auth journey skipped — ${authSkipReason}`,
+          });
+          continue;
+        }
+        if (j.superuser && !superuserReady) {
+          await db.recordBrowserSmokeStep({
+            runId, stepKey: j.key, label: j.label, status: 'skipped',
+            reason: `superuser journey skipped — ${superuserSkipReason}`,
           });
           continue;
         }
@@ -394,6 +415,40 @@ async function _resolveAuthReadiness({
   return { authReady, authSkipReason };
 }
 
+// Superuser-readiness decision, factored out of runSmoke so the "not
+// configured", login-success, non-2xx, and request-throws branches are
+// testable without a real browser. `context.request.post` and the
+// env-derived `superuserPassword` are the only dependencies. POSTs the
+// password to /api/admin/superuser-login, which flips req.session.isSuperuser
+// on the context's cookie jar so session-only admin pages (e.g. the Draft
+// Sandbox) render their real content. Returns:
+//   - password unset    → { superuserReady: false, superuserSkipReason: '…' }
+//   - login ok          → { superuserReady: true }
+//   - login non-2xx     → { superuserReady: false, superuserSkipReason: 'HTTP …' }
+//   - login throws      → { superuserReady: false, superuserSkipReason: '… failed' }
+async function _resolveSuperuserReadiness({ context, url, superuserPassword }) {
+  let superuserReady = false, superuserSkipReason = null;
+  if (!superuserPassword) {
+    superuserSkipReason = 'SUPERUSER_PASSWORD not configured';
+    return { superuserReady, superuserSkipReason };
+  }
+  try {
+    const res = await context.request.post(url + '/api/admin/superuser-login', {
+      headers: { 'Content-Type': 'application/json' },
+      data: { password: superuserPassword },
+      timeout: 10_000,
+    });
+    if (res.ok()) {
+      superuserReady = true;
+    } else {
+      superuserSkipReason = `superuser-login returned HTTP ${res.status()}`;
+    }
+  } catch (e) {
+    superuserSkipReason = `superuser-login request failed: ${e.message}`;
+  }
+  return { superuserReady, superuserSkipReason };
+}
+
 // Pure perceptual-diff decision, factored out of runSmoke so the threshold,
 // viewport-mismatch, and pixelmatch-error branches are unit-testable without a
 // real browser. Returns the per-step diff outcome:
@@ -474,4 +529,5 @@ module.exports = {
   runSmoke, isLatestPatchNoteMajor, JOURNEYS,
   _diffAgainstBaseline, _alertOwner,
   _probeJsonJourney, _matchExpectedSelectors, _checkPageLoad, _resolveAuthReadiness,
+  _resolveSuperuserReadiness,
 };

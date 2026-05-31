@@ -585,6 +585,66 @@ test('_resolveAuthReadiness: onCaptureState throwing does not unset authReady', 
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// _resolveSuperuserReadiness — superuser-readiness branches (Task #626)
+// ──────────────────────────────────────────────────────────────────────────
+
+test('_resolveSuperuserReadiness: password unset → skipped with clear reason', async () => {
+  const runner = freshRunner();
+  let postCalled = false;
+  const context = fakeContext({
+    post: async () => { postCalled = true; return { status: () => 200, ok: () => true, json: async () => ({}) }; },
+  });
+  const res = await runner._resolveSuperuserReadiness({
+    context, url: 'http://x', superuserPassword: '',
+  });
+  cleanup();
+  assert.equal(res.superuserReady, false);
+  assert.match(res.superuserSkipReason, /SUPERUSER_PASSWORD not configured/);
+  assert.equal(postCalled, false, 'no login should be attempted without a password');
+});
+
+test('_resolveSuperuserReadiness: login 2xx → ready', async () => {
+  const runner = freshRunner();
+  let postedTo = null;
+  const context = fakeContext({
+    post: async (urlArg) => { postedTo = urlArg; return { status: () => 200, ok: () => true, json: async () => ({ success: true }) }; },
+  });
+  const res = await runner._resolveSuperuserReadiness({
+    context, url: 'http://x', superuserPassword: 'secret-pw',
+  });
+  cleanup();
+  assert.equal(res.superuserReady, true);
+  assert.equal(res.superuserSkipReason, null);
+  assert.equal(postedTo, 'http://x/api/admin/superuser-login');
+});
+
+test('_resolveSuperuserReadiness: login non-2xx → not ready with HTTP reason', async () => {
+  const runner = freshRunner();
+  const context = fakeContext({
+    post: async () => ({ status: () => 401, ok: () => false, json: async () => ({}) }),
+  });
+  const res = await runner._resolveSuperuserReadiness({
+    context, url: 'http://x', superuserPassword: 'wrong-pw',
+  });
+  cleanup();
+  assert.equal(res.superuserReady, false);
+  assert.match(res.superuserSkipReason, /superuser-login returned HTTP 401/);
+});
+
+test('_resolveSuperuserReadiness: login throws → not ready with failure reason', async () => {
+  const runner = freshRunner();
+  const context = fakeContext({
+    post: async () => { throw new Error('connection refused'); },
+  });
+  const res = await runner._resolveSuperuserReadiness({
+    context, url: 'http://x', superuserPassword: 'secret-pw',
+  });
+  cleanup();
+  assert.equal(res.superuserReady, false);
+  assert.match(res.superuserSkipReason, /superuser-login request failed: connection refused/);
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 // _alertOwner — no-op when Discord bot unavailable
 // ──────────────────────────────────────────────────────────────────────────
 

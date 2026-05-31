@@ -27,6 +27,20 @@ const { JOURNEYS } = require('../../src/smoke/journeys');
 
 for (const j of JOURNEYS) {
   test(`${j.key} — ${j.label}`, async ({ page, request, baseURL }) => {
+    // Superuser journeys need a real superuser session — the page reads
+    // /api/admin/session-status (session-only) to decide whether to render.
+    // POST the login on the page's own cookie jar so the subsequent
+    // navigation carries it. Skipped (not failed) when SUPERUSER_PASSWORD
+    // is unset so the suite still runs in environments without the secret.
+    if (j.superuser) {
+      const pw = process.env.SUPERUSER_PASSWORD;
+      test.skip(!pw, 'SUPERUSER_PASSWORD not set — cannot exercise superuser journey');
+      const login = await page.request.post((baseURL || '') + '/api/admin/superuser-login', {
+        headers: { 'Content-Type': 'application/json' },
+        data: { password: pw },
+      });
+      expect(login.ok(), 'superuser-login should succeed').toBeTruthy();
+    }
     if (j.asJson) {
       const res = await request.get((baseURL || '') + j.path);
       expect(res.ok()).toBeTruthy();

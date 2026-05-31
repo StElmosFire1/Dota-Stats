@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.68",
+    "title": "Draft Sandbox now gets automated visual coverage",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The admin Draft Sandbox (/admin/draft-sandbox) is superuser-gated, so it couldn't be screenshotted or smoke-tested without a real human login — the recent Press Box restyle had to be verified by build + a11y gate alone, with no visual confirmation.",
+      "**What.** The browser-smoke suite now includes a superuser journey for the Draft Sandbox. The runner mints a real superuser session (via the lockdown sign-in endpoint) before loading the page, so future restyles get automatic render/visual coverage with zero human login. When the superuser password isn't configured the journey is recorded as skipped with a clear reason rather than failing.",
+      "**Scope.** Full edition only. Test/infra change — no user-facing runtime behavior altered. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.67",
     "title": "Lock down the Voiceline audio proxy with tests",
     "published_at": "2026-05-31",

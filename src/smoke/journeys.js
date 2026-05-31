@@ -56,6 +56,20 @@ const JOURNEYS = [
   { key: 'auth_coach_earnings',path: '/coach/earnings', label: 'Coach earnings (signed-in)',       expect: 'h1',                                                 auth: true },
   { key: 'auth_draft',         path: '/draft',          label: 'Draft assistant (signed-in)',      expect: '.page-title, .scoreboard-wrapper, .empty-state, table, h1', auth: true },
   { key: 'auth_pro',           path: '/pro',            label: 'Pro upsell / checkout intent (signed-in)', expect: '.page-title, h1, .loading',                  auth: true },
+
+  // ── Superuser journeys (require SUPERUSER_PASSWORD) ───────────────────
+  // These exercise admin-only diagnostic surfaces gated behind the
+  // session-backed superuser flag (the frontend reads /api/admin/session-status,
+  // which is session-only — the runner's x-superuser-key header bypasses the
+  // lockdown gate but does NOT flip the session). The runner establishes a
+  // real superuser session via POST /api/admin/superuser-login before these
+  // run; when SUPERUSER_PASSWORD is unset each is recorded as 'skipped'.
+  //
+  // The expect selectors are deliberately specific to the rendered sandbox
+  // (`.pb-inhouse` / `.pb-page-title`) and exclude a bare `h1`, so a gating
+  // failure (the "🚫 Admin only" fallback, which only has an <h1>) fails the
+  // step instead of silently passing.
+  { key: 'draft_sandbox',      path: '/admin/draft-sandbox', label: 'Draft Sandbox (superuser)',   expect: '.pb-inhouse, .pb-page-title',                        superuser: true },
 ];
 
 // Pixel-diff tolerance: a step fails if the proportion of differing pixels
