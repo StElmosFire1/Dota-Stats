@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.73",
+    "title": "No more blank pages when clicking around after an update",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**What was happening.** Sometimes clicking through pages would land on a blank screen, and a refresh was the only way out. This happened right after we shipped an update: a browser tab you'd left open was still asking for the old version of a page file, which no longer exists once the new build goes live — so the page silently failed to load with nothing on screen.",
+      "**The fix.** The site now notices that exact situation and quietly refreshes itself once to pull the latest version, so navigation keeps working through an update instead of going blank.",
+      "**Safety net.** If any page ever hits an unexpected error, you now get a tidy \"Something went wrong — reload\" card with a working navbar to click away from, instead of a blank page with no way forward.",
+      "**Scope.** Full edition only — community edition untouched. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.71",
     "title": "Profile portraits get framed, clearer rank emblems, sticky sign-in, and the Inhouse page un-blanked",
     "published_at": "2026-05-31",

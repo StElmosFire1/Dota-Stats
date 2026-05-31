@@ -1211,8 +1211,87 @@ function useStreamerMode() {
   return { isStreamer, isOverlayRoute };
 }
 
+// Matches the various browser phrasings for "a lazy-loaded JS chunk failed to
+// load". This is the classic post-deploy symptom: a tab opened before a deploy
+// still references the old hashed chunk filenames, which 404 once the new build
+// replaces them — so navigating to a lazy route rejects its dynamic import.
+const CHUNK_LOAD_ERROR_RE = /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|dynamically imported module|ChunkLoadError|Loading chunk [\w-]+ failed/i;
+
+function isChunkLoadError(error) {
+  const msg = String((error && (error.message || error)) || '');
+  return CHUNK_LOAD_ERROR_RE.test(msg);
+}
+
+// Root error boundary around the routed content. Without this, any render error
+// — and in particular a stale-chunk dynamic-import failure after a deploy —
+// would throw past Suspense and blank the entire page (React unmounts the whole
+// tree when an uncaught error reaches the root). The <Nav> lives OUTSIDE this
+// boundary, so even on an error the user keeps a working navbar to click away
+// with. On a chunk-load error we hard-reload exactly once (guarded against a
+// reload loop) to pick up the fresh index.html + current chunk hashes.
+class RootErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null, isChunk: false, prevKey: props.resetKey };
+  }
+
+  static getDerivedStateFromProps(props, state) {
+    // A navigation (pathname change) clears any prior error so the next route
+    // gets a clean attempt — the user clicking a nav link should recover.
+    if (props.resetKey !== state.prevKey) {
+      return { error: null, isChunk: false, reloadSuppressed: false, prevKey: props.resetKey };
+    }
+    return null;
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error, isChunk: isChunkLoadError(error) };
+  }
+
+  componentDidCatch(error) {
+    if (!isChunkLoadError(error)) return;
+    // One-shot reload guard: if a reload somehow lands back in the same broken
+    // state within the window, fall through to the visible fallback instead of
+    // looping. sessionStorage is per-tab so a genuine later deploy still heals.
+    const KEY = 'oi-chunk-reload-at';
+    let last = 0;
+    try { last = Number(sessionStorage.getItem(KEY) || 0); } catch { /* ignore */ }
+    if (!last || Date.now() - last > 15000) {
+      try { sessionStorage.setItem(KEY, String(Date.now())); } catch { /* ignore */ }
+      window.location.reload();
+    } else {
+      // A reload already happened seconds ago and we're still broken — stop
+      // looping and show the actionable fallback instead of "Updating…" forever.
+      this.setState({ reloadSuppressed: true });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      if (this.state.isChunk && !this.state.reloadSuppressed) {
+        // Reload is in flight; show a calm interim message rather than a stack
+        // trace or a blank screen.
+        return <div className="loading">Updating to the latest version…</div>;
+      }
+      return (
+        <div style={{ maxWidth: 560, margin: '48px auto', textAlign: 'center', padding: '0 16px' }}>
+          <h2 className="pb-serif" style={{ marginBottom: 8 }}>Something went wrong on this page</h2>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 20 }}>
+            This part of the site hit an unexpected error. Reloading usually fixes it.
+          </p>
+          <button type="button" className="btn" onClick={() => window.location.reload()}>
+            Reload page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function AppShell() {
   const { isStreamer, isOverlayRoute } = useStreamerMode();
+  const location = useLocation();
   return (
     <>
       {!isStreamer && <NavbarHeightSync />}
@@ -1228,14 +1307,16 @@ function AppShell() {
       {!isStreamer && <SignInRetryBanner />}
       {!isStreamer && <SideBanners />}
       <main className={isOverlayRoute ? 'overlay-main' : 'container'}>
-        <Suspense fallback={isStreamer ? null : <div className="loading">Loading…</div>}>
-          <Routes>
-            <Route path="/overlay/live/:lobbyId" element={<OverlayLive />} />
-            <Route path="/overlay/scoreboard/:matchId" element={<OverlayScoreboard />} />
-            <Route path="/overlay/ticker/:accountId" element={<OverlayTicker />} />
-            <Route path="/*" element={<AppRoutes />} />
-          </Routes>
-        </Suspense>
+        <RootErrorBoundary resetKey={location.pathname}>
+          <Suspense fallback={isStreamer ? null : <div className="loading">Loading…</div>}>
+            <Routes>
+              <Route path="/overlay/live/:lobbyId" element={<OverlayLive />} />
+              <Route path="/overlay/scoreboard/:matchId" element={<OverlayScoreboard />} />
+              <Route path="/overlay/ticker/:accountId" element={<OverlayTicker />} />
+              <Route path="/*" element={<AppRoutes />} />
+            </Routes>
+          </Suspense>
+        </RootErrorBoundary>
       </main>
       {!isStreamer && <EditorialFooter />}
     </>

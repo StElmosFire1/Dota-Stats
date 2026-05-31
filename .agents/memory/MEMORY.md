@@ -9,3 +9,4 @@
 - [ROUND(AVG()) numeric cast](postgres-round-avg-numeric.md) — ROUND(double precision, int) doesn't exist in PG; cast AVG to ::numeric or the stats query 500s. Bit Hall of Fame in both editions.
 - [Notification stamp backfill](notification-stamp-backfill.md) — adding a NULL one-shot notify marker to an existing table needs a migration-time backfill or the first sweep blasts historical rows.
 - [Steam avatar source](avatar-source.md) — avatars aren't in our DB; only OpenDota (rate-limited ~1.1s/req). Cache + background-warm, never resolve many synchronously in a hot path.
+- [Lazy-route chunk blank screen](lazy-route-error-boundary.md) — lazy routes blank the whole app after a deploy (stale chunk 404); root error boundary + one-shot reload heals it.
