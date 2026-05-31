@@ -25,6 +25,17 @@ function useUid() {
   return React.useId().replace(/:/g, '');
 }
 
+// Each ring authors its geometry in 0..size coords centred on size/2, but the
+// full motif (outer rings, soft glows, orbiting satellites) can extend past the
+// nominal edge and get clipped at the SVG boundary. Rendering into a symmetric-
+// ally padded viewBox shrinks the whole drawing uniformly so it sits fully
+// inside its box with a small margin — the rendered pixel size is unchanged.
+const VB_PAD = 0.1;
+const vbPad = (size) => {
+  const p = size * VB_PAD;
+  return `${-p} ${-p} ${size + p * 2} ${size + p * 2}`;
+};
+
 // ─── Avatar disc treatments ───────────────────────────────────────────────────
 // Fills the centre of the ring. `monogram` defaults to the first letter of
 // `monogramText` (or "B" if absent). Production callers pass the player's
@@ -36,6 +47,8 @@ function AvatarDisc({ kind = 'monogram', size, uid, monogramText = 'B' }) {
   const cx = size / 2;
   const cy = size / 2;
   if (kind === 'monogram') {
+    const ch = (monogramText || 'B').slice(0, 1).toUpperCase();
+    const isNum = ch >= '0' && ch <= '9';
     return (
       <>
         <defs>
@@ -48,15 +61,17 @@ function AvatarDisc({ kind = 'monogram', size, uid, monogramText = 'B' }) {
         <circle cx={cx} cy={cy} r={r} fill={`url(#disc-mono-${uid})`} />
         <text
           x={cx}
-          y={cy + r * 0.18}
+          y={cy}
           textAnchor="middle"
+          dominantBaseline="central"
           fontFamily={fSerif}
-          fontStyle="italic"
-          fontSize={r * 0.95}
+          fontStyle={isNum ? 'normal' : 'italic'}
+          fontWeight={isNum ? 700 : undefined}
+          fontSize={isNum ? r * 1.05 : r * 0.95}
           fill={brass}
           opacity="0.95"
         >
-          {(monogramText || 'B').slice(0, 1).toUpperCase()}
+          {ch}
         </text>
       </>
     );
@@ -172,7 +187,7 @@ function Ring_Classic({ size = 140, disc = 'emblem', monogramText }) {
   const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
   const numeralSize = stroke * 0.62;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={vbPad(size)}>
       <defs>
         <linearGradient id={`cl-band-${uid}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={brassBright} />
@@ -281,7 +296,7 @@ function Ring_Laurel({ size = 140, disc = 'emblem', monogramText }) {
     return segs.join(' ');
   };
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={vbPad(size)}>
       <defs>
         <linearGradient id={`lf-body-${uid}`} x1="0" y1="1" x2="0" y2="0">
           <stop offset="0%" stopColor={brassDark} />
@@ -337,7 +352,7 @@ function Ring_Beveled({ size = 140, disc = 'emblem', monogramText }) {
   const r = size * 0.45;
   const stroke = Math.max(5, size * 0.075);
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={vbPad(size)}>
       <defs>
         <linearGradient id={`bev-${uid}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={brassBright} />
@@ -383,7 +398,7 @@ function Ring_Inscribed({ size = 140, disc = 'emblem', monogramText }) {
   const text = '·  FOUNDER  ·  MMXXVI  ·  OCE  ·  INHOUSE  ·  FOUNDER  ·  MMXXVI  ·  OCE  ·  INHOUSE  ';
   const circumference = 2 * Math.PI * rMid;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={vbPad(size)}>
       <defs>
         <linearGradient id={`insc-rim-${uid}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#fff5d4" />
@@ -443,7 +458,7 @@ function Ring_Phoenix({ size = 140, disc = 'emblem', monogramText }) {
   const r = size * 0.45;
   const stroke = Math.max(3, size * 0.05);
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible' }}>
+    <svg width={size} height={size} viewBox={vbPad(size)}>
       <defs>
         <radialGradient id={`phx-${uid}`} cx="0.5" cy="0.5">
           <stop offset="0%" stopColor="#fffbe6" />
@@ -470,7 +485,7 @@ function Ring_Twin({ size = 140, disc = 'emblem', monogramText }) {
   const haloR1 = size * 0.055, haloR2 = size * 0.050;
   const trackStroke = Math.max(2, size * 0.022);
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={vbPad(size)}>
       <defs>
         <radialGradient id={`th-amber-${uid}`} cx="0.5" cy="0.5">
           <stop offset="0%" stopColor="#fffbe6" />
@@ -541,7 +556,7 @@ function Ring_Astrolabe({ size = 140, disc = 'emblem', monogramText }) {
                    opacity={isLong ? 0.95 : 0.7} />;
     });
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={vbPad(size)}>
       <defs>
         <linearGradient id={`ast-band-${uid}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={brassBright} />
@@ -602,7 +617,7 @@ function Ring_Eclipse({ size = 140, disc = 'emblem', monogramText }) {
   const outerD = warpedPath(r + stroke / 2);
   const innerD = warpedPath(r - stroke / 2);
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={vbPad(size)}>
       <defs>
         <radialGradient id={`ecl-corona-${uid}`} cx="0.5" cy="0.5">
           <stop offset="65%" stopColor="#0d0a04" stopOpacity="0" />
@@ -659,7 +674,7 @@ function Ring_Forge({ size = 140, disc = 'emblem', monogramText }) {
   const stroke = Math.max(3, size * 0.045);
   const emberCount = 5;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={vbPad(size)}>
       <defs>
         <linearGradient id={`fg-band-${uid}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={brassBright} />
@@ -761,7 +776,7 @@ function Ring_Storm({ size = 140, disc = 'emblem', monogramText }) {
     return { i, sx, sy, rot, dur: s.dur, delay: s.delay, ...buildBolt(s.seed, s.len) };
   });
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={vbPad(size)}>
       <defs>
         <linearGradient id={`st-band-${uid}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#3a4a6a" />
@@ -822,7 +837,7 @@ function Ring_Starmap({ size = 140, disc = 'emblem', monogramText }) {
     if (i % 2 === 0) edges.push({ a: i, b: (i + 5) % N });
   }
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={vbPad(size)}>
       <defs>
         <radialGradient id={`con-bg-${uid}`} cx="0.5" cy="0.5">
           <stop offset="0%" stopColor="#0d1424" />

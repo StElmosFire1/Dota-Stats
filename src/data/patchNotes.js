@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.69",
+    "title": "Leaderboard rank emblems: centred numbers, no more clipping",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The animated rank emblems on the top leaderboard ranks had two cosmetic flaws: the rank number inside each emblem sat slightly off-centre, and a few of the busier emblems (the phoenix, eclipse and beveled designs) drew their outer rings, glows and orbiting satellites right up to — or past — the edge of their box, so they clipped.",
+      "**What.** The emblem's centre number is now truly centred both ways (proper text baseline + non-italic numerals) instead of relying on a hand-tuned vertical nudge. Every emblem now renders into a slightly padded canvas, so the full motif scales to sit comfortably inside its box with a small margin — nothing gets cut off — while the rendered size is unchanged.",
+      "**Scope.** Full edition only. Cosmetic — no behaviour change. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.68",
     "title": "Draft Sandbox now gets automated visual coverage",
     "published_at": "2026-05-31",
