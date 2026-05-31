@@ -43,6 +43,7 @@ const EXPECTED_EVENT_DEFAULTS = {
   prize_pool_change:       { discord: false, push: false },
   tournament_checkin:      { discord: false, push: false },
   tournament_payout_pending: { discord: true, push: true },
+  tournament_payout_paid:    { discord: true, push: true },
   coach_booking_confirmed: { discord: true,  push: true  },
   coach_booking_reminder:  { discord: true,  push: true  },
   league_scrim_accepted:   { discord: false, push: false },
@@ -83,6 +84,7 @@ test('only transactional + milestone events are default-ON (v2)', () => {
     'group_session_reminder',
     'mvp_vote',
     'season_wrapped',
+    'tournament_payout_paid',
     'tournament_payout_pending',
     'vod_delivered',
   ]);

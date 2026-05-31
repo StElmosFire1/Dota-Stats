@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.50",
+    "title": "Get a receipt the moment your prize is paid",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** You can already see your prize payout history on your profile, but you had to keep checking it to know when the money actually landed.",
+      "**What.** The instant a prize transfer succeeds, you now get a one-time receipt — by Discord DM and/or web push — with the amount, the tournament, and a link straight to your payout history.",
+      "**Sent exactly once.** Each prize triggers a single receipt; retries and background sweeps never re-send it.",
+      "**Respects preferences.** A new \"Prize payout receipt\" notification setting controls it. Because it's about real money paid to you, it's on by default, but you can mute it any time.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.49",
     "title": "A second reminder for winners who haven't connected a payout account",
     "published_at": "2026-05-31",

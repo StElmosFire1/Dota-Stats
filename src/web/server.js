@@ -557,7 +557,11 @@ async function _transferTournamentPayoutRow(row) {
 }
 
 // Settle every pending/failed payout for a tournament that can be paid now.
-async function _settleTournamentPayouts(tournamentId, { includeFailed = false } = {}) {
+// `notifyPaid` (default true) sends the Task #582 paid-receipt the moment any
+// row transitions to 'paid' so the winner hears about it immediately on the
+// finalize / "Pay winners" paths — the background sweep passes `false` and
+// fires a single end-of-sweep receipt pass instead to avoid redundant scans.
+async function _settleTournamentPayouts(tournamentId, { includeFailed = false, notifyPaid = true } = {}) {
   const rows = await db.getPendingTournamentPayouts(tournamentId);
   const out = { attempted: 0, paid: 0, failed: 0, awaiting: 0 };
   for (const row of rows) {
@@ -567,6 +571,12 @@ async function _settleTournamentPayouts(tournamentId, { includeFailed = false } 
     if (updated?.transfer_status === 'paid') out.paid++;
     else if (updated?.transfer_status === 'failed') out.failed++;
     else out.awaiting++;
+  }
+  // Immediately receipt any winner just paid (one-shot via `paid_notified_at`,
+  // so this can never double-send with the background sweep). Best-effort.
+  if (notifyPaid && out.paid > 0) {
+    try { await _notifyPaidPayoutWinners(); }
+    catch (e) { console.warn('[TournamentPayout] paid-receipt on settle:', e.message); }
   }
   return out;
 }
@@ -655,6 +665,47 @@ async function _remindUnconnectedPayoutWinners() {
   return { notified };
 }
 
+// Task #582 — send a winner a one-shot receipt the moment their prize transfer
+// lands ('paid'). Mirrors the connect-nudge fan-out: gated per-user by the
+// `tournament_payout_paid` notification preference, stamped only after a
+// successful send (`paid_notified_at`) so retries/sweeps never re-send, and
+// best-effort (per-recipient failures are logged, never abort the sweep). The
+// receipt links to the winner's payout history card on their own profile.
+async function _sendPayoutPaidReceipt(row) {
+  const url = `/player/${row.account_id}#my-payouts`;
+  const amount = (Number(row.amount_cents) || 0) / 100;
+  const ccy = (row.currency || 'aud').toUpperCase();
+  const prize = `${ccy} $${amount.toFixed(2)}`;
+  const title = 'Your prize has been paid';
+  const body = `Your ${prize} prize from "${row.tournament_name}" has landed in your connected payout account.`;
+  await notify(row.account_id, 'tournament_payout_paid', {
+    discord: { content: `🏆 **${title}** — ${body}\nSee your payout history: ${(process.env.SITE_URL || '')}${url}` },
+    push: { title, body, url, data: { kind: 'tournament_payout_paid', tournament_id: row.tournament_id } },
+  });
+}
+
+async function _notifyPaidPayoutWinners() {
+  let notified = 0;
+  let rows;
+  try {
+    rows = await db.getPayoutsNeedingPaidReceipt();
+  } catch (e) {
+    console.warn('[TournamentPayout] paid-receipt query failed:', e.message);
+    return { notified: 0 };
+  }
+  for (const row of (rows || [])) {
+    try {
+      await _sendPayoutPaidReceipt(row);
+      // Stamp only after a successful send so a transient failure retries.
+      await db.markTournamentPayoutPaidNotified(row.id);
+      notified++;
+    } catch (e) {
+      console.warn('[TournamentPayout] paid-receipt notify failed:', e.message);
+    }
+  }
+  return { notified };
+}
+
 // Background settlement sweep — pays winners who connected an account after
 // the snapshot was taken. Pending-only (never auto-retries a hard failure, to
 // avoid hammering Stripe with a doomed transfer); admins retry failures
@@ -667,9 +718,12 @@ async function _runTournamentPayoutSweep(reason = 'cron') {
   try {
     const ids = await db.getTournamentsWithPendingPayouts();
     for (const tid of ids) {
-      try { await _settleTournamentPayouts(tid, { includeFailed: false }); }
+      try { await _settleTournamentPayouts(tid, { includeFailed: false, notifyPaid: false }); }
       catch (e) { console.warn(`[TournamentPayout] sweep failed for ${tid}:`, e.message); }
     }
+    // Receipt any payout that has just landed ('paid') — one-shot per payout.
+    try { await _notifyPaidPayoutWinners(); }
+    catch (e) { console.warn('[TournamentPayout] paid-receipt sweep error:', e.message); }
     // After settling, any payout still pending belongs to a winner without a
     // payout-ready account — prompt them (one-shot) to connect one.
     try { await _notifyUnconnectedPayoutWinners(); }
@@ -5382,6 +5436,12 @@ function createApiRouter(startupStatus = {}, _app = null) {
         return res.json({ ok: true, alreadyPaid: true, payout: row });
       }
       const updated = await _transferTournamentPayoutRow(row);
+      // Task #582 — receipt the winner immediately if this retry succeeded
+      // (one-shot via `paid_notified_at`, safe alongside the background sweep).
+      if (updated?.transfer_status === 'paid') {
+        try { await _notifyPaidPayoutWinners(); }
+        catch (e) { console.warn('[TournamentPayout] paid-receipt on retry:', e.message); }
+      }
       res.json({ ok: updated?.transfer_status === 'paid', payout: updated });
     } catch (err) {
       res.status(400).json({ error: err.message });
@@ -14105,6 +14165,12 @@ NOTES
         return res.json({ ok: true, alreadyPaid: true, payout: row });
       }
       const updated = await _transferTournamentPayoutRow(row);
+      // Task #582 — receipt the winner immediately if this retry succeeded
+      // (one-shot via `paid_notified_at`, safe alongside the background sweep).
+      if (updated?.transfer_status === 'paid') {
+        try { await _notifyPaidPayoutWinners(); }
+        catch (e) { console.warn('[TournamentPayout] paid-receipt on retry:', e.message); }
+      }
       res.json({ ok: updated?.transfer_status === 'paid', payout: updated });
     } catch (err) {
       res.status(400).json({ error: err.message });
@@ -21036,4 +21102,4 @@ function processReplayInternal(filePath, source, opts = {}) {
   });
 }
 
-module.exports = { createServer, processReplayInternal, createApiRouter, _runCheckinNotifyTick, _runCheckinDqSweepTick, _notifyUnconnectedPayoutWinners, _remindUnconnectedPayoutWinners };
+module.exports = { createServer, processReplayInternal, createApiRouter, _runCheckinNotifyTick, _runCheckinDqSweepTick, _notifyUnconnectedPayoutWinners, _remindUnconnectedPayoutWinners, _notifyPaidPayoutWinners, _settleTournamentPayouts };

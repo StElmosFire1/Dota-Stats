@@ -2,3 +2,4 @@
 - [Headless site capture](playwright-site-capture.md) — Nix libs + first-visit modal dismiss needed for headless oceinhouse.gg screenshots; /inhouse blank & /hall-of-fame errors for anon.
 - [Press Box vs purchasable themes](pressbox-theme-rewire.md) — upscale-2026 mockups use standalone --pb-* tokens; purchasable themes (Newsprint/Carbon/Holo/Heritage/Broadcast) need rewiring if design ships. Parked until design locked.
 - [Patch-notes version uniqueness](patch-notes-versions.md) — versions aren't monotonic; grep the whole patchNotes.js for your candidate version before committing or the gate fails.
+- [Notification stamp backfill](notification-stamp-backfill.md) — adding a NULL one-shot notify marker to an existing table needs a migration-time backfill or the first sweep blasts historical rows.

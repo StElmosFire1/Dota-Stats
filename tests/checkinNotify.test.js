@@ -19,13 +19,14 @@ function stubModule(specifier, exports, fromPath) {
 
 const SERVER_PATH = require.resolve('../src/web/server.js');
 
-function boot({ claim, dqSummaries, payoutNudges, payoutReminders }) {
+function boot({ claim, dqSummaries, payoutNudges, payoutReminders, paidReceipts, pendingPayouts }) {
   // Reset module cache so server.js re-binds our stubs every boot.
   delete require.cache[SERVER_PATH];
 
   const notifyCalls = [];
   const markedNotified = [];
   const markedReminded = [];
+  const markedPaid = [];
   const dbStub = {
     async claimTournamentCheckinNotifications() { return claim; },
     async sweepTournamentCheckInDqs() { return dqSummaries || []; },
@@ -33,6 +34,9 @@ function boot({ claim, dqSummaries, payoutNudges, payoutReminders }) {
     async markTournamentPayoutConnectNotified(id) { markedNotified.push(id); return { id }; },
     async getPayoutsNeedingConnectReminder() { return payoutReminders || []; },
     async markTournamentPayoutConnectReminded(id) { markedReminded.push(id); return { id }; },
+    async getPayoutsNeedingPaidReceipt() { return paidReceipts || []; },
+    async markTournamentPayoutPaidNotified(id) { markedPaid.push(id); return { id }; },
+    async getPendingTournamentPayouts() { return pendingPayouts || []; },
     // notify.js references these lazily; harmless no-op stubs.
     async isEventEnabled() { return true; },
   };
@@ -49,7 +53,7 @@ function boot({ claim, dqSummaries, payoutNudges, payoutReminders }) {
   stubModule('../notify', notifyStub, SERVER_PATH);
 
   const server = require('../src/web/server.js');
-  return { server, notifyCalls, markedNotified, markedReminded };
+  return { server, notifyCalls, markedNotified, markedReminded, markedPaid };
 }
 
 test('check-in notify tick fans out open + reminder to each recipient', async () => {
@@ -210,4 +214,73 @@ test('payout connect-reminder is a no-op when no winner is due a reminder', asyn
   assert.equal(result.notified, 0);
   assert.equal(notifyCalls.length, 0);
   assert.equal(markedReminded.length, 0);
+});
+
+// Task #582 — receipt to each winner whose prize transfer just landed.
+test('payout paid-receipt DMs each newly-paid winner once and stamps them', async () => {
+  const paidReceipts = [
+    { id: 21, tournament_id: 7, account_id: '111', place: 1, amount_cents: 5000, currency: 'aud', tournament_name: 'Autumn Cup', display_name: 'Alpha' },
+    { id: 22, tournament_id: 7, account_id: '222', place: 2, amount_cents: 2500, currency: 'aud', tournament_name: 'Autumn Cup', display_name: 'Bravo' },
+  ];
+  const { server, notifyCalls, markedPaid } = boot({ claim: { opens: [], reminders: [] }, paidReceipts });
+
+  const result = await server._notifyPaidPayoutWinners();
+  assert.equal(result.notified, 2);
+
+  assert.equal(notifyCalls.length, 2);
+  for (const c of notifyCalls) {
+    // Receipt has its own event + push kind, distinct from the pending nudge.
+    assert.equal(c.eventKey, 'tournament_payout_paid');
+    assert.equal(c.payload.push.data.kind, 'tournament_payout_paid');
+    assert.ok(c.payload.discord && c.payload.push, 'both channels present');
+    // Receipt deep-links to the winner's own payout history card.
+    assert.match(c.payload.push.url, /^\/player\/\d+#my-payouts$/);
+  }
+  // Each receipted row gets stamped exactly once (one-shot guard).
+  assert.deepEqual(markedPaid.sort(), [21, 22]);
+  const recipients = notifyCalls.map(c => c.accountId).sort();
+  assert.deepEqual(recipients, ['111', '222']);
+});
+
+test('payout paid-receipt is a no-op when no prize has just landed', async () => {
+  const { server, notifyCalls, markedPaid } = boot({ claim: { opens: [], reminders: [] }, paidReceipts: [] });
+  const result = await server._notifyPaidPayoutWinners();
+  assert.equal(result.notified, 0);
+  assert.equal(notifyCalls.length, 0);
+  assert.equal(markedPaid.length, 0);
+});
+
+// Task #582 — settling a tournament (finalize / "Pay winners" / retry all go
+// through _settleTournamentPayouts) must receipt winners the moment a transfer
+// lands, not only on the next cron sweep. An already-'paid' row settles to
+// paid without touching Stripe, so it exercises the immediate-dispatch path.
+test('settling fires the paid-receipt immediately when a transfer succeeds', async () => {
+  const pendingPayouts = [
+    { id: 31, tournament_id: 7, account_id: '111', place: 1, amount_cents: 5000, currency: 'aud', transfer_status: 'paid' },
+  ];
+  const paidReceipts = [
+    { id: 31, tournament_id: 7, account_id: '111', place: 1, amount_cents: 5000, currency: 'aud', tournament_name: 'Autumn Cup', display_name: 'Alpha' },
+  ];
+  const { server, notifyCalls, markedPaid } = boot({ claim: { opens: [], reminders: [] }, pendingPayouts, paidReceipts });
+
+  const out = await server._settleTournamentPayouts(7);
+  assert.equal(out.paid, 1);
+  // Receipt fired inline (not deferred to the sweep).
+  assert.equal(notifyCalls.length, 1);
+  assert.equal(notifyCalls[0].eventKey, 'tournament_payout_paid');
+  assert.deepEqual(markedPaid, [31]);
+});
+
+// The background sweep settles with notifyPaid:false and runs its own single
+// receipt pass afterward — so settling must NOT double-fire in that mode.
+test('settling with notifyPaid:false defers the receipt to the sweep pass', async () => {
+  const pendingPayouts = [
+    { id: 32, tournament_id: 9, account_id: '222', place: 1, amount_cents: 2500, currency: 'aud', transfer_status: 'paid' },
+  ];
+  const { server, notifyCalls, markedPaid } = boot({ claim: { opens: [], reminders: [] }, pendingPayouts });
+
+  const out = await server._settleTournamentPayouts(9, { notifyPaid: false });
+  assert.equal(out.paid, 1);
+  assert.equal(notifyCalls.length, 0);
+  assert.equal(markedPaid.length, 0);
 });

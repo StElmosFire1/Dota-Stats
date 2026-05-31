@@ -50,7 +50,7 @@ export default function MyPayoutsCard() {
     .reduce((sum, p) => sum + (Number(p.amount_cents) || 0), 0);
 
   return (
-    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 12 }}>
+    <div id="my-payouts" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 12, scrollMarginTop: 80 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>💰 My prize payouts</div>
         {totalPaid > 0 && (

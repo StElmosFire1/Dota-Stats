@@ -2685,6 +2685,24 @@ async function init() {
     // stamped once so it never repeats (preserves the anti-spam guarantee
     // without re-clearing `connect_notified_at`).
     await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS connect_renotified_at TIMESTAMPTZ`);
+    // Task #582 — one-shot stamp set when we DM/push a winner a *receipt* the
+    // moment their prize transfer succeeds (transfer_status -> 'paid'). NULL =
+    // receipt not yet sent; the settlement sweep notifies each newly-paid winner
+    // exactly once and stamps this so retries/sweeps never re-send the receipt.
+    const _paidNotifiedExisted = (await p.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tournament_payouts' AND column_name = 'paid_notified_at'`)).rowCount > 0;
+    await p.query(`ALTER TABLE tournament_payouts ADD COLUMN IF NOT EXISTS paid_notified_at TIMESTAMPTZ`);
+    // Backfill on first rollout ONLY: every payout already 'paid' before this
+    // feature shipped predates the receipt, so stamp it as already-notified.
+    // Without this the first sweep would blast historical winners with a receipt
+    // for money they were paid long ago. Guarded so it runs once (when the
+    // column was just created) and never re-stamps legitimately-NULL new rows.
+    if (!_paidNotifiedExisted) {
+      await p.query(
+        `UPDATE tournament_payouts SET paid_notified_at = NOW()
+          WHERE transfer_status = 'paid' AND paid_notified_at IS NULL`);
+    }
 
     // Task #453 — generic Stripe Connect Express payout accounts for any
     // player (tournament winners who aren't coaches). Mirrors the coaching
@@ -15031,6 +15049,9 @@ const NOTIFICATION_EVENTS = [
   // account. Transactional (real money owed) → default-ON, matching the
   // tournament_checkin event as it shipped in Task #452.
   { key: 'tournament_payout_pending', label: 'Unclaimed prize payout',     desc: 'When you win prize money but need to connect a payout account to receive it.', legacy: null, defaults: { discord: true,  push: true  } },
+  // Task #582 — receipt the moment a prize transfer lands. Transactional (real
+  // money paid out) → default-ON, matching the pending-payout nudge above.
+  { key: 'tournament_payout_paid',  label: 'Prize payout receipt',        desc: 'A receipt when prize money you won has been paid out to your connected account.', legacy: null, defaults: { discord: true,  push: true  } },
   { key: 'coach_booking_confirmed', label: 'Coach booking confirmed',     desc: 'When a coaching booking is paid and locked in.',             legacy: 'coaching_booking_confirmed', defaults: { discord: true,  push: true  } },
   { key: 'coach_booking_reminder',  label: 'Coach booking reminder',      desc: 'About one hour before a scheduled coaching session.',        legacy: 'coaching_session_reminder',  defaults: { discord: true,  push: true  } },
   { key: 'league_scrim_accepted',   label: 'League / scrim accepted',     desc: 'When a league or scrim request you sent is accepted.',       legacy: null,                         defaults: { discord: false, push: false } },
@@ -25597,6 +25618,8 @@ module.exports = {
   markTournamentPayoutConnectReminded,
   listPayoutsAwaitingConnect,
   markTournamentPayoutConnectNotified,
+  getPayoutsNeedingPaidReceipt,
+  markTournamentPayoutPaidNotified,
   setTournamentPayoutTransfer,
   getTournamentsWithPendingPayouts,
   listFailedTournamentPayouts,
@@ -28278,6 +28301,41 @@ async function markTournamentPayoutConnectReminded(payoutId) {
   const r = await p.query(
     `UPDATE tournament_payouts SET connect_renotified_at = NOW()
       WHERE id = $1 AND connect_renotified_at IS NULL RETURNING id`,
+    [parseInt(payoutId)]);
+  return r.rows[0] || null;
+}
+
+// Task #582 — payout rows whose transfer has succeeded ('paid') but who have
+// not yet been sent a receipt (`paid_notified_at IS NULL`). Drives the one-shot
+// "your prize has landed" DM/push from the settlement sweep. Mirrors the
+// connect-nudge query's joins so the receipt copy can name the tournament + the
+// recipient. No "connected" predicate — a paid row is by definition connected.
+async function getPayoutsNeedingPaidReceipt() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT tp.id, tp.tournament_id, tp.account_id::text AS account_id, tp.place,
+            tp.amount_cents, tp.currency, tp.transferred_at, t.name AS tournament_name,
+            COALESCE(n.nickname,
+              (SELECT ps.persona_name FROM player_stats ps WHERE ps.account_id = tp.account_id ORDER BY ps.id DESC LIMIT 1),
+              tp.account_id::text) AS display_name
+       FROM tournament_payouts tp
+       JOIN tournaments t ON t.id = tp.tournament_id
+       LEFT JOIN nicknames n ON n.account_id = tp.account_id
+      WHERE tp.transfer_status = 'paid'
+        AND tp.amount_cents > 0
+        AND tp.paid_notified_at IS NULL
+      ORDER BY tp.transferred_at DESC NULLS LAST, tp.tournament_id DESC, tp.place ASC`);
+  return r.rows;
+}
+
+// Task #582 — stamp the one-shot paid-receipt marker so a winner is sent the
+// "prize landed" receipt exactly once. Best-effort: returns the updated row (or
+// null when already stamped / not found).
+async function markTournamentPayoutPaidNotified(payoutId) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE tournament_payouts SET paid_notified_at = NOW()
+      WHERE id = $1 AND paid_notified_at IS NULL RETURNING id`,
     [parseInt(payoutId)]);
   return r.rows[0] || null;
 }
