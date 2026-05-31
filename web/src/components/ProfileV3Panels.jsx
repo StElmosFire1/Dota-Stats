@@ -19,6 +19,16 @@ function prettyHero(rawName, heroId) {
   return rawName || getHeroName(heroId) || `#${heroId}`;
 }
 
+// Replace any embedded raw `npc_dota_hero_*` slug inside a pre-built display
+// string (e.g. a plaque sub-line "on npc_dota_hero_oracle") with the friendly
+// hero name ("on Oracle"). Backend plaque builders sometimes inline the raw
+// slug; this keeps the UI clean without changing the API response shape.
+function prettifyEmbeddedHeroes(s) {
+  return typeof s === 'string'
+    ? s.replace(/npc_dota_hero_[a-z0-9_]+/gi, (m) => formatHeroName(m))
+    : s;
+}
+
 function PanelShell({ eyebrow, title, children }) {
   return (
     <section className="mag-story v3-panel">
@@ -237,9 +247,9 @@ export function HallOfFamePlaquesPanel({ data }) {
         {plaques.map(p => {
           const inner = (
             <>
-              <div className="v3-hof-plaque-title">{p.title}</div>
-              <div className="v3-hof-plaque-value">{p.value}</div>
-              {p.sub && <div className="v3-hof-plaque-sub">{p.sub}</div>}
+              <div className="v3-hof-plaque-title">{prettifyEmbeddedHeroes(p.title)}</div>
+              <div className="v3-hof-plaque-value">{prettifyEmbeddedHeroes(p.value)}</div>
+              {p.sub && <div className="v3-hof-plaque-sub">{prettifyEmbeddedHeroes(p.sub)}</div>}
             </>
           );
           if (p.match_id) {

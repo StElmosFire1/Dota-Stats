@@ -59,6 +59,9 @@ function AvatarDisc({ kind = 'monogram', size, uid, monogramText = 'B' }) {
           </radialGradient>
         </defs>
         <circle cx={cx} cy={cy} r={r} fill={`url(#disc-mono-${uid})`} />
+        {/* Crisp dark outline around the centre disc so the rank number reads
+            clearly against the busier ring art at small icon sizes. */}
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#0a0f1c" strokeWidth={Math.max(1, size * 0.02)} opacity="0.9" />
         <text
           x={cx}
           y={cy}
@@ -66,10 +69,10 @@ function AvatarDisc({ kind = 'monogram', size, uid, monogramText = 'B' }) {
           dominantBaseline="central"
           fontFamily={fSerif}
           fontStyle={isNum ? 'normal' : 'italic'}
-          fontWeight={isNum ? 700 : undefined}
-          fontSize={isNum ? r * 1.05 : r * 0.95}
-          fill={brass}
-          opacity="0.95"
+          fontWeight={isNum ? 800 : undefined}
+          fontSize={isNum ? r * 1.18 : r * 0.95}
+          fill={isNum ? brassBright : brass}
+          opacity={isNum ? 1 : 0.95}
         >
           {ch}
         </text>

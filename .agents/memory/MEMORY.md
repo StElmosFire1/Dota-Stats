@@ -3,7 +3,8 @@
 - [Press Box vs purchasable themes](pressbox-theme-rewire.md) — upscale-2026 uses standalone --pb-* tokens; purchasable themes need rewiring if design ships.
 - [Draft order_num sources](draft-order-num-sources.md) — order_num base differs by source (replay 1-24, OpenDota 0-23); never blindly +1, rank by sorted position keyed by entry ref.
 - [Patch-notes version uniqueness](patch-notes-versions.md) — versions aren't monotonic; grep the whole patchNotes.js for your candidate version before committing or the gate fails.
-- [Post-merge GitHub divergence](post-merge-github-divergence.md) — genuine origin/main fork (remote has a unique commit) is non-fatal in post-merge.sh; reconciliation needs a merge commit only the dedicated push task can make, not the main agent.
+- [Post-merge GitHub divergence](post-merge-github-divergence.md) — genuine origin/main fork is non-fatal in post-merge.sh; reconciliation needs a merge commit only the dedicated push task can make.
+- [Render-time TDZ crash](render-tdz-crash.md) — a hook dep array (or render body) reading a const declared lower throws a TDZ ReferenceError every render, blanking the page for ALL users; declare derived values above the effects that use them.
 - [Hero icon rendering](hero-icon-rendering.md) — resolve icons from hero_id→slug map (legacy codenames); player_stats.hero_name format is inconsistent (display vs npc_ form).
 - [ROUND(AVG()) numeric cast](postgres-round-avg-numeric.md) — ROUND(double precision, int) doesn't exist in PG; cast AVG to ::numeric or the stats query 500s. Bit Hall of Fame in both editions.
 - [Notification stamp backfill](notification-stamp-backfill.md) — adding a NULL one-shot notify marker to an existing table needs a migration-time backfill or the first sweep blasts historical rows.

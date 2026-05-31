@@ -1505,6 +1505,7 @@ export default function PlayerProfile() {
         winRate={headerWinRate}
         totalMatches={headerTotalMatches}
         nameAdornments={headerNameAdornments}
+        founderRing={showProfileCustomization && profileCard?.equipped_founder_ring ? profileCard.equipped_founder_ring : null}
       />
       {/* upscale-2026 redesign — the magazine cover is replaced by the
           mockup-aligned <ProfileHeader> above. Kept here, disabled behind a

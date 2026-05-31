@@ -8,6 +8,7 @@ import { useInhouseAlerts } from '../hooks/useInhouseAlerts';
 import { superuserFetch, getCaptainAutoPickStats } from '../api';
 import LiveQueueWidget from '../components/LiveQueueWidget';
 import MoodFormWidget from '../components/MoodFormWidget';
+import SignInPrompt from '../components/SignInPrompt';
 import '../styles/pressbox-inhouse.css';
 
 const POSITIONS = [
@@ -420,6 +421,11 @@ export default function Inhouse() {
     steamUser.needs_discord_link === true ||
     steamUser.discord_in_guild === false
   );
+  // v5.84 — the `/api/auth/me` payload exposes the Steam id as `accountId`.
+  // Declared up here (before the effects/hooks that depend on it) so it can't
+  // land in a temporal-dead-zone ReferenceError when a hook below reads it —
+  // that TDZ crash blanked the whole /inhouse page for every visitor.
+  const myAccountId = steamUser?.accountId ? Number(steamUser.accountId) : null;
   const [session, setSession] = useState(null);
   const [players, setPlayers] = useState([]);
   const [pastSessions, setPastSessions] = useState([]);
@@ -463,11 +469,6 @@ export default function Inhouse() {
   // session, so we can flag chronic AFK captains in-lobby with a small badge.
   const [captainAutoStats, setCaptainAutoStats] = useState({});
   const isAdmin = !!superuserKey;
-  // v5.84 — was `steamUser?.steamAccountId` (typo); the `/api/auth/me`
-  // payload exposes the field as `accountId`. The mismatch made the lobby
-  // think every signed-in user was anonymous, so it always rendered the
-  // "Sign in with Steam to join" gate even after a successful sign-in.
-  const myAccountId = steamUser?.accountId ? Number(steamUser.accountId) : null;
   const pollRef = useRef(null);
   // Task #325 — live spectator probe. Polls /api/inhouse/live-spectate so the
   // hub can surface a "Watch live" affordance whenever the lobbyManager has
@@ -864,6 +865,18 @@ export default function Inhouse() {
   const connectLink = session?.server_ip && session?.match_password
     ? `steam://connect/${session.server_ip}:${session.server_port}/${encodeURIComponent(session.match_password)}`
     : null;
+
+  // Signed-out visitors previously hit a render crash here (the lobby body
+  // assumes a logged-in account), which surfaced as a blank page. Mirror the
+  // shared sign-in gate used by the other account-only routes.
+  if (!myAccountId) {
+    return (
+      <SignInPrompt
+        title="Inhouse Lobby"
+        message="Sign in with Steam to join the queue, get drafted, and play inhouse games."
+      />
+    );
+  }
 
   if (loading) return <div style={{ padding: 20 }}>Loading…</div>;
 

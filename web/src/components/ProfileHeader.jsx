@@ -1,6 +1,7 @@
 import React from 'react';
 import { getHeroImageUrl } from '../heroNames';
 import { FRAME_META } from '../profileCosmetics';
+import FounderRing from './founderRings/FounderRing';
 
 /**
  * Mockup-aligned profile hero header (upscale-2026 redesign).
@@ -31,9 +32,29 @@ export default function ProfileHeader({
   totalMatches = null,
   nameAdornments = null,
   rankLabel = null,
+  founderRing = null,
 }) {
   const meta = FRAME_META[frameId] || {};
   const portrait = heroPortraitId ? getHeroImageUrl(heroPortraitId) : null;
+  const RING_SIZE = 152;
+  const PORTRAIT_SIZE = 140;
+
+  // Circular portrait fill (hero art or monogram fallback). Reused inside the
+  // founder-ring overlay and the plain circular tile.
+  const portraitFill = portrait ? (
+    <img
+      src={portrait}
+      alt=""
+      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+      onError={(e) => { e.target.style.display = 'none'; }}
+    />
+  ) : (
+    <div style={{
+      width: '100%', height: '100%', display: 'flex', alignItems: 'center',
+      justifyContent: 'center', fontFamily: 'var(--font-serif, inherit)',
+      fontSize: 46, color: 'var(--text-muted)',
+    }}>{(displayName || '?').slice(0, 1).toUpperCase()}</div>
+  );
 
   const Stat = ({ label, value, accent = false }) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -64,26 +85,30 @@ export default function ProfileHeader({
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 24, flexWrap: 'wrap' }}>
         {/* Portrait tile */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
-          <div style={{
-            width: 140, height: 140, borderRadius: 14, overflow: 'hidden',
-            background: 'linear-gradient(180deg, var(--bg-card) 0%, rgba(0,0,0,0.35) 100%)',
-            ...(meta.style || { border: '1px solid var(--border)' }),
-          }}>
-            {portrait ? (
-              <img
-                src={portrait}
-                alt=""
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                onError={(e) => { e.target.style.display = 'none'; }}
-              />
-            ) : (
+          {founderRing ? (
+            <div style={{ position: 'relative', width: RING_SIZE, height: RING_SIZE }}>
+              <FounderRing sku={founderRing} size={RING_SIZE} disc="emblem" />
               <div style={{
-                width: '100%', height: '100%', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', fontFamily: 'var(--font-serif, inherit)',
-                fontSize: 46, color: 'var(--text-muted)',
-              }}>{(displayName || '?').slice(0, 1).toUpperCase()}</div>
-            )}
-          </div>
+                position: 'absolute', top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: RING_SIZE * 0.64, height: RING_SIZE * 0.64,
+                borderRadius: '50%', overflow: 'hidden',
+                boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.5)',
+                background: 'linear-gradient(180deg, var(--bg-card) 0%, rgba(0,0,0,0.35) 100%)',
+              }}>
+                {portraitFill}
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              width: PORTRAIT_SIZE, height: PORTRAIT_SIZE, overflow: 'hidden',
+              background: 'linear-gradient(180deg, var(--bg-card) 0%, rgba(0,0,0,0.35) 100%)',
+              ...(meta.style || { border: '1px solid var(--border)' }),
+              borderRadius: '50%',
+            }}>
+              {portraitFill}
+            </div>
+          )}
           {rankLabel && (
             <div style={{
               position: 'absolute', bottom: -12, right: -12, minWidth: 44, height: 44,

@@ -750,7 +750,7 @@ export default function Leaderboard() {
                           <span className="pb-rank-emblem-art" aria-hidden="true">
                             <FounderRing
                               sku={PREVIEW_RANK_EMBLEMS[rank]}
-                              size={42}
+                              size={50}
                               disc="monogram"
                               monogramText={String(rank)}
                             />

@@ -2,10 +2,38 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const SteamAuthContext = createContext(null);
 
+// Cache the signed-in user in sessionStorage so a page refresh rehydrates the
+// signed-in UI instantly instead of flashing the logged-out state while
+// /api/auth/me is in flight. sessionStorage is per-tab and is cleared when the
+// tab/window is closed, which matches the desired behaviour: stay signed in
+// across refreshes, forget the cached identity once the page is closed (the
+// server session cookie still governs real auth). Never the source of truth —
+// the initial /api/auth/me fetch reconciles or clears it.
+const SESSION_USER_KEY = 'oi.steamUser';
+function readCachedUser() {
+  try {
+    const s = sessionStorage.getItem(SESSION_USER_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch { return null; }
+}
+function cacheUser(u) {
+  try {
+    if (u && u.accountId) sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(u));
+    else sessionStorage.removeItem(SESSION_USER_KEY);
+  } catch { /* storage unavailable — degrade to in-memory only */ }
+}
+
 export function SteamAuthProvider({ children }) {
-  const [steamUser, setSteamUser] = useState(null);
+  const [steamUser, setSteamUserRaw] = useState(readCachedUser);
   const [loading, setLoading] = useState(true);
   const [onboardingComplete, setOnboardingComplete] = useState(null);
+
+  // Wrap the raw setter so every signed-in/out transition also updates the
+  // per-tab cache, keeping refresh rehydration consistent at every call site.
+  const setSteamUser = React.useCallback((u) => {
+    setSteamUserRaw(u);
+    cacheUser(u);
+  }, []);
 
   // Pull /api/auth/me to backfill fresh fields (discord_id, guild membership,
   // needs_discord_link, autojoin-pending) on the *signed-in* user. Used after

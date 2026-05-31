@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "8.71",
+    "title": "Profile portraits get framed, clearer rank emblems, sticky sign-in, and the Inhouse page un-blanked",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Profile portrait, reimagined.** Your profile photo is now a circular portrait that sits inside your equipped Founders Ring instead of a plain rounded square — the ring you chose actually wraps the picture. The image is scaled to fill the disc cleanly, and players without a ring just get a tidy circular portrait.",
+      "**Hall of Fame plaques read properly.** Plaque sub-lines that used to show the raw engine name (\"on npc_dota_hero_oracle\") now show the real hero (\"on Oracle\").",
+      "**Clearer rank emblems.** The animated rank emblems on the leaderboard render a little larger with a bolder, higher-contrast centre number and a crisp outline, so the rank reads clearly even at small icon sizes.",
+      "**Sign-in survives a refresh.** Reloading the page no longer flashes you back to a logged-out state — your signed-in identity is cached for the tab and rehydrates instantly, then revalidates against the server. It clears when you close the tab or explicitly log out.",
+      "**Inhouse Lobby no longer blanks.** Opening the Inhouse Lobby showed a blank page for everyone (a render crash); that's fixed — signed-in players see the lobby, and signed-out visitors get the standard \"Sign in with Steam\" prompt like every other account-only page.",
+      "**Scope.** Full edition only — community edition untouched. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.70",
     "title": "Growth Coach — a personal PERF improvement plan on your profile",
     "published_at": "2026-05-31",
