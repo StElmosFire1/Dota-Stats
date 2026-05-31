@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.64",
+    "title": "Profile redesign + draft order numbering fix",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**New profile header.** The player profile now leads with a clean Press Box-style header — a framed hero portrait, your name in large serif type, and three headline stats (Current MMR, Win Rate, Total Matches) right at the top — matching the new design direction. The previous magazine cover has been retired in favour of this layout.",
+      "**Draft order fix.** The Draft & Bans panel on a match page numbered the picks/bans wrong: replay-parsed matches showed the sequence starting at #2 with no #1, and the order looked off. Each chip now shows its true 1-based position in the draft regardless of how the match was recorded, so #1 always appears and the sequence reads correctly.",
+      "**Scope.** Full edition only. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.63",
     "title": "Hero pages now show recent matches and best/worst matchups",
     "published_at": "2026-05-31",

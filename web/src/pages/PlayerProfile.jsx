@@ -6,6 +6,7 @@ import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
 import ImpactBadge from '../components/ImpactBadge';
 import RankBadge, { MmrBadge } from '../components/RankBadge';
 import ProfileCard from '../components/ProfileCard';
+import ProfileHeader from '../components/ProfileHeader';
 import RivalCard from '../components/RivalCard';
 import MoodFormWidget from '../components/MoodFormWidget';
 import ProfileV3Panels from '../components/ProfileV3Panels';
@@ -1479,11 +1480,37 @@ export default function PlayerProfile() {
     steam: ex.social_steam || null,
   };
   const coverFlair = (showProfileCustomization && ex.flair_unlocked && ex.flair_override) || null;
+
+  // upscale-2026 redesign — derived values for the mockup-aligned ProfileHeader
+  // (replaces the magazine cover as the page's lead). All sourced from the same
+  // real data the stat-card grid below uses.
+  const headerMmr = seasonMmr != null ? seasonMmr : (rating?.mmr != null ? rating.mmr : null);
+  const headerWins = averages ? (parseInt(averages.wins) || 0) : (rating?.wins ?? null);
+  const headerGames = averages ? (parseInt(averages.total_matches) || 0) : (rating?.games_played ?? null);
+  const headerWinRate = (headerGames && headerGames > 0 && headerWins != null)
+    ? ((headerWins / headerGames) * 100).toFixed(1) + '%'
+    : null;
+  const headerTotalMatches = totalMatches || headerGames || 0;
+  const headerPortraitId = pinnedHero?.hero_id ?? (Array.isArray(allHeroes) && allHeroes[0]?.hero_id) ?? null;
+
   return (
     <div className={`magazine-v3 pb-profile v3-theme-${layoutTheme}`}>
       <SponsorshipBanner slug="profile_sidebar" style={{ margin: '12px 0' }} />
       <div id="cover" />
-      <MagazineCover
+      <ProfileHeader
+        displayName={displayName}
+        heroPortraitId={headerPortraitId}
+        frameId={frameForCard}
+        mmr={headerMmr}
+        winRate={headerWinRate}
+        totalMatches={headerTotalMatches}
+        nameAdornments={headerNameAdornments}
+      />
+      {/* upscale-2026 redesign — the magazine cover is replaced by the
+          mockup-aligned <ProfileHeader> above. Kept here, disabled behind a
+          constant, so the founder-ring / cover-FX cosmetics can be restored by
+          flipping `false` to `true` if the cover is wanted back. */}
+      {false && <MagazineCover
         accountId={accountId}
         presence={presence}
         displayName={displayName}
@@ -1513,7 +1540,7 @@ export default function PlayerProfile() {
         // persisting the column, so we can trust the value as-is here.
         equippedFounderRing={showProfileCustomization && profileCard?.equipped_founder_ring ? profileCard.equipped_founder_ring : null}
         coverFx={showProfileCustomization && Array.isArray(profileCard?.cover_fx) ? profileCard.cover_fx : []}
-      />
+      />}
       <Link to="/players" className="back-link">&larr; Back to players</Link>
 
       {/* Task #204 / v6.60 — Magazine v3 pinned-achievement ribbon. Free

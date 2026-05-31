@@ -1,6 +1,7 @@
 - [Dialog focus-trap & options](dialog-focus-trap.md) — shared <Dialog> trap treats every enabled <button> as focusable regardless of tabIndex=-1; listbox options must be non-button.
 - [Headless site capture](playwright-site-capture.md) — Nix libs + first-visit modal dismiss needed for headless oceinhouse.gg screenshots; /inhouse blank & /hall-of-fame errors for anon.
-- [Press Box vs purchasable themes](pressbox-theme-rewire.md) — upscale-2026 mockups use standalone --pb-* tokens; purchasable themes (Newsprint/Carbon/Holo/Heritage/Broadcast) need rewiring if design ships. Parked until design locked.
+- [Press Box vs purchasable themes](pressbox-theme-rewire.md) — upscale-2026 uses standalone --pb-* tokens; purchasable themes need rewiring if design ships.
+- [Draft order_num sources](draft-order-num-sources.md) — order_num base differs by source (replay 1-24, OpenDota 0-23); never blindly +1, rank by sorted position keyed by entry ref.
 - [Patch-notes version uniqueness](patch-notes-versions.md) — versions aren't monotonic; grep the whole patchNotes.js for your candidate version before committing or the gate fails.
 - [Post-merge GitHub divergence](post-merge-github-divergence.md) — genuine origin/main fork (remote has a unique commit) is non-fatal in post-merge.sh; reconciliation needs a merge commit only the dedicated push task can make, not the main agent.
 - [Hero icon rendering](hero-icon-rendering.md) — resolve icons from hero_id→slug map (legacy codenames); player_stats.hero_name format is inconsistent (display vs npc_ form).

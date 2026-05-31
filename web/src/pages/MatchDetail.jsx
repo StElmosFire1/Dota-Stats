@@ -995,6 +995,20 @@ function DraftDisplay({ draft }) {
   // a team-colour dot, picks (hero portraits with their draft-order badge) and
   // a separate dimmed bans sub-row. All original data is preserved — the
   // chronological draft order is still surfaced as the per-chip number badge.
+  // Normalise the per-chip number to a true 1-based chronological draft rank.
+  // Source data is inconsistent: replay-parsed matches store order_num 1-24
+  // while OpenDota-sourced matches store 0-23, so a blind `order_num + 1`
+  // produced 2-25 (no "#1") on replay matches and looked out of order.
+  // Deriving the rank from the sorted position guarantees a clean 1..N
+  // sequence in true draft order regardless of the source's base. Keyed by
+  // the entry object (not order_num) so duplicate/dirty order values can't
+  // collapse Map entries and skip numbers — byTeam() filters preserve the
+  // same object references, so identity lookup is safe.
+  const sortedDraft = [...draft].sort((a, b) => a.order_num - b.order_num);
+  const rankByEntry = new Map();
+  sortedDraft.forEach((d, i) => rankByEntry.set(d, i + 1));
+  const draftRank = (entry) => rankByEntry.get(entry) ?? (entry.order_num + 1);
+
   const byTeam = (teamCode) => {
     const entries = draft.filter(d => d.team === teamCode);
     return {
@@ -1021,7 +1035,7 @@ function DraftDisplay({ draft }) {
               <div
                 key={i}
                 className="pb-draft-pick"
-                title={`#${entry.order_num + 1} — ${teamLabel} pick`}
+                title={`#${draftRank(entry)} — ${teamLabel} pick`}
               >
                 {heroImg ? (
                   <img
@@ -1033,7 +1047,7 @@ function DraftDisplay({ draft }) {
                 ) : (
                   <div className="pb-draft-portrait pb-draft-portrait--blank" />
                 )}
-                <span className="pb-draft-order">{entry.order_num + 1}</span>
+                <span className="pb-draft-order">{draftRank(entry)}</span>
               </div>
             );
           })}
@@ -1048,7 +1062,7 @@ function DraftDisplay({ draft }) {
                   <div
                     key={i}
                     className="pb-draft-ban"
-                    title={`#${entry.order_num + 1} — ${teamLabel} ban`}
+                    title={`#${draftRank(entry)} — ${teamLabel} ban`}
                   >
                     {heroImg ? (
                       <img
@@ -1060,7 +1074,7 @@ function DraftDisplay({ draft }) {
                     ) : (
                       <div className="pb-draft-ban-portrait pb-draft-portrait--blank" />
                     )}
-                    <span className="pb-draft-order pb-draft-ban-order">{entry.order_num + 1}</span>
+                    <span className="pb-draft-order pb-draft-ban-order">{draftRank(entry)}</span>
                   </div>
                 );
               })}
