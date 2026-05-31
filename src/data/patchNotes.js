@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.90",
+    "title": "Mystery Player — guess who's behind the scoreboard line",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**A new daily mini-game.** **Mystery Player** is the inverse of Statline: instead of hiding the hero, it lays *everything* bare — the hero, the full item build, and the whole scoreboard line (K/D/A, net worth, GPM/XPM, last hits, hero damage and more) — and asks you to name **which inhouse player** it was. You get six guesses with autocomplete from the inhouse roster.",
+      "**Daily + Endless.** A fresh deterministic puzzle drops every day at midnight AEST (the same for everyone), with streaks and leaderboards just like the other games, plus an unlimited Endless mode to keep playing.",
+      "**Fair play & privacy.** The answer is never written into the page — it's kept server-side for the daily and travels in a tamper-proof signed token for endless. Players who've requested deletion/anonymisation are excluded from both the answer pool and the guess list.",
+      "**Scope.** Full edition only — community edition has no games suite and is untouched. Keyboard + screen-reader accessible; a11y gate green."
+    ],
+    "author": "System",
+    "major": true
+  },
+  {
     "version": "8.89",
     "title": "Real hero voices in the Voiceline daily game",
     "published_at": "2026-05-31",

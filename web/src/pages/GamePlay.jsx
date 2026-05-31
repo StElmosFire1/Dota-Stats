@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import {
   getGameDaily, getGameEndless, getGameLeaderboard, submitGameGuess, gameImageUrl, gameAudioUrl,
 } from '../api';
-import { getHeroImageUrl } from '../heroNames';
+import { getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import './games.css';
 
 // Task #451 — Daily Dota mini-games play surface. One component drives all
@@ -21,6 +21,7 @@ const TITLES = {
   statline: 'Statline',
   talent: 'Talent guesser',
   voiceline: 'Voiceline daily',
+  'mystery-player': 'Mystery Player',
 };
 
 // Games whose guesses/answers are heroes (so we can show hero portraits).
@@ -191,6 +192,73 @@ function StatlineClue({ clue }) {
   );
 }
 
+// Mystery Player — the inverse of Statline. Hero, item build and the whole
+// scoreboard line are revealed; the player guesses *who* it was.
+function PlayerLineClue({ clue }) {
+  if (!clue || !clue.playerLine) return null;
+  const s = clue.playerLine;
+  const rows = [
+    ['K / D / A', `${s.kills} / ${s.deaths} / ${s.assists}`],
+    ['Net worth', s.netWorth ? s.netWorth.toLocaleString() : '—'],
+    ['GPM / XPM', `${s.gpm} / ${s.xpm}`],
+    ['Last hits / denies', `${s.lastHits} / ${s.denies}`],
+    ['Level', s.level || '—'],
+    ['Hero damage', s.heroDamage ? s.heroDamage.toLocaleString() : '—'],
+    ['Tower damage', s.towerDamage ? s.towerDamage.toLocaleString() : '—'],
+    ['Hero healing', s.heroHealing ? s.heroHealing.toLocaleString() : '—'],
+  ];
+  const items = Array.isArray(s.items) ? s.items : [];
+  return (
+    <div className="card" style={{ padding: 16, maxWidth: 440, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <img
+          src={getHeroImageUrl(s.heroId, s.heroName)}
+          alt=""
+          style={{ width: 72, height: 40, objectFit: 'cover', borderRadius: 4 }}
+          loading="lazy"
+        />
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{s.heroName}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {s.win ? 'Victory' : 'Defeat'} · {fmtDuration(s.durationSec)}
+          </div>
+        </div>
+      </div>
+      {items.length > 0 && (
+        <div
+          style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}
+          aria-label="Final item build"
+        >
+          {items.map((it, i) => {
+            const label = (it.item_name || '').replace(/^item_/, '').replace(/_/g, ' ');
+            const url = getItemImageUrl(it.item_name, it.item_id);
+            return url ? (
+              <img
+                key={i}
+                src={url}
+                alt={label}
+                title={label}
+                style={{ width: 36, height: 27, borderRadius: 3, border: '1px solid var(--border)' }}
+                loading="lazy"
+              />
+            ) : null;
+          })}
+        </div>
+      )}
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <tbody>
+          {rows.map(([k, v]) => (
+            <tr key={k}>
+              <td style={{ padding: '5px 0', color: 'var(--text-muted)' }}>{k}</td>
+              <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 600 }}>{v}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function VoicelineClue({ clue }) {
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
@@ -265,6 +333,7 @@ function ClueArea({ game, clue, guessCount }) {
   }
   if (game === 'talent') return <TalentClue clue={clue} revealCount={guessCount + 1} />;
   if (game === 'statline') return <StatlineClue clue={clue} />;
+  if (game === 'mystery-player') return <PlayerLineClue clue={clue} />;
   if (game === 'voiceline') return <VoicelineClue clue={clue} />;
   return null;
 }

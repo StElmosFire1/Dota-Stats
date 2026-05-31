@@ -42,6 +42,8 @@ async function ensureDailyPuzzle(db, game, dateStr) {
   let answer;
   let clue;
 
+  let choicesOverride = null;
+
   if (game === 'statline') {
     let candidates = [];
     try { candidates = await db.getStatlineCandidates(400); } catch (_) { candidates = []; }
@@ -49,15 +51,30 @@ async function ensureDailyPuzzle(db, game, dateStr) {
     if (!gen) return null; // no inhouse data yet — caller handles gracefully
     answer = gen.answer;
     clue = gen.clue;
+  } else if (game === 'mystery-player') {
+    let candidates = [];
+    try { candidates = await db.getPlayerStatlineCandidates(400); } catch (_) { candidates = []; }
+    if (!candidates.length) return null; // no inhouse data yet — caller handles gracefully
+    // Deterministically pick today's line, then attach its item build before
+    // building the clue (items live in a separate table, fetched per line).
+    const pick = seed.pick(candidates, seed.dailyRng('mystery-player', dateStr));
+    if (!pick) return null;
+    try { pick.items = await db.getLineItems(pick.match_id, pick.slot); } catch (_) { pick.items = []; }
+    const gen = puzzles.buildPlayerLine(pick);
+    if (!gen) return null;
+    answer = gen.answer;
+    clue = gen.clue;
+    try { choicesOverride = await db.getInhousePlayerRoster(); } catch (_) { choicesOverride = []; }
   } else {
     const sel = puzzles.selectDailyAnswer(game, dateStr);
     answer = sel.answer;
     clue = puzzles.buildClue(game, answer, tokenFor);
   }
 
-  const choices = puzzles.GAME_META[game].kind === 'item'
-    ? puzzles.itemChoices()
-    : puzzles.heroChoices();
+  const choices = choicesOverride
+    || (puzzles.GAME_META[game].kind === 'item'
+      ? puzzles.itemChoices()
+      : puzzles.heroChoices());
 
   const payload = {
     number,
@@ -246,6 +263,22 @@ function mountGamesRoutes({ router, express, db }) {
           game, mode: 'endless', number: null, maxGuesses: meta.maxGuesses,
           choices: puzzles.heroChoices(), clue: gen.clue,
           answerToken: seed.signToken({ g: game, m: 'endless', a: answer }),
+        });
+      }
+      if (game === 'mystery-player') {
+        // Endless Mystery Player reuses the candidate pool with a random pick.
+        let candidates = [];
+        try { candidates = await db.getPlayerStatlineCandidates(400); } catch (_) {}
+        if (!candidates.length) return res.json({ notReady: true, message: 'No inhouse data yet.' });
+        const row = candidates[Math.floor(Math.random() * candidates.length)];
+        try { row.items = await db.getLineItems(row.match_id, row.slot); } catch (_) { row.items = []; }
+        const gen = puzzles.buildPlayerLine(row);
+        let choices = [];
+        try { choices = await db.getInhousePlayerRoster(); } catch (_) { choices = []; }
+        return res.json({
+          game, mode: 'endless', number: null, maxGuesses: meta.maxGuesses,
+          choices, clue: gen.clue,
+          answerToken: seed.signToken({ g: game, m: 'endless', a: gen.answer }),
         });
       }
       const out = puzzles.generateEndless(game, tokenFor);

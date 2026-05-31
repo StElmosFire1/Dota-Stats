@@ -15,7 +15,7 @@ const heroData = require('./heroData');
 const itemData = require('./itemData');
 const voiceData = require('./voiceData');
 
-const GAMES = ['heroguessr', 'item-zoom', 'statline', 'talent', 'voiceline'];
+const GAMES = ['heroguessr', 'item-zoom', 'statline', 'talent', 'voiceline', 'mystery-player'];
 
 const GAME_META = {
   heroguessr: { title: 'Heroguessr', kind: 'hero', maxGuesses: 6, emoji: '🦸', available: true,
@@ -28,6 +28,8 @@ const GAME_META = {
     blurb: 'Name the hero from its level-25 talent tree.' },
   voiceline: { title: 'Voiceline daily', kind: 'hero', maxGuesses: 6, emoji: '🔊', available: true,
     blurb: 'Hear a short voice line and guess the hero.' },
+  'mystery-player': { title: 'Mystery Player', kind: 'player', maxGuesses: 6, emoji: '🕵️', available: true,
+    blurb: 'A real inhouse scoreboard line — hero, items and stats all laid bare. Guess which inhouse player it was.' },
 };
 
 function isGame(g) {
@@ -106,6 +108,38 @@ function generateStatline(dateStr, lines) {
   };
 }
 
+// ── Mystery Player (needs DB) ───────────────────────────────────────────────
+// The inverse of Statline: the hero, item build and full scoreboard line are
+// all REVEALED in the clue; the hidden answer is the inhouse *player*. `row`
+// is a single candidate from db.getPlayerStatlineCandidates() with its 6-slot
+// item build already attached as `row.items` (an array of {item_name,item_id}).
+function buildPlayerLine(row) {
+  if (!row) return null;
+  return {
+    answer: { accountId: Number(row.account_id), name: row.player_name },
+    clue: {
+      playerLine: {
+        heroId: row.hero_id,
+        heroName: heroData.heroName(row.hero_id),
+        items: Array.isArray(row.items) ? row.items.slice(0, 6) : [],
+        kills: row.kills, deaths: row.deaths, assists: row.assists,
+        gpm: row.gpm, xpm: row.xpm, lastHits: row.last_hits, denies: row.denies,
+        netWorth: row.net_worth, level: row.level, heroDamage: row.hero_damage,
+        towerDamage: row.tower_damage, heroHealing: row.hero_healing,
+        durationSec: row.duration, win: row.win,
+      },
+    },
+  };
+}
+
+// Deterministically picks the day's Mystery Player line from a curated set of
+// candidate rows (each with `items` attached). Used by the daily route.
+function generatePlayerLine(dateStr, lines) {
+  if (!Array.isArray(lines) || !lines.length) return null;
+  const row = seed.pick(lines, seed.dailyRng('mystery-player', dateStr));
+  return buildPlayerLine(row);
+}
+
 // ── Endless puzzles (stateless, token-carried answer) ───────────────────────
 function generateEndless(game, tokenFor) {
   const s = (Math.random() * 1e9) | 0;
@@ -150,7 +184,10 @@ function generateEndless(game, tokenFor) {
 
 // ── Guess checking ──────────────────────────────────────────────────────────
 function answerKey(game) {
-  return GAME_META[game].kind === 'item' ? 'itemId' : 'heroId';
+  const kind = GAME_META[game].kind;
+  if (kind === 'item') return 'itemId';
+  if (kind === 'player') return 'accountId';
+  return 'heroId';
 }
 
 function isCorrect(game, answer, guessId) {
@@ -171,6 +208,9 @@ function revealAnswer(game, answer) {
     const it = itemData.getItemById(answer.itemId);
     return { itemId: answer.itemId, name: it ? it.name : `Item #${answer.itemId}`,
       slug: it ? it.slug : null };
+  }
+  if (GAME_META[game].kind === 'player') {
+    return { accountId: answer.accountId, name: answer.name };
   }
   return { heroId: answer.heroId, name: heroData.heroName(answer.heroId) };
 }
@@ -200,6 +240,8 @@ module.exports = {
   selectDailyAnswer,
   buildClue,
   generateStatline,
+  buildPlayerLine,
+  generatePlayerLine,
   generateEndless,
   isCorrect,
   compareGuess,

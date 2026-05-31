@@ -24955,6 +24955,80 @@ async function getStatlineCandidates(limit = 400) {
   return r.rows;
 }
 
+// ── Task #666 — Mystery Player mini-game ────────────────────────────────────
+// The inverse of Statline: the hero/items/stats are revealed and the hidden
+// answer is the inhouse *player*. Pulls real account-linked scoreboard lines
+// (same "informative line" filters as Statline) and carries the player's
+// resolved display name + the match_id/slot so the caller can attach the item
+// build. Anonymised accounts are excluded from the answer pool by joining
+// player_profiles and requiring anonymized_at IS NULL.
+async function getPlayerStatlineCandidates(limit = 400) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT ps.account_id::text AS account_id,
+            COALESCE(n.nickname, ps.persona_name) AS player_name,
+            ps.match_id, ps.slot,
+            ps.hero_id, ps.kills, ps.deaths, ps.assists, ps.gpm, ps.xpm,
+            ps.last_hits, ps.denies, ps.net_worth, ps.level,
+            ps.hero_damage, ps.tower_damage, ps.hero_healing,
+            m.duration,
+            (CASE WHEN ps.team = 'radiant' THEN m.radiant_win ELSE NOT m.radiant_win END) AS win
+       FROM player_stats ps
+       JOIN matches m ON m.match_id = ps.match_id
+       LEFT JOIN nicknames n ON n.account_id = ps.account_id
+       LEFT JOIN player_profiles pp ON pp.account_id = ps.account_id
+      WHERE ps.hero_id > 0
+        AND ps.account_id > 0
+        AND m.duration > 600
+        AND (ps.kills + ps.assists) > 0
+        AND ps.gpm > 0
+        AND pp.anonymized_at IS NULL
+        AND COALESCE(n.nickname, ps.persona_name) <> ''
+      ORDER BY m.date DESC
+      LIMIT $1`,
+    [Math.max(1, Math.min(2000, limit))]
+  );
+  return r.rows;
+}
+
+// The 6 main-inventory items (item_slot 0..5) for one scoreboard line, in slot
+// order, dropping empty slots. Used to attach the revealed item build to a
+// Mystery Player puzzle clue.
+async function getLineItems(matchId, slot) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT item_id, item_name FROM player_items
+       WHERE match_id = $1 AND slot = $2 AND item_slot BETWEEN 0 AND 5
+       ORDER BY item_slot ASC`,
+    [String(matchId), slot]
+  );
+  return r.rows.filter(it => it.item_name && it.item_name !== 'item_empty');
+}
+
+// Roster of inhouse players (account id + resolved display name) for the
+// Mystery Player guess autocomplete. Excludes unlinked (account_id = 0) and
+// anonymised accounts, de-dupes to one row per account (newest persona), and
+// returns numeric ids sorted by display name.
+async function getInhousePlayerRoster() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT DISTINCT ON (ps.account_id)
+            ps.account_id::text AS id,
+            COALESCE(n.nickname, ps.persona_name) AS name
+       FROM player_stats ps
+       LEFT JOIN nicknames n ON n.account_id = ps.account_id
+       LEFT JOIN player_profiles pp ON pp.account_id = ps.account_id
+      WHERE ps.account_id > 0
+        AND pp.anonymized_at IS NULL
+        AND COALESCE(n.nickname, ps.persona_name) <> ''
+      ORDER BY ps.account_id, ps.id DESC`
+  );
+  return r.rows
+    .map(x => ({ id: Number(x.id), name: x.name }))
+    .filter(x => Number.isFinite(x.id) && x.name)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // Per-player summary across all games for the hub + profile widget.
 async function getGameStats(accountId) {
   const p = getPool();
@@ -25120,6 +25194,9 @@ module.exports = {
   getGameStreak,
   getGameLeaderboard,
   getStatlineCandidates,
+  getPlayerStatlineCandidates,
+  getLineItems,
+  getInhousePlayerRoster,
   getGameStats,
   // Task #459 — mobile inbox aggregate
   getPendingActionsForAccount,
