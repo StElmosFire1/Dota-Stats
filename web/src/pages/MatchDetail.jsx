@@ -1165,9 +1165,12 @@ function PerfPanel({ allPlayers, perfRanks = {} }) {
         {rows.map(({ p, score, source }, i) => {
           const b = bucketColor(score);
           const isRadiant = p.team === 'radiant';
+          // Stable unique key: team + account/slot id, with an index fallback so
+          // legacy rows (e.g. account_id 0 or null slot) can't collide across teams.
+          const rowKey = `${p.team ?? 't'}-${p.account_id ?? p.slot ?? 'x'}-${i}`;
           return (
             <div
-              key={p.slot}
+              key={rowKey}
               title={breakdownTip(p, source, score)}
               style={{
                 background: b.bg,
