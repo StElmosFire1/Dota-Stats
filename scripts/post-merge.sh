@@ -155,9 +155,24 @@ else
         esac
       done <<< "$diff_paths"
       if [ "$only_generated" -ne 1 ]; then
-        echo "[post-merge] self-heal: refusing — local and remote trees differ outside auto-generated paths AND remote is not an ancestor:" >&2
+        echo "[post-merge] self-heal: refusing to force-push — local and remote trees differ outside auto-generated paths AND remote is not an ancestor:" >&2
         echo "$diff_paths" >&2
-        exit $push_status
+        # Genuine divergence: origin/main carries unique commit(s) that local
+        # does NOT (remote is not an ancestor of HEAD), so a force-with-lease
+        # here could clobber real remote work. This cannot be reconciled from
+        # the post-merge hook — it would need a merge commit + conflict
+        # resolution (e.g. src/data/patchNotes.js, which both sides edit), and
+        # a non-interactive hook must never attempt that. Reconciliation is
+        # owned by the dedicated "push outstanding commits to GitHub" task,
+        # which can merge both sides losslessly and then fast-forward push.
+        #
+        # Treat this as NON-FATAL: dependency install, migrations, and the
+        # frontend builds above all succeeded, so the post-merge SETUP is
+        # complete — only the GitHub mirror sync is deferred. Exiting non-zero
+        # here would make every subsequent merge report SETUP_FAILED for a
+        # condition the hook is deliberately (and correctly) refusing to fix.
+        echo "[post-merge] GitHub mirror sync deferred to the reconciliation task; post-merge setup is otherwise complete." >&2
+        exit 0
       fi
       echo "[post-merge] self-heal: only auto-generated mockup index / attached_assets differ; safe to overwrite." >&2
     fi
