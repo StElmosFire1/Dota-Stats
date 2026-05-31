@@ -5140,7 +5140,7 @@ async function getMatches(limit = 50, offset = 0, seasonId = null, { tenantId } 
        (SELECT COUNT(*) FROM player_stats ps WHERE ps.match_id = m.match_id) as player_count,
        (SELECT json_agg(row_to_json(p2) ORDER BY p2.team, p2.kills DESC NULLS LAST)
         FROM (
-          SELECT ps.team, ps.hero, ps.kills, ps.deaths, ps.assists,
+          SELECT ps.team, ps.hero_id, ps.hero_name AS hero, ps.kills, ps.deaths, ps.assists,
                  ps.account_id, n.nickname
           FROM player_stats ps
           LEFT JOIN nicknames n

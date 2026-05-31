@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.56",
+    "title": "Match history loads again, with the right hero portraits",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The recent-matches list failed to load — the database query referenced a hero column that no longer exists, so the whole list errored out.",
+      "**What.** Fixed the query, and hero portraits in each match row now resolve from the hero ID so legacy-codename heroes (Nature's Prophet, Windranger, Zeus, and friends) show the correct icon instead of a blank box.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.55",
     "title": "A proper sign-in prompt on the Play page",
     "published_at": "2026-05-31",

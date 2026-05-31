@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getHeroImageUrl } from '../heroNames';
 
 const CDN = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes';
 
@@ -11,9 +12,14 @@ function heroSlug(heroName) {
 
 export default function HeroIcon({ heroName, heroId, size = 'sm', style = {}, className = '' }) {
   const [failed, setFailed] = useState(false);
+  // Prefer the id→slug map (it knows Dota's legacy CDN codenames, e.g.
+  // Nature's Prophet → furion / Windranger → windrunner, which a naive
+  // display-name slug can't produce); fall back to the npc_/display-name slug
+  // for callers that only pass a name.
   const slug = heroSlug(heroName);
+  const url = getHeroImageUrl(heroId, heroName) || (slug ? `${CDN}/${slug}.png` : null);
 
-  if (!slug || failed) {
+  if (!url || failed) {
     const dim = size === 'lg' ? 38 : size === 'md' ? 28 : 19;
     return (
       <span
@@ -37,8 +43,8 @@ export default function HeroIcon({ heroName, heroId, size = 'sm', style = {}, cl
 
   return (
     <img
-      src={`${CDN}/${slug}.png`}
-      alt={slug}
+      src={url}
+      alt={slug || 'hero'}
       width={w}
       height={h}
       onError={() => setFailed(true)}

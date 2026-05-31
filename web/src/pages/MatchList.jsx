@@ -50,7 +50,7 @@ function MatchPlayersStrip({ players, radiantWin }) {
         </span>
         <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
           {side.slice(0, 5).map((p, i) => (
-            <HeroIcon key={`${p.account_id || 'a'}-${i}`} heroName={p.hero} size="sm" />
+            <HeroIcon key={`${p.account_id || 'a'}-${i}`} heroId={p.hero_id} heroName={p.hero} size="sm" />
           ))}
         </div>
         {topName && (
