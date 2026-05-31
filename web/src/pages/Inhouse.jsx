@@ -8,6 +8,7 @@ import { useInhouseAlerts } from '../hooks/useInhouseAlerts';
 import { superuserFetch, getCaptainAutoPickStats } from '../api';
 import LiveQueueWidget from '../components/LiveQueueWidget';
 import MoodFormWidget from '../components/MoodFormWidget';
+import '../styles/pressbox-inhouse.css';
 
 const POSITIONS = [
   { id: 1, label: 'P1 — Carry' },
@@ -32,7 +33,7 @@ async function api(path, opts = {}) {
 // don't have to fake a `startsAt`. Falls back to `startsAt + seconds`
 // for the legacy accept-phase usage. `label` overrides the default
 // "Accept phase" caption so the same component can render both timers.
-function Countdown({ startsAt, seconds, onExpire, endsAt, label }) {
+function Countdown({ startsAt, seconds, onExpire, endsAt, label, variant }) {
   const [remaining, setRemaining] = useState(0);
   useEffect(() => {
     if (!endsAt && !startsAt) return;
@@ -49,6 +50,28 @@ function Countdown({ startsAt, seconds, onExpire, endsAt, label }) {
     return () => clearInterval(t);
   }, [startsAt, seconds, onExpire, endsAt]);
   const pct = seconds > 0 ? (remaining / seconds) * 100 : 0;
+  // Task T005 — "hero" variant renders the mockup's oversized serif mm:ss
+  // dial (no progress bar) for the accept-window strip. The default variant
+  // keeps the slim eyebrow + bar used by the per-pick draft timer.
+  if (variant === 'hero') {
+    const mm = Math.floor(remaining / 60);
+    const ss = remaining % 60;
+    return (
+      <div
+        className="pb-serif"
+        style={{
+          fontSize: 'clamp(2.6rem, 7vw, 3.6rem)',
+          fontWeight: 500,
+          lineHeight: 1,
+          fontVariantNumeric: 'tabular-nums',
+          letterSpacing: '0.01em',
+          color: remaining < 15 ? 'var(--pb-dire)' : 'var(--pb-brass-bright)',
+        }}
+      >
+        {String(mm).padStart(2, '0')}:{String(ss).padStart(2, '0')}
+      </div>
+    );
+  }
   return (
     <div style={{ marginTop: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 13, marginBottom: 4 }}>
@@ -94,6 +117,8 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
         background: `linear-gradient(to bottom, transparent, ${isCurrentUser ? 'var(--amber)' : 'var(--brass)'} 30%, ${isCurrentUser ? 'var(--amber)' : 'var(--brass)'} 70%, transparent)`,
         opacity: isCurrentUser ? 0.95 : 0.55,
       }} />
+      {/* T005 — serif monogram avatar (mirrors the mockup's roster/pool cards). */}
+      <span className="pb-avatar" aria-hidden="true">{(displayName || '?').trim().charAt(0) || '?'}</span>
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-serif)', fontSize: 15 }}>
           <Link to={`/player/${player.account_id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
@@ -843,7 +868,7 @@ export default function Inhouse() {
   if (loading) return <div style={{ padding: 20 }}>Loading…</div>;
 
   return (
-    <div style={{ padding: 20, maxWidth: 1100, margin: '0 auto' }}>
+    <div className="pb-inhouse" style={{ padding: 20, maxWidth: 1100, margin: '0 auto' }}>
       {/* Task #316 — live queue widget: shows in-progress sessions + queued
           players, falls back to recent matches when the queue is empty. */}
       <LiveQueueWidget emptyMode="recent" />
@@ -1148,9 +1173,61 @@ export default function Inhouse() {
             )}
           </div>
 
-          {session.status === 'accepting' && session.accept_phase_starts_at && (
-            <Countdown startsAt={session.accept_phase_starts_at} seconds={session.accept_phase_seconds || 60} />
-          )}
+          {/* T005 — Accept / Ready bar. Mirrors the mockup's hero strip: an
+              oversized serif accept-window dial on the left, then a "players
+              ready" pip rail + waiting-on caption on the right. Pure re-skin
+              of the existing accept countdown — the per-user Accept / Decline
+              controls still live in the player panel below. */}
+          {session.status === 'accepting' && session.accept_phase_starts_at && (() => {
+            const readyCount = acceptedCount;
+            const totalSlots = Math.max(players.length, readyCount);
+            const waiting = players.filter(p => p.status !== 'accepted' && p.status !== 'declined');
+            const waitingName = waiting.length > 0 ? resolvePlayerDisplayName(waiting[0]) : null;
+            return (
+              <div className="pb-card pb-accept-bar" style={{ borderColor: 'color-mix(in srgb, var(--pb-amber) 40%, var(--pb-line))' }}>
+                <div className="pb-accept-grid">
+                  <div className="pb-accept-timer">
+                    <div>
+                      <div className="pb-eyebrow" style={{ marginBottom: 4 }}>Accept Window</div>
+                      <Countdown
+                        startsAt={session.accept_phase_starts_at}
+                        seconds={session.accept_phase_seconds || 60}
+                        variant="hero"
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div className="pb-eyebrow">Lobby Configuration</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontFamily: 'var(--font-condensed, var(--font))', textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: 12, color: 'var(--pb-muted)' }}>
+                        <span style={{ color: 'var(--pb-amber)' }}>Oceania</span>
+                        <span style={{ color: 'var(--pb-faint)' }}>•</span>
+                        <span>{String(session.captain_mode || 'captains draft').replace(/_/g, ' ')}</span>
+                        <span style={{ color: 'var(--pb-faint)' }}>•</span>
+                        <span>{session.accept_phase_seconds || 60}s phase</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="pb-accept-ready">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                      <span className="pb-eyebrow">Players Ready</span>
+                      <span className="pb-serif" style={{ fontWeight: 700, fontSize: 18, color: 'var(--pb-brass-bright)' }}>
+                        {readyCount} / {totalSlots}
+                      </span>
+                    </div>
+                    <div className="pb-pips" role="img" aria-label={`${readyCount} of ${totalSlots} players ready`}>
+                      {Array.from({ length: Math.max(totalSlots, 1) }).map((_, i) => (
+                        <span key={i} className={`pb-pip${i < readyCount ? ' is-ready' : ''}`} />
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 12, fontFamily: 'var(--font-condensed, var(--font))', letterSpacing: '0.08em', color: 'var(--pb-faint)' }}>
+                      {waitingName
+                        ? <>Waiting on <span style={{ color: 'var(--pb-amber)' }}>{waitingName}</span> to accept…</>
+                        : 'All players have responded.'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* v6.03 — captain-mode poll. Open while the lobby is filling.
               Players in the lobby cast one vote (re-clicking clears it); the

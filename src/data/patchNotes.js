@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.45",
+    "title": "The \"Press Box\" redesign goes all the way",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The first Press Box pass recoloured the pages but kept their old layouts, so they never quite matched the editorial mockups. This pass rebuilds the layouts themselves.",
+      "**What.** The home page, leaderboard, player profiles, match pages and the inhouse lobby were restructured to mirror the design mockups closely — magazine-cover profile headers, a centred serif scoreline on match pages, spotlight cards and a framed standings table on the leaderboard, a serif hero landing on the home page, and an oversized accept-window dial with a players-ready rail in the lobby.",
+      "**All your data stays.** Every column, stat, chart, table, admin tool, paywall and live-draft control is still here — things were rearranged into the new look, never removed. This remains a visual change only; behaviour is unchanged.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.44",
     "title": "Reclaim your tournament spot if you missed check-in",
     "published_at": "2026-05-30",

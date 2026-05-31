@@ -1,0 +1,231 @@
+/* Press Box (upscale-2026) — Home page scoped styles.
+   Owned by the Home page task (T002). Mirrors the canvas mockups
+   upscale-2026/Home.tsx (signed-in dashboard) and
+   upscale-2026/HomeSignedOut.tsx (signed-out landing).
+   Translates the mockup's Tailwind composition into the live app's
+   inline-style + scoped-class system. No Tailwind, no icon libs. */
+
+/* ---- Hero ------------------------------------------------------------- */
+.pb-home-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--pb-radius);
+  padding: 56px 40px 48px;
+  margin-bottom: 28px;
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(197, 169, 117, 0.12), transparent 55%),
+    linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
+  border: 1px solid var(--pb-line);
+  box-shadow: var(--pb-shadow);
+}
+
+.pb-home-hero::after {
+  content: "";
+  position: absolute;
+  top: -40%;
+  right: -10%;
+  width: 420px;
+  height: 420px;
+  background: rgba(197, 169, 117, 0.08);
+  filter: blur(90px);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.pb-home-hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 720px;
+}
+
+.pb-eyebrow-rule {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pb-eyebrow-rule::before {
+  content: "";
+  width: 32px;
+  height: 1px;
+  background: var(--pb-brass);
+  display: inline-block;
+}
+
+.pb-home-title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.06;
+  font-size: clamp(38px, 6vw, 64px);
+  color: var(--pb-text);
+  margin: 0 0 18px;
+}
+
+.pb-home-title em {
+  font-style: italic;
+  color: var(--pb-brass-bright);
+}
+
+.pb-home-lede {
+  color: var(--pb-muted);
+  font-size: 17px;
+  line-height: 1.6;
+  max-width: 540px;
+  margin: 0 0 28px;
+}
+
+.pb-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.pb-trust-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--pb-faint);
+}
+
+/* ---- Buttons --------------------------------------------------------- */
+.pb-btn-amber {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--pb-amber);
+  color: #000;
+  border: 1px solid var(--pb-amber);
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 13px 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s, filter 0.15s;
+}
+.pb-btn-amber:hover { background: #d97706; color: #000; filter: brightness(1.02); }
+
+.pb-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  color: var(--pb-text);
+  border: 1px solid var(--pb-line);
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 13px 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+.pb-btn-ghost:hover { border-color: var(--pb-brass); color: var(--pb-brass-bright); }
+
+/* ---- Section heads (serif title + trailing hairline) ----------------- */
+.pb-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.pb-section-head-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--pb-text);
+  margin: 0;
+}
+
+.pb-section-head-title::after {
+  content: "";
+  width: 48px;
+  height: 1px;
+  background: var(--pb-line);
+  display: inline-block;
+}
+
+.pb-section-link {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pb-brass);
+  text-decoration: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pb-section-link:hover { color: var(--pb-brass-bright); }
+
+/* ---- League pulse stat bar ------------------------------------------- */
+.pb-pulse-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--pb-line);
+  overflow: hidden;
+  margin-bottom: 28px;
+}
+
+.pb-pulse-cell {
+  background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
+  padding: 22px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pb-pulse-value {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--pb-text);
+}
+
+.pb-pulse-label {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 10px;
+  color: var(--pb-faint);
+}
+
+/* ---- Match feed rows (mockup MatchRow) ------------------------------- */
+.pb-feed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  text-decoration: none;
+  transition: border-color 0.15s;
+}
+.pb-feed-row:hover { border-color: rgba(197, 169, 117, 0.5); }
+
+/* ---- Responsive ------------------------------------------------------ */
+@media (max-width: 760px) {
+  .pb-home-hero { padding: 40px 24px 36px; }
+  .pb-pulse-bar { grid-template-columns: repeat(2, 1fr); }
+  .oa-home-twocol { grid-template-columns: 1fr !important; }
+  .oa-home-pulse-row { grid-template-columns: 1fr !important; }
+}

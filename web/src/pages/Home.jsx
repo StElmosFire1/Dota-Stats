@@ -17,9 +17,59 @@ import LiveQueueWidget from '../components/LiveQueueWidget';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
+import '../styles/pressbox-home.css';
 
 // Season10LaunchBanner is now CMS-driven via web/src/components/HomeBanner.jsx
 // (settings key `home_banner`). The legacy hard-coded banner was removed in v5.76.
+
+// Press Box steam glyph — the live app has no icon package, so we inline a
+// tiny stroke/fill SVG to mirror the mockup's lucide-style Steam mark.
+function SteamGlyph({ size = 15 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 2C6.5 2 2 6.4 2 11.9c0 4.5 3 8.3 7.1 9.6l-1.4-2.1a3.3 3.3 0 0 1-1.9-3 3.3 3.3 0 0 1 3.3-3.3l.4.02 2.9-4.2v-.06a3.7 3.7 0 1 1 3.7 3.7h-.08l-4.1 2.9.01.3a3.3 3.3 0 0 1-6.1 1.7l-2.9-1.2A10 10 0 1 0 12 2Zm5.1 5.2a2.45 2.45 0 1 1-4.9 0 2.45 2.45 0 0 1 4.9 0Zm-3.7 0a1.23 1.23 0 1 0 2.46 0 1.23 1.23 0 0 0-2.46 0ZM7.6 16.8a2.5 2.5 0 0 0 4.6-1l-1.5-.6a1.27 1.27 0 0 1-1.7.7l-1.4.9Z" />
+    </svg>
+  );
+}
+
+// Press Box landing hero (mirrors upscale-2026/HomeSignedOut.tsx hero block):
+// brass eyebrow + serif headline + lede + Steam sign-in / explore CTAs.
+function SignedOutHero({ signIn }) {
+  return (
+    <section className="pb-home-hero" aria-labelledby="pb-home-hero-title">
+      <div className="pb-home-hero-inner">
+        <div className="pb-eyebrow pb-eyebrow-rule">Oceanic Dota 2 · Est. 2021</div>
+        <h1 id="pb-home-hero-title" className="pb-home-title">
+          The Premier <br />
+          <em>Oceanic Pro</em> League.
+        </h1>
+        <p className="pb-home-lede">
+          Competitive inhouse Dota for Oceania — captain drafts, dedicated servers,
+          TrueSkill rankings and nightly prize-pool lobbies. Sign in with Steam to
+          claim your rating and join the queue.
+        </p>
+        <div className="pb-hero-actions">
+          <button
+            type="button"
+            className="pb-btn-amber"
+            onClick={() => { if (signIn) signIn(); else window.location.href = '/auth/steam'; }}
+          >
+            <SteamGlyph />
+            Sign in with Steam
+          </button>
+          <Link to="/leaderboard" className="pb-btn-ghost">
+            Explore the League
+            <span aria-hidden="true">↗</span>
+          </Link>
+        </div>
+        <div className="pb-trust-line">
+          <span aria-hidden="true" style={{ color: 'var(--pb-brass)' }}>◈</span>
+          Free to join. No account needed beyond Steam — we never see your password.
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function JoinTheLeagueButton() {
   const enabled = useFeatureFlag('home_join_button');
@@ -248,45 +298,88 @@ function PersonalisedDashboard({ steamUser }) {
 
   return (
     <>
-      {/* Personal hero banner */}
+      {/* Personal hero banner — left: welcome + nav; right: "Your Status" card
+          (mirrors upscale-2026/Home.tsx Personal Welcome Strip). */}
       <div className="pb-card" style={{
-        padding: '28px 32px',
-        marginBottom: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 20,
+        padding: '28px 32px', marginBottom: 24,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexWrap: 'wrap', gap: 28,
       }}>
-        <div>
-          <div className="pb-eyebrow" style={{ marginBottom: 8 }}>
+        <div style={{ flex: '1 1 320px', minWidth: 280 }}>
+          <div className="pb-eyebrow pb-eyebrow-rule">
             Welcome back
           </div>
-          <h1 className="pb-page-title" style={{ margin: 0, fontSize: 34 }}>
+          <h1 className="pb-page-title" style={{ margin: 0, fontSize: 38 }}>
             {displayName}
           </h1>
           {!loading && homeData && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
-                  {homeData.mmr !== null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
+              {homeData.mmr !== null && (
                 <MmrBadge mmr={homeData.mmr} size="lg" isLeader={isLeader} />
               )}
               {homeData.games_played > 0 && (
-                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: 13, color: 'var(--pb-muted)' }}>
                   {homeData.wins}W – {homeData.losses}L
                 </span>
               )}
               {homeData.streak !== 0 && <StreakBadge streak={homeData.streak} />}
             </div>
           )}
-        </div>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {accountId && (
-            <Link to={`/player/${accountId}`} className="btn btn-primary" style={{ fontSize: 13 }}>
-              👤 My Profile
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 18 }}>
+            {accountId && (
+              <Link to={`/player/${accountId}`} className="btn btn-primary" style={{ fontSize: 13 }}>
+                My Profile
+              </Link>
+            )}
+            <Link to="/leaderboard" className="btn" style={{ fontSize: 13 }}>
+              Leaderboard
             </Link>
-          )}
-          <Link to="/leaderboard" className="btn" style={{ fontSize: 13 }}>
-            🏆 Leaderboard
-          </Link>
-          <Link to="/matches" className="btn" style={{ fontSize: 13 }}>
-            🎮 Matches
-          </Link>
+            <Link to="/matches" className="btn" style={{ fontSize: 13 }}>
+              Matches
+            </Link>
+          </div>
         </div>
+
+        {/* Your Status panel */}
+        {!loading && homeData && homeData.mmr !== null && (
+          <div className="pb-card" style={{
+            padding: '22px 26px', minWidth: 280, flex: '0 1 320px',
+            background: 'linear-gradient(180deg, var(--pb-surface-2) 0%, var(--pb-bg-2) 100%)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+              <span className="pb-eyebrow">Your Status</span>
+              {homeData.streak !== 0 && (
+                <span style={{
+                  fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
+                  color: homeData.streak > 0 ? 'var(--pb-radiant)' : 'var(--pb-dire)',
+                }}>
+                  {Math.abs(homeData.streak)}{homeData.streak > 0 ? 'W' : 'L'} streak
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 32, marginBottom: 18 }}>
+              <div>
+                <div className="pb-pulse-label" style={{ marginBottom: 4 }}>Rating</div>
+                <div className="pb-serif" style={{ fontSize: 40, fontWeight: 700, color: 'var(--pb-brass-bright)', lineHeight: 1 }}>
+                  {Math.round(homeData.mmr)}
+                </div>
+              </div>
+              {homeData.games_played > 0 && (
+                <div>
+                  <div className="pb-pulse-label" style={{ marginBottom: 4 }}>Win Rate</div>
+                  <div className="pb-serif" style={{ fontSize: 26, fontWeight: 700, color: 'var(--pb-text)', lineHeight: 1 }}>
+                    {Math.round((homeData.wins / homeData.games_played) * 100)}%
+                  </div>
+                </div>
+              )}
+            </div>
+            <div style={{ height: 1, background: 'var(--pb-line)', marginBottom: 12 }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--pb-muted)' }}>
+              <span>Games: <strong style={{ color: 'var(--pb-text)' }}>{homeData.games_played || 0}</strong></span>
+              <span>W/L: <strong style={{ color: 'var(--pb-text)' }}>{homeData.wins || 0}–{homeData.losses || 0}</strong></span>
+            </div>
+          </div>
+        )}
       </div>
 
       <MiniMmrChart accountId={accountId} />
@@ -298,14 +391,14 @@ function PersonalisedDashboard({ steamUser }) {
 
           {/* Last 3 matches */}
           <div className="pb-card" style={{ padding: 22 }}>
-            <h2 style={{ margin: '0 0 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span className="pb-section-title" style={{ fontSize: '0.95rem' }}>Recent Games</span>
+            <div className="pb-section-head" style={{ marginBottom: 16 }}>
+              <h2 className="pb-section-head-title" style={{ fontSize: 20 }}>Recent Games</h2>
               {accountId && (
-                <Link to={`/player/${accountId}`} className="pb-eyebrow" style={{ textDecoration: 'none' }}>
+                <Link to={`/player/${accountId}`} className="pb-section-link">
                   All matches →
                 </Link>
               )}
-            </h2>
+            </div>
             {homeData.last_matches?.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {homeData.last_matches.map(m => (
@@ -324,16 +417,16 @@ function PersonalisedDashboard({ steamUser }) {
             {homeData.games_played > 0 && (
               <div style={{ display: 'flex', gap: 12 }}>
                 <StatCard
-                  icon="🎮"
                   label="Games"
                   value={homeData.games_played}
+                  sub="This season"
                 />
                 <StatCard
-                  icon="📊"
                   label="Win rate"
                   value={homeData.games_played > 0
                     ? `${Math.round((homeData.wins / homeData.games_played) * 100)}%`
                     : '—'}
+                  sub={`${homeData.wins || 0}W – ${homeData.losses || 0}L`}
                 />
               </div>
             )}
@@ -386,7 +479,7 @@ function PersonalisedDashboard({ steamUser }) {
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <span style={{ fontSize: 12, color: '#22c55e', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    🎮 Active lobby
+                    Active lobby
                   </span>
                   <span style={{
                     fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10,
@@ -421,8 +514,8 @@ function PersonalisedDashboard({ steamUser }) {
                 background: 'linear-gradient(135deg, rgba(59,130,246,0.1) 0%, var(--bg-card) 100%)',
                 border: '1px solid rgba(59,130,246,0.3)', borderRadius: 12, padding: '16px 20px',
               }}>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-                  📅 Next scheduled game
+                <div className="pb-eyebrow" style={{ marginBottom: 8, color: 'var(--pb-amber)' }}>
+                  Next scheduled game
                 </div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
                   {new Date(homeData.upcoming_game.scheduled_at).toLocaleDateString('en-AU', {
@@ -448,7 +541,7 @@ function PersonalisedDashboard({ steamUser }) {
 }
 
 export default function Home() {
-  const { steamUser, loading: authLoading } = useSteamAuth() || {};
+  const { steamUser, loading: authLoading, signIn } = useSteamAuth() || {};
   const { seasonId } = useSeason();
   const [stats, setStats] = useState(null);
   const [recap, setRecap] = useState(null);
@@ -591,6 +684,7 @@ export default function Home() {
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
       <HomeBanner />
+      <SignedOutHero signIn={signIn} />
       <SponsorshipBanner slug="home_top" style={{ margin: '12px 0' }} />
 
       {tournamentBanner}
@@ -647,25 +741,12 @@ function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {
 
   return (
     <>
-      {/* Stats Strip */}
-      <div className="pb-card" style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-        gap: 1, background: 'var(--pb-line)',
-        overflow: 'hidden', marginBottom: 32,
-      }}>
+      {/* League pulse stat bar (mirrors HomeSignedOut.tsx Live League Pulse) */}
+      <div className="pb-card pb-pulse-bar">
         {stats.map((s, i) => (
-          <div key={i} style={{
-            background: 'var(--pb-surface)', padding: '22px 18px',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-          }}>
-            <div className="font-serif pb-serif" style={{
-              fontSize: 30, fontWeight: 700, color: 'var(--pb-brass-bright)', lineHeight: 1.1,
-            }}>{loading ? '—' : s.value}</div>
-            <div className="uppercase-wide" style={{
-              fontSize: 11, fontFamily: 'var(--font-condensed, inherit)',
-              color: 'var(--text-muted)', textTransform: 'uppercase',
-              letterSpacing: '0.15em', textAlign: 'center',
-            }}>{s.label}</div>
+          <div key={i} className="pb-pulse-cell">
+            <div className="pb-pulse-value">{loading ? '—' : s.value}</div>
+            <div className="pb-pulse-label">{s.label}</div>
           </div>
         ))}
       </div>

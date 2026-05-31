@@ -3,7 +3,27 @@
    shared .section-title / .stat-card / .stat-value classes. This is a
    re-skin only — no behaviour, data, layout or markup logic changes. */
 
-/* Section / column headers — Oswald condensed, uppercase, wide tracking. */
+/* ------------------------------------------------------------------
+   Surface palette remap (scoped). The live page paints dozens of inline
+   `var(--bg-card)` / `var(--border)` cards across every module. Re-pointing
+   those production tokens to the Press Box surface ramp inside .pb-profile
+   adopts the magazine look everywhere at once — without editing markup.
+   The premium magazine-v3 cover themes (newsprint/carbon/holo/heritage/
+   broadcast) override their own *aliased* tokens (--bg-card-2,
+   --border-subtle, --accent-brass) at higher specificity, so paid cover
+   cosmetics are untouched.
+   ------------------------------------------------------------------ */
+.pb-profile {
+  --bg-card: var(--pb-surface);
+  --bg-secondary: var(--pb-surface-2);
+  --bg-hover: var(--pb-elevated);
+  --border: var(--pb-line);
+}
+
+/* ------------------------------------------------------------------
+   Section / column headers — Oswald condensed, uppercase, wide tracking,
+   sitting over a brass editorial hairline like the mockup section rules.
+   ------------------------------------------------------------------ */
 .pb-profile .section-title {
   font-family: var(--font-condensed);
   text-transform: uppercase;
@@ -11,15 +31,26 @@
   font-size: 1rem;
   font-weight: 600;
   color: var(--pb-text);
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--pb-line);
 }
 
-/* Primary stat tiles & chart panels become Press Box cards: gradient
-   surface, brass hairline border, 16px radius, soft shadow. */
+/* ------------------------------------------------------------------
+   Primary stat tiles & chart panels become Press Box cards: gradient
+   surface, brass hairline border, 16px radius, soft shadow.
+   ------------------------------------------------------------------ */
 .pb-profile .stat-card {
   background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
   border: 1px solid var(--pb-line);
   border-radius: var(--pb-radius);
   box-shadow: var(--pb-shadow);
+}
+
+/* Compact averages tiles: lighter radius, drop the heavy drop-shadow so a
+   dense grid of small figures stays calm. */
+.pb-profile .stat-card.sm {
+  border-radius: var(--pb-radius-sm);
+  box-shadow: none;
 }
 
 /* Big stat numbers rendered as editorial Playfair serif figures. Inline
@@ -41,7 +72,78 @@
   color: var(--pb-faint);
 }
 
-/* Back link as a small condensed brass eyebrow. */
+/* ------------------------------------------------------------------
+   Scoreboard tables (Rivals, Hero Matchups, Position Breakdown, Most
+   Played Heroes, Recent Matches) — wrap in a Press Box card and give the
+   header row a condensed brass eyebrow over hairline body rows.
+   ------------------------------------------------------------------ */
+.pb-profile .scoreboard-wrapper {
+  background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
+  border: 1px solid var(--pb-line);
+  border-radius: var(--pb-radius);
+  box-shadow: var(--pb-shadow);
+  overflow: hidden;
+}
+
+.pb-profile .scoreboard th {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--pb-faint);
+  border-bottom: 1px solid var(--pb-line);
+  background: transparent;
+}
+
+.pb-profile .scoreboard td {
+  border-bottom: 1px solid var(--pb-line-soft);
+}
+
+.pb-profile .scoreboard tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.pb-profile .scoreboard tbody tr:hover {
+  background: var(--pb-elevated);
+}
+
+/* Hero / player name column reads as a serif editorial label. */
+.pb-profile .scoreboard .col-player,
+.pb-profile .scoreboard .col-hero {
+  font-family: var(--font-serif);
+}
+
+/* In-table links lean brass to match the Press Box accent. */
+.pb-profile .scoreboard .player-link,
+.pb-profile .scoreboard a {
+  color: var(--pb-brass);
+}
+.pb-profile .scoreboard .player-link:hover,
+.pb-profile .scoreboard a:hover {
+  color: var(--pb-brass-bright);
+}
+
+/* ------------------------------------------------------------------
+   Anchor rail + pinned-achievement ribbon — condensed brass eyebrows so
+   the page chrome matches the editorial type system.
+   ------------------------------------------------------------------ */
+.pb-profile .v3-anchor-label,
+.pb-profile .v3-pinned-ribbon-label {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.pb-profile .v3-pinned-ribbon-sub {
+  font-family: var(--font-condensed);
+  letter-spacing: 0.04em;
+  color: var(--pb-faint);
+}
+
+/* ------------------------------------------------------------------
+   Back link as a small condensed brass eyebrow.
+   ------------------------------------------------------------------ */
 .pb-profile .back-link {
   font-family: var(--font-condensed);
   text-transform: uppercase;
@@ -51,4 +153,27 @@
 }
 .pb-profile .back-link:hover {
   color: var(--pb-brass-bright);
+}
+
+/* ------------------------------------------------------------------
+   Compare drawer — title as serif lockup, table header as brass eyebrow.
+   ------------------------------------------------------------------ */
+.pb-profile .v3-compare-title,
+.v3-compare-drawer .v3-compare-title {
+  font-family: var(--font-serif);
+  letter-spacing: 0.01em;
+}
+
+.v3-compare-drawer .v3-compare-table th {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  color: var(--pb-faint);
+}
+
+.v3-compare-drawer .v3-compare-label {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
 }

@@ -28,6 +28,145 @@
   font-weight: 700;
 }
 
+/* ---- Centered scoreline header (mirrors the mockup result block) --- */
+.pb-match .pb-match-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.pb-match .pb-scoreline-eyebrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.pb-match .pb-eyebrow-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--pb-faint);
+  opacity: 0.5;
+}
+
+.pb-match .pb-scoreline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(1.5rem, 5vw, 3.5rem);
+  width: 100%;
+  max-width: 900px;
+}
+
+.pb-match .pb-scoreline-team {
+  flex: 1;
+  min-width: 0;
+}
+
+.pb-match .pb-scoreline-team.radiant {
+  text-align: right;
+}
+
+.pb-match .pb-scoreline-team.dire {
+  text-align: left;
+}
+
+.pb-match .pb-scoreline-name {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  color: var(--pb-text);
+  margin: 0 0 0.35rem;
+}
+
+.pb-match .pb-scoreline-team:not(.is-winner) .pb-scoreline-name {
+  opacity: 0.6;
+}
+
+.pb-match .pb-scoreline-state {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.pb-match .pb-scoreline-team.radiant .pb-scoreline-state {
+  color: var(--pb-radiant);
+}
+
+.pb-match .pb-scoreline-team.dire .pb-scoreline-state {
+  color: var(--pb-dire);
+}
+
+.pb-match .pb-scoreline-team:not(.is-winner) .pb-scoreline-state {
+  color: var(--pb-faint);
+}
+
+.pb-match .pb-scoreline-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.pb-match .pb-scoreline-score {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.75rem, 2vw, 1.5rem);
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-size: clamp(2.75rem, 7vw, 4.5rem);
+  color: var(--pb-brass-bright);
+  line-height: 1;
+}
+
+.pb-match .pb-score-dash {
+  font-size: 0.55em;
+  color: var(--pb-faint);
+}
+
+.pb-match .pb-scoreline-duration {
+  margin-top: 1rem;
+  padding: 0.35rem 1rem;
+  border: 1px solid var(--pb-line);
+  border-radius: 999px;
+  background: var(--pb-surface);
+  font-family: var(--font-condensed);
+  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  color: var(--pb-muted);
+}
+
+.pb-match .pb-match-meta {
+  justify-content: center;
+  margin-top: 1.5rem;
+  font-size: 0.85rem;
+}
+
+/* ---- Section divider (mirrors mockup's hairline + eyebrow rule) ---- */
+.pb-match .pb-section-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin: 2rem 0 1.5rem;
+}
+
+.pb-match .pb-section-divider-rule {
+  height: 1px;
+  width: 48px;
+  background: var(--pb-line);
+}
+
 /* ---- Panels become Press Box cards --------------------------------- */
 .pb-match .expanded-stats-section {
   background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
@@ -63,6 +202,54 @@
   border-radius: 0;
   border-bottom: 1px solid var(--pb-line) !important;
   background: var(--pb-bg-2);
+  padding: 0.85rem 1.25rem;
+}
+
+/* Team header: identity (crest + name + winner) left, totals right. */
+.pb-match .pb-team-ident {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.pb-match .pb-team-crest {
+  flex-shrink: 0;
+}
+
+.pb-match .pb-team-ident .team-name {
+  font-family: var(--font-condensed);
+  letter-spacing: 0.2em;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.pb-match .pb-team-totals {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.pb-match .pb-team-total {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.pb-match .pb-team-total-num {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--pb-brass-bright);
+  letter-spacing: 0;
+}
+
+.pb-match .pb-team-total-lbl {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--pb-faint);
 }
 
 .pb-match .team-header.radiant {

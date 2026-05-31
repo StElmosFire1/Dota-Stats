@@ -177,72 +177,125 @@ function StreakBadge({ streak }) {
 }
 
 
+// Small inline icons (no icon library in the live app — see plan rule #5).
+function IconTrendingUp() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+      <polyline points="16 7 22 7 22 13" />
+    </svg>
+  );
+}
+function IconAward() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="8" r="6" />
+      <path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11" />
+    </svg>
+  );
+}
+
+// Circular avatar disc mirroring the mockup's gradient spotlight portrait.
+function SpotlightAvatar({ name }) {
+  const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
+        border: '1px solid var(--pb-line)',
+        background: 'linear-gradient(135deg, var(--pb-elevated), var(--pb-surface-2))',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: 'var(--font-serif)', fontSize: 19, fontWeight: 700,
+        color: 'var(--pb-brass-bright)',
+      }}
+    >
+      {initial}
+    </div>
+  );
+}
+
 function MostImprovedWidget({ data, loading, seasonLabel }) {
   const eyebrow = 'Most Improved';
   const subLabel = seasonLabel || 'Last 30 days';
   const proMembers = useProMembers();
   if (loading) return (
-    <div className="pb-card" style={{ padding: '16px 20px', marginBottom: 24 }}>
+    <div className="pb-card pb-spotlight">
+      <div className="pb-spotlight-head">
+        <div className="pb-eyebrow">{eyebrow}</div>
+        <span className="pb-spotlight-icon"><IconTrendingUp /></span>
+      </div>
       <div style={{ color: 'var(--pb-faint)', fontSize: 13 }}>Loading most improved…</div>
     </div>
   );
 
   if (!data || data.length === 0) return (
-    <div className="pb-card" style={{ padding: '16px 20px', marginBottom: 24 }}>
-      <div className="pb-eyebrow" style={{ marginBottom: 6 }}>{eyebrow}</div>
+    <div className="pb-card pb-spotlight">
+      <div className="pb-spotlight-head">
+        <div className="pb-eyebrow">{eyebrow}</div>
+        <span className="pb-spotlight-icon"><IconTrendingUp /></span>
+      </div>
       <div style={{ color: 'var(--pb-faint)', fontSize: 13 }}>
         Not enough rating history yet — data accumulates after more matches.
       </div>
     </div>
   );
 
+  const ranked = data.slice(0, 5);
+  const [top, ...rest] = ranked;
+
   return (
-    <div className="pb-card" style={{ padding: '18px 22px', marginBottom: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+    <div className="pb-card pb-spotlight">
+      <div className="pb-spotlight-head">
         <div className="pb-eyebrow">{eyebrow}</div>
-        <span style={{ fontSize: 11, color: 'var(--pb-faint)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>{subLabel}</span>
+        <span className="pb-spotlight-icon"><IconTrendingUp /></span>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-        {data.slice(0, 5).map((p, i) => (
-          <div key={p.account_id} className="pb-card-sm" style={{
-            background: 'var(--pb-surface-2)', border: '1px solid var(--pb-line)',
-            padding: '10px 14px', minWidth: 140, flex: '1 1 140px',
-            display: 'flex', flexDirection: 'column', gap: 4,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{
-                fontFamily: 'var(--font-serif)', fontSize: 13, fontWeight: 700, color: 'var(--pb-brass-bright)',
-              }}>#{i + 1}</span>
-              <Link to={`/player/${p.account_id}`} style={{
-                fontWeight: 600, fontSize: 13, color: 'var(--pb-text)',
-                textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-              }}>
-                {p.display_name}
-                {proMembers.has(String(p.account_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(p.account_id) ? 'founder' : 'pro'} />}
-              </Link>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: 'var(--pb-faint)' }}>MMR</span>
-              <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 700, fontSize: 15 }}>{p.current_mmr}</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: 'var(--pb-faint)' }}>Gained</span>
-              <span style={{
-                fontFamily: 'var(--font-serif)', fontWeight: 700, fontSize: 15,
-                color: Number(p.mmr_delta) > 0 ? 'var(--pb-radiant)' : 'var(--pb-faint)',
-              }}>
-                +{p.mmr_delta}
+
+      <div className="pb-spotlight-feature">
+        <SpotlightAvatar name={top.display_name} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <Link to={`/player/${top.account_id}`} className="pb-spotlight-name">
+            {top.display_name}
+            {proMembers.has(String(top.account_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(top.account_id) ? 'founder' : 'pro'} />}
+          </Link>
+          <div className="pb-spotlight-statline">
+            <span className="pb-spotlight-stat" style={{ color: Number(top.mmr_delta) > 0 ? 'var(--pb-radiant)' : 'var(--pb-faint)' }}>
+              {Number(top.mmr_delta) > 0 ? '+' : ''}{top.mmr_delta} MMR
+            </span>
+            <span className="pb-spotlight-sub">
+              — {subLabel}{top.current_mmr != null ? ` · now ${top.current_mmr}` : ''}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {rest.length > 0 && (
+        <div className="pb-spotlight-rest">
+          {rest.map((p, i) => (
+            <div key={p.account_id} className="pb-spotlight-row">
+              <span className="pb-spotlight-rank">{i + 2}</span>
+              <div className="pb-spotlight-rowmain">
+                <Link to={`/player/${p.account_id}`} className="pb-spotlight-rowname" style={{ flex: '0 0 auto' }}>
+                  {p.display_name}
+                  {proMembers.has(String(p.account_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(p.account_id) ? 'founder' : 'pro'} />}
+                </Link>
+                {(p.current_mmr != null || p.games_in_period > 0) && (
+                  <span className="pb-spotlight-rowsub">
+                    {p.current_mmr != null ? `now ${p.current_mmr}` : ''}
+                    {p.current_mmr != null && p.games_in_period > 0 ? ' · ' : ''}
+                    {p.games_in_period > 0 ? `${p.games_in_period} game${p.games_in_period !== 1 ? 's' : ''} this period` : ''}
+                  </span>
+                )}
+              </div>
+              <span className="pb-spotlight-rowval" style={{ color: Number(p.mmr_delta) > 0 ? 'var(--pb-radiant)' : 'var(--pb-faint)' }}>
+                {Number(p.mmr_delta) > 0 ? '+' : ''}{p.mmr_delta}
               </span>
             </div>
-            {p.games_in_period > 0 && (
-              <div style={{ fontSize: 11, color: 'var(--pb-faint)' }}>
-                {p.games_in_period} game{p.games_in_period !== 1 ? 's' : ''} this period
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -252,21 +305,6 @@ function BestAndFairestWidget({ data, loading, seasonLabel }) {
   const subLabel = seasonLabel || 'All Time';
   const proMembers = useProMembers();
 
-  if (loading) return (
-    <div className="pb-card" style={{ padding: '16px 20px', marginBottom: 24 }}>
-      <div style={{ color: 'var(--pb-faint)', fontSize: 13 }}>Loading best & fairest…</div>
-    </div>
-  );
-
-  if (!data || data.length === 0) return (
-    <div className="pb-card" style={{ padding: '16px 20px', marginBottom: 24 }}>
-      <div className="pb-eyebrow" style={{ marginBottom: 6 }}>{eyebrow}</div>
-      <div style={{ color: 'var(--pb-faint)', fontSize: 13 }}>
-        Not enough attitude ratings yet — needs at least 3 ratings per player.
-      </div>
-    </div>
-  );
-
   function attitudeColor(score) {
     const n = parseFloat(score);
     if (n >= 8) return '#4ade80';
@@ -274,47 +312,77 @@ function BestAndFairestWidget({ data, loading, seasonLabel }) {
     return '#f87171';
   }
 
-  return (
-    <div className="pb-card" style={{ padding: '18px 22px', marginBottom: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+  if (loading) return (
+    <div className="pb-card pb-spotlight">
+      <div className="pb-spotlight-head">
         <div className="pb-eyebrow">{eyebrow}</div>
-        <span style={{ fontSize: 11, color: 'var(--pb-faint)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>{subLabel}</span>
+        <span className="pb-spotlight-icon"><IconAward /></span>
       </div>
-      <div style={{ fontSize: 12, color: 'var(--pb-faint)', marginBottom: 14 }}>
-        Average attitude rating received from teammates (min. 3 ratings)
+      <div style={{ color: 'var(--pb-faint)', fontSize: 13 }}>Loading best & fairest…</div>
+    </div>
+  );
+
+  if (!data || data.length === 0) return (
+    <div className="pb-card pb-spotlight">
+      <div className="pb-spotlight-head">
+        <div className="pb-eyebrow">{eyebrow}</div>
+        <span className="pb-spotlight-icon"><IconAward /></span>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-        {data.slice(0, 5).map((p, i) => (
-          <div key={p.account_id} className="pb-card-sm" style={{
-            background: 'var(--pb-surface-2)', border: '1px solid var(--pb-line)',
-            padding: '10px 14px', minWidth: 140, flex: '1 1 140px',
-            display: 'flex', flexDirection: 'column', gap: 4,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{
-                fontFamily: 'var(--font-serif)', fontSize: 13, fontWeight: 700, color: 'var(--pb-brass-bright)',
-              }}>#{i + 1}</span>
-              <Link to={`/player/${p.account_id}`} style={{
-                fontWeight: 600, fontSize: 13, color: 'var(--pb-text)',
-                textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-              }}>
-                {p.display_name || `Player ${p.account_id}`}
-                {proMembers.has(String(p.account_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(p.account_id) ? 'founder' : 'pro'} />}
-              </Link>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 12, color: 'var(--pb-faint)' }}>Attitude</span>
-              <span style={{ fontFamily: 'var(--font-serif)', fontWeight: 700, fontSize: 17, color: attitudeColor(p.avg_attitude) }}>
-                {parseFloat(p.avg_attitude).toFixed(1)}<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--pb-faint)', fontFamily: 'var(--font)' }}>/10</span>
+      <div style={{ color: 'var(--pb-faint)', fontSize: 13 }}>
+        Not enough attitude ratings yet — needs at least 3 ratings per player.
+      </div>
+    </div>
+  );
+
+  const ranked = data.slice(0, 5);
+  const [top, ...rest] = ranked;
+
+  return (
+    <div className="pb-card pb-spotlight">
+      <div className="pb-spotlight-head">
+        <div className="pb-eyebrow">{eyebrow}</div>
+        <span className="pb-spotlight-icon"><IconAward /></span>
+      </div>
+
+      <div className="pb-spotlight-feature">
+        <SpotlightAvatar name={top.display_name || `Player ${top.account_id}`} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <Link to={`/player/${top.account_id}`} className="pb-spotlight-name">
+            {top.display_name || `Player ${top.account_id}`}
+            {proMembers.has(String(top.account_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(top.account_id) ? 'founder' : 'pro'} />}
+          </Link>
+          <div className="pb-spotlight-statline">
+            <span className="pb-spotlight-stat" style={{ color: attitudeColor(top.avg_attitude) }}>
+              {parseFloat(top.avg_attitude).toFixed(1)}<span style={{ fontSize: 13, fontWeight: 400, color: 'var(--pb-faint)', fontFamily: 'var(--font)' }}>/10</span>
+            </span>
+            <span className="pb-spotlight-sub">
+              — {top.total_ratings} rating{top.total_ratings !== '1' ? 's' : ''} · {subLabel}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {rest.length > 0 && (
+        <div className="pb-spotlight-rest">
+          {rest.map((p, i) => (
+            <div key={p.account_id} className="pb-spotlight-row">
+              <span className="pb-spotlight-rank">{i + 2}</span>
+              <div className="pb-spotlight-rowmain">
+                <Link to={`/player/${p.account_id}`} className="pb-spotlight-rowname" style={{ flex: '0 0 auto' }}>
+                  {p.display_name || `Player ${p.account_id}`}
+                  {proMembers.has(String(p.account_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(p.account_id) ? 'founder' : 'pro'} />}
+                </Link>
+                <span className="pb-spotlight-rowsub">
+                  {p.total_ratings} rating{p.total_ratings !== '1' ? 's' : ''}
+                </span>
+              </div>
+              <span className="pb-spotlight-rowval" style={{ color: attitudeColor(p.avg_attitude) }}>
+                {parseFloat(p.avg_attitude).toFixed(1)}
               </span>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--pb-faint)' }}>
-              {p.total_ratings} rating{p.total_ratings !== '1' ? 's' : ''}
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -403,6 +471,7 @@ export default function Leaderboard() {
   const [playerForm, setPlayerForm] = useState({});
   const [xpMap, setXpMap] = useState({});
   const [dbTiers, setDbTiers] = useState(null);
+  const [query, setQuery] = useState('');
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -459,34 +528,59 @@ export default function Leaderboard() {
 
   if (loading) return <div className="loading">Loading leaderboard...</div>;
 
+  const currentSeason = seasons.find(s => String(s.id) === String(seasonId)) || null;
+  const seasonLabel = currentSeason ? (currentSeason.name || `Season ${currentSeason.id}`) : 'All Seasons';
+  const endsInText = (() => {
+    if (!currentSeason?.active || !currentSeason?.end_date) return null;
+    const diffMs = new Date(currentSeason.end_date) - new Date();
+    if (diffMs <= 0) return 'Ending soon';
+    const days = Math.floor(diffMs / 86400000);
+    const hours = Math.floor((diffMs % 86400000) / 3600000);
+    return `${days}d : ${String(hours).padStart(2, '0')}h`;
+  })();
+
   return (
     <div className="pb-leaderboard">
-      <header style={{ marginBottom: 20 }}>
-        <div className="pb-eyebrow" style={{ marginBottom: 8 }}>Competitive Ladder</div>
-        <h1 className="pb-page-title" style={{ fontSize: '2.6rem', margin: 0 }}>Seasonal Rankings</h1>
+      <header className="pb-lb-header">
+        <div>
+          <div className="pb-eyebrow pb-lb-eyebrow" style={{ marginBottom: 8 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M14.5 17.5 3 6V3h3l11.5 11.5" />
+              <path d="m13 19 6-6" /><path d="m16 16 4 4" /><path d="m19 21 2-2" />
+              <path d="M14.5 6.5 18 3h3v3l-3.5 3.5" />
+              <path d="m5 14 6 6" /><path d="m8 16-4 4" /><path d="m5 19-2-2" />
+            </svg>
+            Competitive Ladder
+          </div>
+          <h1 className="pb-page-title" style={{ fontSize: '2.6rem', margin: 0 }}>Seasonal Rankings</h1>
+        </div>
+
+        <div className="pb-lb-header-meta">
+          {endsInText && (
+            <div className="pb-lb-meta-block">
+              <span className="pb-lb-meta-eyebrow">Ends In</span>
+              <span className="pb-lb-meta-value">{endsInText}</span>
+            </div>
+          )}
+          {endsInText && <span className="pb-lb-meta-divider" aria-hidden="true" />}
+          <div className="pb-lb-meta-block">
+            <span className="pb-lb-meta-eyebrow">Season</span>
+            <span className="pb-lb-season-chip">{seasonLabel}</span>
+          </div>
+        </div>
       </header>
 
       <SponsorshipBanner slug="leaderboard_top" style={{ margin: '12px 0' }} />
 
       {/* Season end conditions banner */}
-      {(() => {
-        const season = seasons.find(s => String(s.id) === String(seasonId));
-        return season?.active ? <SeasonEndBanner season={season} /> : null;
-      })()}
+      {currentSeason?.active ? <SeasonEndBanner season={currentSeason} /> : null}
 
-      {/* Most Improved Widget */}
-      {(() => {
-        const season = seasons.find(s => s.id === seasonId);
-        const seasonLabel = season ? (season.name || `Season ${season.id}`) : null;
-        return <MostImprovedWidget data={improved} loading={improvedLoading} seasonLabel={seasonLabel} />;
-      })()}
-
-      {/* Best & Fairest Widget */}
-      {(() => {
-        const season = seasons.find(s => s.id === seasonId);
-        const seasonLabel = season ? (season.name || `Season ${season.id}`) : null;
-        return <BestAndFairestWidget data={bestFairest} loading={bestFairestLoading} seasonLabel={seasonLabel} />;
-      })()}
+      {/* Spotlights — Most Improved + Best & Fairest as paired Press Box cards */}
+      <div className="pb-spotlights">
+        <MostImprovedWidget data={improved} loading={improvedLoading} seasonLabel={seasonLabel} />
+        <BestAndFairestWidget data={bestFairest} loading={bestFairestLoading} seasonLabel={seasonLabel} />
+      </div>
 
       {/* Tier legend — worst to best left to right */}
       <div className="pb-card" style={{
@@ -542,11 +636,23 @@ export default function Leaderboard() {
         </div>
       ) : (
         <div className="pb-card" style={{ overflow: 'hidden' }}>
-          <div style={{
-            padding: '14px 20px', borderBottom: '1px solid var(--pb-line)',
-            background: 'var(--pb-surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          }}>
+          <div className="pb-lb-table-head">
             <h2 className="pb-section-title" style={{ margin: 0 }}>Global Standings</h2>
+            <div className="pb-lb-search">
+              <svg className="pb-lb-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search player…"
+                aria-label="Search players by name"
+                className="pb-lb-search-input"
+              />
+            </div>
           </div>
           <div className="scoreboard-wrapper">
           <table className="scoreboard leaderboard-table">
@@ -571,13 +677,27 @@ export default function Leaderboard() {
               </tr>
             </thead>
             <tbody>
-              {data.leaderboard.map((p, i) => {
+              {(() => {
+                const q = query.trim().toLowerCase();
+                const ranked = data.leaderboard
+                  .map((p, i) => ({ p, rank: i + 1 }))
+                  .filter(({ p }) => !q || String(p.nickname || p.display_name || p.player_id || '').toLowerCase().includes(q));
+                if (ranked.length === 0) {
+                  return (
+                    <tr>
+                      <td colSpan={showSeasonPass ? 14 : 13} style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--pb-faint)' }}>
+                        No players match “{query}”.
+                      </td>
+                    </tr>
+                  );
+                }
+                return ranked.map(({ p, rank }) => {
                 const winRate = p.games_played > 0
                   ? ((p.wins / p.games_played) * 100).toFixed(1)
                   : '0.0';
                 return (
-                  <tr key={p.player_id} className={i < 3 ? `rank-${i + 1}` : ''}>
-                    <td className="col-rank"><span className="pb-rank-disc">{i + 1}</span></td>
+                  <tr key={p.player_id} className={rank <= 3 ? `rank-${rank}` : ''}>
+                    <td className="col-rank"><span className="pb-rank-disc">{rank}</span></td>
                     <td className="col-player">
                       {(() => {
                         const frameMeta = p.profile_frame ? FRAME_META[p.profile_frame] : null;
@@ -610,7 +730,7 @@ export default function Leaderboard() {
                         leaderboardRank={p.dota_leaderboard_rank}
                       />
                     </td>
-                    <td className="col-stat"><TierBadge mmr={p.mmr} dbTiers={dbTiers} isLeader={i === 0} /></td>
+                    <td className="col-stat"><TierBadge mmr={p.mmr} dbTiers={dbTiers} isLeader={rank === 1} /></td>
                     <td className="col-stat mmr">{p.mmr}</td>
                     <td className="col-stat col-wl-hide wins">{p.wins}</td>
                     <td className="col-stat col-wl-hide losses">{p.losses}</td>
@@ -645,7 +765,8 @@ export default function Leaderboard() {
                     )}
                   </tr>
                 );
-              })}
+                });
+              })()}
             </tbody>
           </table>
           </div>

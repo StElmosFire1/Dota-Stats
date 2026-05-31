@@ -1321,12 +1321,34 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
   const hasDetailedStats = players.some(p => p.gpm > 0 || p.hero_damage > 0);
   const hasItems = players.some(p => p.items && p.items.length > 0);
   const hasLane = players.some(p => laneOutcomes && laneOutcomes[p.slot]);
+  const teamKills = players.reduce((s, p) => s + (p.kills || 0), 0);
+  const teamNet = players.reduce((s, p) => s + (p.net_worth || 0), 0);
+  const teamColor = teamName === 'radiant' ? 'var(--pb-radiant)' : 'var(--pb-dire)';
 
   return (
     <div className={`team-section ${teamName}`}>
       <div className={`team-header ${teamName}`}>
-        <span className="team-name">{teamName === 'radiant' ? 'Radiant' : 'Dire'}</span>
-        {isWinner && <span className="winner-badge">Winner</span>}
+        <div className="pb-team-ident">
+          <svg className="pb-team-crest" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"
+            style={{ color: teamColor }}>
+            <path d="M12 2 4 5v6c0 5 3.4 9 8 11 4.6-2 8-6 8-11V5l-8-3Z"
+              fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+          </svg>
+          <span className="team-name">{teamName === 'radiant' ? 'Radiant' : 'Dire'}</span>
+          {isWinner && <span className="winner-badge">Winner</span>}
+        </div>
+        <div className="pb-team-totals">
+          <span className="pb-team-total">
+            <span className="pb-team-total-num">{teamKills}</span>
+            <span className="pb-team-total-lbl">Kills</span>
+          </span>
+          {teamNet > 0 && (
+            <span className="pb-team-total">
+              <span className="pb-team-total-num">{(teamNet / 1000).toFixed(1)}k</span>
+              <span className="pb-team-total-lbl">Net</span>
+            </span>
+          )}
+        </div>
       </div>
       <div className="scoreboard-wrapper">
         <table className="scoreboard">
@@ -4122,6 +4144,8 @@ function MatchDetailInner() {
     return ranks;
   })();
   const laneOutcomes = computeLaneOutcomes(allPlayers);
+  const radiantKillTotal = radiant.reduce((s, p) => s + (p.kills || 0), 0);
+  const direKillTotal = dire.reduce((s, p) => s + (p.kills || 0), 0);
 
   // Map of raw account_id → V3 modifier breakdown for fast scoreboard lookup.
   const v3ModifierMap = (() => {
@@ -4377,20 +4401,47 @@ function MatchDetailInner() {
 
       <SponsorshipBanner slug="match_sidebar" style={{ margin: '12px 0' }} />
 
-      <div className="match-detail-header">
-        <div className="pb-match-eyebrow">Post-Game Breakdown</div>
-        <h1>Match #{match.match_id}</h1>
-        <div className="match-meta">
-          <span className={`match-result ${match.radiant_win ? 'radiant' : 'dire'}`}>
-            {match.radiant_win ? 'Radiant' : 'Dire'} Victory
-          </span>
-          <span title={formatDuration(match.duration)}>Duration: {formatDurationLong(match.duration)}</span>
+      <div className="match-detail-header pb-match-header">
+        <div className="pb-match-eyebrow pb-scoreline-eyebrow">
           <span>
             {new Date(match.date).toLocaleDateString('en-AU', {
               day: 'numeric', month: 'short', year: 'numeric',
-              hour: '2-digit', minute: '2-digit',
               timeZone: 'Australia/Sydney',
             })}
+          </span>
+          <span className="pb-eyebrow-dot" aria-hidden="true" />
+          {match.season_id ? (() => {
+            const s = seasons.find(x => x.id === match.season_id);
+            return <span>{s ? s.name : `Season ${match.season_id}`}</span>;
+          })() : <span>Post-Game Breakdown</span>}
+          <span className="pb-eyebrow-dot" aria-hidden="true" />
+          <span>Match #{match.match_id}</span>
+        </div>
+
+        <div className="pb-scoreline">
+          <div className={`pb-scoreline-team radiant${match.radiant_win ? ' is-winner' : ''}`}>
+            <h1 className="pb-scoreline-name">Radiant</h1>
+            <div className="pb-scoreline-state">{match.radiant_win ? 'Winner' : 'Defeated'}</div>
+          </div>
+          <div className="pb-scoreline-center">
+            <div className="pb-scoreline-score">
+              <span className="pb-score-num">{radiantKillTotal}</span>
+              <span className="pb-score-dash">–</span>
+              <span className="pb-score-num">{direKillTotal}</span>
+            </div>
+            <div className="pb-scoreline-duration" title={formatDurationLong(match.duration)}>
+              {formatDuration(match.duration)}
+            </div>
+          </div>
+          <div className={`pb-scoreline-team dire${!match.radiant_win ? ' is-winner' : ''}`}>
+            <h1 className="pb-scoreline-name">Dire</h1>
+            <div className="pb-scoreline-state">{match.radiant_win ? 'Defeated' : 'Winner'}</div>
+          </div>
+        </div>
+
+        <div className="match-meta pb-match-meta">
+          <span className={`match-result ${match.radiant_win ? 'radiant' : 'dire'}`}>
+            {match.radiant_win ? 'Radiant' : 'Dire'} Victory
           </span>
           {match.parse_method && <span className="parse-badge">{match.parse_method}</span>}
           {match.patch && <span className="patch-badge">Patch {match.patch}</span>}
@@ -4422,6 +4473,12 @@ function MatchDetailInner() {
           <ReplayViewerLink match={match} />
           <SubmitReplayButton match={match} steamUser={steamUser} onUploaded={() => getMatch(matchId).then(setMatch).catch(() => {})} />
         </div>
+      </div>
+
+      <div className="pb-section-divider" role="presentation">
+        <span className="pb-section-divider-rule" />
+        <span className="pb-eyebrow">Post-Game Breakdown</span>
+        <span className="pb-section-divider-rule" />
       </div>
 
       <DraftDisplay draft={match.draft} />
