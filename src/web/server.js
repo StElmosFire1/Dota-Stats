@@ -5584,6 +5584,19 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #652 — clear the backlog in one click: resend the one-shot "prize
+  // landed" receipt for every currently-unsent paid payout. Reuses the same
+  // sweep the background cron runs (`_notifyPaidPayoutWinners()`), which only
+  // targets `paid_notified_at IS NULL` rows, then returns how many were sent.
+  router.post('/admin/tournament-payouts/resend-all-receipts', requireSuperuser, async (req, res) => {
+    try {
+      const { notified } = await _notifyPaidPayoutWinners();
+      res.json({ ok: true, notified });
+    } catch (err) {
+      res.status(400).json({ error: err.message || 'Failed to resend receipts' });
+    }
+  });
+
   router.post('/admin/tournament-payouts/:payoutId/retry', requireSuperuser, async (req, res) => {
     try {
       const row = await db.getTournamentPayoutRow(req.params.payoutId);

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
@@ -7507,6 +7507,8 @@ function PaidPayoutReceiptsPanel() {
   const [rows, setRows] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [feedback, setFeedback] = useState(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkFeedback, setBulkFeedback] = useState(null);
 
   const load = useCallback(() => {
     if (!superuserKey) return;
@@ -7531,6 +7533,21 @@ function PaidPayoutReceiptsPanel() {
     }
   };
 
+  const handleResendAll = async () => {
+    setBulkBusy(true);
+    setBulkFeedback(null);
+    try {
+      const d = await resendAllPayoutReceipts(superuserKey);
+      const n = d?.notified || 0;
+      setBulkFeedback({ ok: true, text: n === 0 ? 'Nothing to send' : `Sent ${n} receipt${n === 1 ? '' : 's'}` });
+      load();
+    } catch (e) {
+      setBulkFeedback({ ok: false, text: e.message || 'Failed to resend' });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   if (!rows || rows.length === 0) return null;
 
   const total = rows.reduce((s, p) => s + (p.amount_cents || 0), 0);
@@ -7538,7 +7555,24 @@ function PaidPayoutReceiptsPanel() {
 
   return (
     <div style={{ marginTop: 20, background: 'rgba(34,197,94,0.06)', border: '1px solid #22c55e', borderRadius: 10, padding: 16 }}>
-      <h3 style={{ marginTop: 0, marginBottom: 6, fontSize: 14, color: '#22c55e' }}>✅ Prize receipts sent ({rows.length})</h3>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+        <h3 style={{ margin: 0, fontSize: 14, color: '#22c55e' }}>✅ Prize receipts sent ({rows.length})</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {bulkFeedback && (
+            <span style={{ fontSize: 11, color: bulkFeedback.ok ? '#22c55e' : 'var(--amber)' }}>{bulkFeedback.text}</span>
+          )}
+          <button
+            type="button"
+            className="btn"
+            style={{ fontSize: 11, padding: '4px 10px' }}
+            disabled={bulkBusy || unsent === 0}
+            onClick={handleResendAll}
+            title={unsent === 0 ? 'Every paid prize has already been receipted' : `Resend the prize receipt to all ${unsent} unsent winner${unsent === 1 ? '' : 's'}`}
+          >
+            {bulkBusy ? 'Sending…' : `Resend all unsent (${unsent})`}
+          </button>
+        </div>
+      </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 12 }}>
         Recently-paid prizes (totalling ${(total / 100).toFixed(2)}) and whether each winner has been sent their
         "prize landed" receipt.{unsent > 0 && <> <span style={{ color: 'var(--amber)' }}>{unsent} paid but not yet receipted — chase if this persists.</span></>}

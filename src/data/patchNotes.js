@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.80",
+    "title": "Resend every unsent prize receipt in one click",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**What.** The admin \"Prize receipts sent\" card already had a per-row \"Resend receipt\" button. It now also has a header-level **Resend all unsent** button that clears the whole backlog in one go — handy when several winners are missing their \"prize landed\" receipt at once.",
+      "**How it works.** The button is enabled only when at least one paid prize hasn't been receipted yet, and it shows the count. Clicking it runs the same one-shot sweep the background cron uses (which only targets winners who haven't been notified), then reports how many receipts were sent and refreshes the card.",
+      "**Scope.** Full edition only — superuser-gated. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.79",
     "title": "Growth Coach now tells you how to close each gap",
     "published_at": "2026-05-31",

@@ -1889,6 +1889,15 @@ export async function resendPayoutReceipt(payoutId, superuserKey) {
   if (!res.ok) throw new Error(d.error || 'Failed to resend receipt');
   return d;
 }
+// Task #652 — resend the "prize landed" receipt for every currently-unsent paid payout.
+export async function resendAllPayoutReceipts(superuserKey) {
+  const res = await superuserFetch(BASE + `/admin/tournament-payouts/resend-all-receipts`, {
+    method: 'POST', headers: { 'x-superuser-key': superuserKey },
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed to resend receipts');
+  return d;
+}
 export async function retryFailedTournamentPayout(payoutId, superuserKey) {
   const res = await superuserFetch(BASE + `/admin/tournament-payouts/${payoutId}/retry`, {
     method: 'POST', headers: { 'x-superuser-key': superuserKey },
