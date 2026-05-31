@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.89",
+    "title": "Real hero voices in the Voiceline daily game",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Hear the actual hero.** The daily **Voiceline** game now plays a short clip of each hero's *real* in-game Dota 2 voice line instead of the old robotic text-to-speech stand-ins. Every one of the 125 heroes in the pool got a fresh ~1–3s clip — most are an iconic catchphrase, with a recognisable spawn line where no catchphrase fit — so guessing from the audio feels natural again.",
+      "**Same fair-play guarantees.** Clips are still served only through the signed audio proxy, the answer is never written into the page, and the puzzle pool is unchanged at 125 heroes. Audio is loudness-normalised so no clip is jarringly louder than the rest.",
+      "**Scope.** Full edition only — community edition untouched."
+    ],
+    "author": "System",
+    "major": true
+  },
+  {
     "version": "8.88",
     "title": "Lootboxes & a collection locker — unlock profile cosmetics with coins",
     "published_at": "2026-05-31",
