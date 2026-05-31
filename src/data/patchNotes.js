@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.60",
+    "title": "The home page Active Lobby and Recent Matches get the Press Box redesign",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The redesigned 'Active Lobby' and 'Recent Matches' looked far sharper in the design mockups than on the live home page — they were the last two home surfaces still wearing the old styling.",
+      "**Active Lobby.** When a lobby is queueing, in ready-check, or drafting, the home page now leads with a prominent live card — pulsing status ring, real-time player count (X/10), the live status label, and a one-tap **Join Lobby** (or **View Lobby** if you're already queued). It's driven by the same live queue feed, so the numbers are real, and it quietly disappears when no lobby is active.",
+      "**Recent Matches.** Each of your recent games is now a clean card row: a win/loss-tinted sword tile, hero name with a Radiant/Dire tag, the match number and date, and right-aligned K/D/A, duration, and a WIN/LOSS result chip.",
+      "**Kept.** A failed-server-provision retry tile and an in-progress-game tile still surface in the dashboard for those states. Everything stays keyboard- and screen-reader-accessible.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.59",
     "title": "Admins can confirm prize receipts actually reached winners",
     "published_at": "2026-05-31",

@@ -13,7 +13,6 @@ import { MmrBadge } from '../components/RankBadge';
 import HomeBanner from '../components/HomeBanner';
 import SponsorshipBanner from '../components/SponsorshipBanner';
 import { LiveInhousePulse, PlayerOfTheWeek, HotHeroes, FeaturedPlayer, WatchLiveBadge } from '../components/HomeWidgets';
-import LiveQueueWidget from '../components/LiveQueueWidget';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -29,6 +28,116 @@ function SteamGlyph({ size = 15 }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M12 2C6.5 2 2 6.4 2 11.9c0 4.5 3 8.3 7.1 9.6l-1.4-2.1a3.3 3.3 0 0 1-1.9-3 3.3 3.3 0 0 1 3.3-3.3l.4.02 2.9-4.2v-.06a3.7 3.7 0 1 1 3.7 3.7h-.08l-4.1 2.9.01.3a3.3 3.3 0 0 1-6.1 1.7l-2.9-1.2A10 10 0 1 0 12 2Zm5.1 5.2a2.45 2.45 0 1 1-4.9 0 2.45 2.45 0 0 1 4.9 0Zm-3.7 0a1.23 1.23 0 1 0 2.46 0 1.23 1.23 0 0 0-2.46 0ZM7.6 16.8a2.5 2.5 0 0 0 4.6-1l-1.5-.6a1.27 1.27 0 0 1-1.7.7l-1.4.9Z" />
     </svg>
+  );
+}
+
+// Lucide-style stroke glyphs (the live app has no icon package — mirror the
+// mockup's Users / Sword / ChevronRight marks with tiny inline SVGs).
+function UsersGlyph({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function SwordGlyph({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
+      <line x1="13" y1="19" x2="19" y2="13" />
+      <line x1="16" y1="16" x2="20" y2="20" />
+      <line x1="19" y1="21" x2="21" y2="19" />
+    </svg>
+  );
+}
+
+function ChevronRightGlyph({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
+}
+
+// Prominent Active Lobby card (mirrors upscale-2026/Home.tsx "Active Lobby
+// Status" block). Subscribes to the same SSE queue stream LiveQueueWidget
+// uses, so the player count + status are real and live. Self-hides when no
+// lobby is queueing/accepting/drafting.
+const LOBBY_STATUS_LABEL = {
+  open: 'Queueing',
+  accepting: 'Ready Check',
+  drafting: 'Drafting',
+};
+
+function ActiveLobbyCard({ accountId }) {
+  const [session, setSession] = useState(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
+    const es = new EventSource('/api/inhouse/queue/stream');
+    es.addEventListener('snapshot', (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        const list = Array.isArray(data.sessions) ? data.sessions : [];
+        // Only the live queueing states belong in this prominent card; the
+        // small dashboard tile owns server_failed / in_progress. The SSE feed
+        // already filters to these, but guard client-side so the card's
+        // self-hide is guaranteed regardless of future feed changes.
+        const live = list.find((s) => LOBBY_STATUS_LABEL[s.status]);
+        setSession(live || null);
+      } catch {}
+    });
+    es.onerror = () => {};
+    return () => { try { es.close(); } catch {} };
+  }, []);
+
+  if (!session) return null;
+
+  const min = session.min_players || 10;
+  const players = session.players || 0;
+  const needed = typeof session.needed === 'number' ? session.needed : Math.max(min - players, 0);
+  const statusLabel = LOBBY_STATUS_LABEL[session.status] || session.status;
+  const joined = accountId != null && Array.isArray(session.queued)
+    && session.queued.some(p => String(p.account_id) === String(accountId));
+
+  return (
+    <div className="pb-card pb-lobby-card">
+      <span aria-hidden="true" className="pb-lobby-glow" />
+      <div className="pb-lobby-main">
+        <span className="pb-lobby-ring" aria-hidden="true">
+          <span className="pb-lobby-ping" />
+          <UsersGlyph size={24} />
+        </span>
+        <div>
+          <div className="pb-lobby-titlerow">
+            <h3 className="pb-serif pb-lobby-title">Active Lobby</h3>
+            <span className="pb-lobby-badge">
+              <span aria-hidden="true" className="pb-lobby-dot" />
+              {statusLabel}
+            </span>
+          </div>
+          <p className="pb-lobby-sub">
+            Inhouse · Captains Draft
+            {needed > 0 ? ` · ${needed} slot${needed === 1 ? '' : 's'} open` : ' · Lobby full'}
+          </p>
+        </div>
+      </div>
+      <div className="pb-lobby-right">
+        <div className="pb-lobby-count">
+          <div className="pb-serif pb-num pb-lobby-count-val">
+            {players}<span className="pb-lobby-count-max">/{min}</span>
+          </div>
+          <div className="pb-lobby-count-cap">Players</div>
+        </div>
+        <Link to="/inhouse" className="pb-lobby-cta">
+          {joined ? 'View Lobby' : 'Join Lobby'}
+        </Link>
+      </div>
+    </div>
   );
 }
 
@@ -141,36 +250,40 @@ function MatchRow({ m }) {
 function PersonalMatchRow({ m }) {
   const heroName = formatHeroName(m.hero_name) || m.hero_name || '?';
   const won = m.won;
+  const team = m.team === 'radiant' ? 'Radiant' : m.team === 'dire' ? 'Dire' : null;
   return (
-    <Link to={`/match/${m.match_id}`} style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '10px 14px', borderRadius: 8,
-      background: 'var(--pb-elevated)', textDecoration: 'none',
-      border: '1px solid var(--pb-line-soft)', transition: 'border-color 0.15s',
-    }}
-      onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--pb-line)'}
-      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--pb-line-soft)'}
-    >
-      <span style={{
-        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4, flexShrink: 0,
-        background: won ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-        color: won ? 'var(--accent-green, #22c55e)' : 'var(--accent-red, #ef4444)',
-        border: `1px solid ${won ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
-      }}>
-        {won ? 'WIN' : 'LOSS'}
-      </span>
-      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>
-        {heroName}
-      </span>
-      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-        {m.kills}/{m.deaths}/{m.assists}
-      </span>
-      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-        {fmtDuration(m.duration)}
-      </span>
-      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-        {fmtDate(m.date)}
-      </span>
+    <Link to={`/match/${m.match_id}`} className="pb-card pb-match-row">
+      <div className="pb-match-left">
+        <span className={`pb-match-icon ${won ? 'is-win' : 'is-loss'}`} aria-hidden="true">
+          <SwordGlyph size={18} />
+        </span>
+        <div className="pb-match-meta">
+          <div className="pb-match-heroline">
+            <span className="pb-match-hero">{heroName}</span>
+            {team && <span className="pb-match-tag">{team}</span>}
+          </div>
+          <div className="pb-match-sub">
+            <span>Match #{m.match_id}</span>
+            <span aria-hidden="true" className="pb-match-dotsep" />
+            <span>{fmtDate(m.date)}</span>
+          </div>
+        </div>
+      </div>
+      <div className="pb-match-right">
+        <div className="pb-match-stat pb-match-hide-sm">
+          <div className="pb-match-stat-val pb-num">{m.kills}/{m.deaths}/{m.assists}</div>
+          <div className="pb-match-stat-cap">K/D/A</div>
+        </div>
+        <div className="pb-match-stat pb-match-hide-sm">
+          <div className="pb-match-stat-val pb-num">{fmtDuration(m.duration)}</div>
+          <div className="pb-match-stat-cap">Duration</div>
+        </div>
+        <div className="pb-match-stat pb-match-result">
+          <div className={`pb-match-stat-val ${won ? 'is-win' : 'is-loss'}`}>{won ? 'WIN' : 'LOSS'}</div>
+          <div className="pb-match-stat-cap">Result</div>
+        </div>
+        <span className="pb-match-chev" aria-hidden="true"><ChevronRightGlyph size={20} /></span>
+      </div>
     </Link>
   );
 }
@@ -475,8 +588,14 @@ function PersonalisedDashboard({ steamUser }) {
               </div>
             )}
 
-            {/* Active inhouse lobby */}
-            {homeData.active_session && (
+            {/* Active inhouse lobby — the live queueing/accepting/drafting
+                states now render in the prominent <ActiveLobbyCard> at the top
+                of the page (SSE-driven, real player count). This tile is kept
+                only for the states that card doesn't surface: a failed server
+                provision (captain Retry) and an in-progress game. */}
+            {homeData.active_session
+              && (homeData.active_session.status === 'server_failed'
+                || homeData.active_session.status === 'in_progress') && (
               <div style={{
                 background: 'linear-gradient(135deg, rgba(34,197,94,0.12) 0%, var(--bg-card) 100%)',
                 border: '1px solid rgba(34,197,94,0.35)', borderRadius: 12, padding: '16px 20px',
@@ -781,7 +900,7 @@ export default function Home() {
         <div className="pb-home-notice"><HomeBanner /></div>
         <SponsorshipBanner slug="home_top" style={{ margin: '12px 0' }} />
         {tournamentBanner}
-        <LiveQueueWidget />
+        <ActiveLobbyCard accountId={steamUser?.accountId} />
         <WatchLiveBadge />
         <LiveInhousePulse />
         <FeaturedPlayer />
@@ -828,7 +947,7 @@ export default function Home() {
 
       {tournamentBanner}
 
-      <LiveQueueWidget />
+      <ActiveLobbyCard />
       <WatchLiveBadge />
       <LiveInhousePulse />
       <FeaturedPlayer />
