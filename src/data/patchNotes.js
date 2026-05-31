@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.85",
+    "title": "Stay signed in across refreshes — Steam login now survives reloads and apex↔www",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Refreshing no longer signs you out.** On the live site, hitting refresh (or a hard reload) sometimes bounced you back to signed-out even though your Steam login was valid. The session cookie was scoped to a single host, so a reload that landed on `www.` (instead of the bare `oceinhouse.gg`, or vice-versa) didn't send it. The cookie now spans both, so your login sticks across reloads and whichever host you land on.",
+      "**One canonical address.** Visits to `www.oceinhouse.gg` now settle on `oceinhouse.gg` so navigations never drift between the two and split your session.",
+      "**No stale signed-out flashes.** The session check and the app's HTML shell are now marked never-cache, so a proxy can't serve you a stale signed-out page on reload.",
+      "**Scope.** Full edition only — community edition (`dota.stats.corvidaeinc.com`) is untouched."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.84",
     "title": "Matchup rows are now links — hop straight to the opponent's hero page",
     "published_at": "2026-05-31",

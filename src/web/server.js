@@ -1104,6 +1104,37 @@ function createServer(startupStatus = {}) {
   // It is safe in dev too: with no proxy in front, the X-Forwarded-* headers
   // simply aren't set and req.protocol falls back to the connection scheme.
   app.set('trust proxy', 1);
+
+  // Task #661 — Pin the canonical host so apex↔www navigations don't drift.
+  //
+  // The live full-edition site is reachable on both the apex `oceinhouse.gg`
+  // and `www.oceinhouse.gg`. A sign-in on one host left the session cookie
+  // host-only, so a refresh/navigation that resolved to the *other* host came
+  // back signed-out. We fix the cookie scope below (explicit cookie Domain),
+  // and additionally settle every browser navigation on a single host here so
+  // the two never diverge in the first place.
+  //
+  // CANONICAL_HOST defaults to the full-edition apex in production and is unset
+  // everywhere else (dev/preview, community edition's separate file), so this
+  // is a strict no-op outside prod. We only ever redirect the `www.` variant of
+  // the canonical apex → the apex; any other host (replit.dev preview, bare IP,
+  // an unrelated deploy) falls straight through so we can never trap it in a
+  // redirect loop. We also skip:
+  //   - the Steam OpenID return (`/auth/steam/return`) — its return_to
+  //     signature is host-specific and a 301 would invalidate it;
+  //   - the Stripe webhook — a server-to-server POST must never be 301'd;
+  //   - any non-GET/HEAD method — a redirect would drop the request body.
+  const CANONICAL_HOST = (process.env.CANONICAL_HOST || (inProd ? 'oceinhouse.gg' : '')).trim().toLowerCase();
+  app.use(function canonicalHostRedirect(req, res, next) {
+    if (!CANONICAL_HOST) return next();
+    const host = (req.get('host') || '').toLowerCase();
+    if (host !== 'www.' + CANONICAL_HOST) return next();
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    if (req.path === '/auth/steam/return' || req.path === '/api/stripe/webhook') return next();
+    res.set('Cache-Control', 'no-store');
+    return res.redirect(301, `${req.protocol}://${CANONICAL_HOST}${req.originalUrl || req.url}`);
+  });
+
   // Task #151 (v6.26) — Postgres-backed session store.
   //
   // We previously used express-session's in-memory MemoryStore. That made
@@ -1148,6 +1179,33 @@ function createServer(startupStatus = {}) {
     sessionStore = new session.MemoryStore();
   }
   app.locals.sessionStore = sessionStore;
+
+  // Task #661 — Span the apex + www hosts with one cookie (full edition only).
+  //
+  // Root cause of "refresh signs me out on oceinhouse.gg": the `oi.sid` cookie
+  // was host-only (no Domain attribute), so a sign-in on the apex was not sent
+  // when a navigation/refresh resolved to `www.` (or vice-versa) and the reload
+  // came back signed-out. Giving the cookie an explicit Domain of `.oceinhouse.gg`
+  // makes the browser send it on BOTH the apex and every subdomain (www).
+  //
+  // It is configurable and fails safe outside prod: SESSION_COOKIE_DOMAIN is the
+  // override (set `none`/`host-only`/`off` to force the legacy host-only cookie);
+  // when unset we default to `.oceinhouse.gg` ONLY in production. In dev/preview
+  // the value is undefined, so the cookie stays host-only — critical, because a
+  // Domain that doesn't match the current host (e.g. *.replit.dev) makes the
+  // browser silently reject the Set-Cookie and nobody can sign in. The community
+  // edition runs a separate server file on a different domain and is untouched.
+  let sessionCookieDomain;
+  const cookieDomainRaw = (process.env.SESSION_COOKIE_DOMAIN || '').trim();
+  if (cookieDomainRaw) {
+    sessionCookieDomain = /^(none|host-only|off)$/i.test(cookieDomainRaw) ? undefined : cookieDomainRaw;
+  } else if (inProd) {
+    sessionCookieDomain = '.oceinhouse.gg';
+  }
+  if (sessionCookieDomain) {
+    console.log(`[Session] Cookie Domain set to ${sessionCookieDomain} — oi.sid spans the apex + www hosts.`);
+  }
+
   app.use(session({
     name: 'oi.sid',
     store: sessionStore,
@@ -1159,6 +1217,7 @@ function createServer(startupStatus = {}) {
       sameSite: 'lax',
       secure: inProd,
       maxAge: 7 * 24 * 60 * 60 * 1000,
+      ...(sessionCookieDomain ? { domain: sessionCookieDomain } : {}),
     },
   }));
 
@@ -4486,6 +4545,11 @@ function createServer(startupStatus = {}) {
   if (fs.existsSync(staticPath)) {
     app.use(express.static(staticPath));
     app.get('/{*splat}', (req, res) => {
+      // Task #661 — the SPA HTML shell must not be cached by an upstream
+      // proxy/CDN. The hashed JS/CSS bundles served by express.static above
+      // are safe to cache, but index.html is the bootstrap that kicks off the
+      // `/api/auth/me` session probe; a stale shell could pin an old build.
+      res.set('Cache-Control', 'no-store, must-revalidate');
       res.sendFile(path.join(staticPath, 'index.html'));
     });
   }
@@ -4555,6 +4619,13 @@ function createApiRouter(startupStatus = {}, _app = null) {
   });
 
   router.get('/auth/me', async (req, res) => {
+    // Task #661 — the session-state probe must never be cached by any upstream
+    // proxy/CDN. Without this a reload could be served a stale signed-out (or
+    // signed-in) response, which is exactly the refresh-logout symptom. The
+    // frontend already sends `cache: 'no-store'`, but that only governs the
+    // browser cache; this header covers shared caches at the edge.
+    res.set('Cache-Control', 'no-store, must-revalidate');
+    res.set('Vary', 'Cookie');
     if (req.session && req.session.accountId) {
       // First-login Discord onboarding (task 89): tell the frontend whether
       // we still need to prompt this user for their Discord User ID. We check
