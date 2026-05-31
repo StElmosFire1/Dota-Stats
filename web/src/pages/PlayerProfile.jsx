@@ -319,26 +319,21 @@ function AnniversaryRibbon({ anniversary, displayName }) {
   return (
     <section
       aria-label={label}
-      style={{
-        marginBottom: 16,
-        padding: '12px 16px',
-        borderRadius: 10,
-        background: isMilestone
-          ? 'linear-gradient(90deg, rgba(245,158,11,0.18), rgba(197,169,117,0.08))'
-          : 'linear-gradient(90deg, rgba(197,169,117,0.18), rgba(245,239,226,0.06))',
-        border: `1px solid ${isMilestone ? 'rgba(245,158,11,0.55)' : 'rgba(197,169,117,0.45)'}`,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        flexWrap: 'wrap',
-      }}
+      className="pb-anniversary"
+      data-milestone={isMilestone ? 'true' : 'false'}
     >
-      <span style={{ fontSize: 22 }} aria-hidden="true">{isMilestone ? '👑' : '🎂'}</span>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <strong style={{ fontFamily: 'var(--font-serif, serif)', fontSize: 16, color: 'var(--gold, #f59e0b)' }}>
-          {label}
-        </strong>
-        <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{subtitle}</span>
+      <div className="pb-anniversary-glow" aria-hidden="true" />
+      <div className="pb-anniversary-icon" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 3l1.9 4.7L18.6 9l-4.7 1.3L12 15l-1.9-4.7L5.4 9l4.7-1.3L12 3z" />
+          <path d="M5 17l.8 2L8 19.8l-2 .9L5 23l-.8-2.3L2 19.8l2-.8L5 17z" />
+          <path d="M19 14l.6 1.5L21 16l-1.4.6L19 18l-.6-1.4L17 16l1.4-.5L19 14z" />
+        </svg>
+      </div>
+      <div className="pb-anniversary-text">
+        <div className="pb-eyebrow pb-anniversary-eyebrow">League Anniversary</div>
+        <strong className="pb-anniversary-title">{label}</strong>
+        <span className="pb-anniversary-sub">{subtitle}</span>
       </div>
     </section>
   );
@@ -373,7 +368,7 @@ function AchievementBadges({ achievements }) {
     <section style={{ marginBottom: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: collapsed ? 0 : 12, flexWrap: 'wrap' }}>
         <h2 className="section-title" style={{ marginBottom: 0 }}>🏅 Achievements</h2>
-        <span style={{ fontSize: 11, background: 'var(--accent-blue)', color: '#fff', borderRadius: 10, padding: '1px 8px', fontWeight: 700 }}>
+        <span style={{ fontSize: 11, background: 'var(--pb-brass)', color: 'var(--pb-bg)', borderRadius: 10, padding: '1px 8px', fontWeight: 700, fontFamily: 'var(--font-condensed)', letterSpacing: '0.06em' }}>
           {earned.length}/{achievements.length}
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
@@ -403,10 +398,11 @@ function AchievementBadges({ achievements }) {
                 key={g}
                 onClick={() => setActiveGroup(g)}
                 style={{
-                  background: activeGroup === g ? 'var(--accent-blue)' : 'var(--bg-secondary)',
-                  color: activeGroup === g ? '#fff' : 'var(--text-muted)',
-                  border: `1px solid ${activeGroup === g ? 'var(--accent-blue)' : 'var(--border)'}`,
+                  background: activeGroup === g ? 'var(--pb-brass)' : 'var(--bg-secondary)',
+                  color: activeGroup === g ? 'var(--pb-bg)' : 'var(--text-muted)',
+                  border: `1px solid ${activeGroup === g ? 'var(--pb-brass)' : 'var(--border)'}`,
                   borderRadius: 12, padding: '2px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                  fontFamily: 'var(--font-condensed)', letterSpacing: '0.06em', textTransform: 'uppercase',
                 }}
               >{g}</button>
             ))}
@@ -426,10 +422,10 @@ function AchievementBadges({ achievements }) {
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
                     padding: '10px 12px', borderRadius: 10, minWidth: 80, maxWidth: 110, textAlign: 'center',
-                    background: a.earned ? 'var(--bg-card)' : 'var(--bg-secondary)',
-                    border: `1px solid ${a.earned ? (a.secret ? '#f59e0b' : 'var(--accent-blue)') : 'var(--border)'}`,
+                    background: a.earned ? 'linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%)' : 'var(--bg-secondary)',
+                    border: `1px solid ${a.earned ? (a.secret ? '#f59e0b' : 'var(--pb-brass)') : 'var(--border)'}`,
                     opacity: a.earned ? 1 : 0.4,
-                    boxShadow: a.earned ? `0 0 8px ${a.secret ? 'rgba(245,158,11,0.25)' : 'rgba(59,130,246,0.15)'}` : 'none',
+                    boxShadow: a.earned ? `0 0 10px ${a.secret ? 'rgba(245,158,11,0.22)' : 'rgba(197,169,117,0.20)'}` : 'none',
                     cursor: 'default',
                     position: 'relative',
                   }}

@@ -1,5 +1,20 @@
 module.exports = [
   {
+    "version": "8.46",
+    "title": "Press Box polish — new headline type, rank emblems and a calmer home",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**New headline typeface.** Editorial titles and big stat figures now use Newsreader — a cleaner, more legible press-box serif — across every page.",
+      "**Animated rank emblems on the ladder.** The top standings now show stylised, animated rank emblems in the rank cell (a preview of the cosmetic system) instead of a plain number; lower ranks keep the simple disc for now.",
+      "**Calmer home page.** The season announcement is now a single slim notice above one hero, instead of two stacked banners competing for attention. The banner is still admin-configurable and dismissible.",
+      "**Tidier top bar.** The \"Tools\" menu is now \"More\", and global search collapsed to a compact icon button so the toolbar no longer feels crowded.",
+      "**Cleaner match pages.** Removed the internal replay-parser labels that were leaking into match views, and gave the draft & bans panel the full Press Box treatment.",
+      "**Higher-fidelity restructure.** The home, leaderboard, profile, match and inhouse-lobby layouts were pushed closer to the design mockups — every stat, chart, table, admin tool, paywall and live-draft control is unchanged, just rearranged.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.45",
     "title": "The \"Press Box\" redesign goes all the way",
     "published_at": "2026-05-31",

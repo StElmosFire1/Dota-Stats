@@ -990,60 +990,98 @@ function DraftDisplay({ draft }) {
   const hasBans = draft.some(d => !d.is_pick);
   if (!hasBans) return null;
 
+  // Press Box draft panel (T004) — mirrors the upscale-2026 mockup's
+  // "Draft & Bans" card: grouped by team into Radiant / Dire rows, each with
+  // a team-colour dot, picks (hero portraits with their draft-order badge) and
+  // a separate dimmed bans sub-row. All original data is preserved — the
+  // chronological draft order is still surfaced as the per-chip number badge.
+  const byTeam = (teamCode) => {
+    const entries = draft.filter(d => d.team === teamCode);
+    return {
+      picks: entries.filter(d => d.is_pick),
+      bans: entries.filter(d => !d.is_pick),
+    };
+  };
+
+  const DraftRow = ({ teamCode }) => {
+    const isRadiant = teamCode === 0;
+    const teamColor = isRadiant ? 'var(--pb-radiant)' : 'var(--pb-dire)';
+    const teamLabel = isRadiant ? 'Radiant' : 'Dire';
+    const { picks, bans } = byTeam(teamCode);
+    return (
+      <div className="pb-draft-row">
+        <div className="pb-draft-row-head">
+          <span className="pb-draft-dot" style={{ background: teamColor }} aria-hidden="true" />
+          <span className="pb-draft-team" style={{ color: teamColor }}>{teamLabel}</span>
+        </div>
+        <div className="pb-draft-picks">
+          {picks.map((entry, i) => {
+            const heroImg = getHeroImageUrl(entry.hero_id);
+            return (
+              <div
+                key={i}
+                className="pb-draft-pick"
+                title={`#${entry.order_num + 1} — ${teamLabel} pick`}
+              >
+                {heroImg ? (
+                  <img
+                    src={heroImg}
+                    alt=""
+                    className="pb-draft-portrait"
+                    onError={e => { e.target.style.display = 'none'; }}
+                  />
+                ) : (
+                  <div className="pb-draft-portrait pb-draft-portrait--blank" />
+                )}
+                <span className="pb-draft-order">{entry.order_num + 1}</span>
+              </div>
+            );
+          })}
+        </div>
+        {bans.length > 0 && (
+          <div className="pb-draft-bans">
+            <span className="pb-draft-bans-label">Bans</span>
+            <div className="pb-draft-bans-list">
+              {bans.map((entry, i) => {
+                const heroImg = getHeroImageUrl(entry.hero_id);
+                return (
+                  <div
+                    key={i}
+                    className="pb-draft-ban"
+                    title={`#${entry.order_num + 1} — ${teamLabel} ban`}
+                  >
+                    {heroImg ? (
+                      <img
+                        src={heroImg}
+                        alt=""
+                        className="pb-draft-ban-portrait"
+                        onError={e => { e.target.style.display = 'none'; }}
+                      />
+                    ) : (
+                      <div className="pb-draft-ban-portrait pb-draft-portrait--blank" />
+                    )}
+                    <span className="pb-draft-order pb-draft-ban-order">{entry.order_num + 1}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="pb-draft-panel" style={{ marginTop: '1.5rem' }}>
-      <h3 style={{ marginBottom: '0.75rem', fontSize: '1rem' }}>Draft Order</h3>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'flex-start' }}>
-        {draft.map((entry, i) => {
-          const isBan = !entry.is_pick;
-          const isRadiant = entry.team === 0;
-          const teamColor = isRadiant ? '#4ade80' : '#f87171';
-          const teamLabel = isRadiant ? 'Radiant' : 'Dire';
-          const heroImg = getHeroImageUrl(entry.hero_id);
-          return (
-            <div
-              key={i}
-              title={`#${entry.order_num + 1} — ${teamLabel} ${isBan ? 'Bans' : 'Picks'}`}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '3px',
-                padding: '4px',
-                borderRadius: '4px',
-                border: `2px solid ${isBan ? '#7f1d1d' : (isRadiant ? '#166534' : '#1e3a5f')}`,
-                background: isBan ? 'rgba(127,29,29,0.3)' : (isRadiant ? 'rgba(22,101,52,0.3)' : 'rgba(30,58,95,0.3)'),
-                minWidth: '42px',
-              }}
-            >
-              <div style={{ fontSize: '0.6rem', color: teamColor, fontWeight: 'bold', lineHeight: 1 }}>
-                {teamLabel.slice(0, 3).toUpperCase()}
-              </div>
-              {heroImg ? (
-                <img
-                  src={heroImg}
-                  alt=""
-                  style={{
-                    width: '40px',
-                    height: '22px',
-                    objectFit: 'cover',
-                    borderRadius: '2px',
-                    filter: isBan ? 'grayscale(80%) brightness(0.6)' : 'none',
-                  }}
-                  onError={e => { e.target.style.display = 'none'; }}
-                />
-              ) : (
-                <div style={{ width: '40px', height: '22px', background: '#333', borderRadius: '2px' }} />
-              )}
-              <div style={{ fontSize: '0.6rem', color: isBan ? '#f87171' : '#93c5fd', lineHeight: 1 }}>
-                {isBan ? 'BAN' : 'PICK'}
-              </div>
-              <div style={{ fontSize: '0.55rem', color: '#555', lineHeight: 1 }}>
-                #{entry.order_num + 1}
-              </div>
-            </div>
-          );
-        })}
+      <div className="pb-draft-head">
+        <svg className="pb-draft-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14.5 3.5 20.5 9.5M3 21l6-6M16 3l5 5-9 9H7v-5l9-9ZM3 17l4 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <h3>Draft &amp; Bans</h3>
+      </div>
+      <div className="pb-draft-grid">
+        <DraftRow teamCode={0} />
+        <DraftRow teamCode={1} />
       </div>
     </div>
   );
@@ -4182,7 +4220,7 @@ function MatchDetailInner() {
           aria-haspopup="dialog"
           aria-expanded={shareOpen}
           style={{
-            background: 'transparent', color: '#94a3b8', border: '1px solid #334155',
+            background: 'transparent', color: 'var(--pb-brass)', border: '1px solid var(--pb-line)',
             padding: '3px 12px', borderRadius: 4, fontSize: '0.8rem', fontWeight: 600,
             cursor: 'pointer',
           }}

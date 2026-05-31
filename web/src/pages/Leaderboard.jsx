@@ -10,7 +10,24 @@ import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
 import { FRAME_META } from '../profileCosmetics';
 import SponsorshipBanner from '../components/SponsorshipBanner';
+import FounderRing from '../components/founderRings/FounderRing';
 import '../styles/pressbox-leaderboard.css';
+
+// EXAMPLE rank-emblem preview (T001): a fixed, deterministic rotation of the
+// 8 ANIMATED FounderRing variants mapped to the top leaderboard ranks. This is
+// an explicit visual preview of the cosmetic-emblem system until cosmetics go
+// fully live — it is NOT gated on real ownership. Ranks beyond this set keep
+// the plain numbered `.pb-rank-disc`.
+const PREVIEW_RANK_EMBLEMS = {
+  1: 'phoenix',
+  2: 'eclipse',
+  3: 'storm',
+  4: 'astrolabe',
+  5: 'forge',
+  6: 'starmap',
+  7: 'twin',
+  8: 'beveled',
+};
 
 // Medieval tier ladder — top 8 are the heraldic ranks (with /badges/tier-N-name.png art),
 // bottom 3 are the meme fallback tiers retained for sub-Apprentice MMR.
@@ -697,7 +714,26 @@ export default function Leaderboard() {
                   : '0.0';
                 return (
                   <tr key={p.player_id} className={rank <= 3 ? `rank-${rank}` : ''}>
-                    <td className="col-rank"><span className="pb-rank-disc">{rank}</span></td>
+                    <td className="col-rank">
+                      {PREVIEW_RANK_EMBLEMS[rank] ? (
+                        <span className="pb-rank-emblem">
+                          {/* The FounderRing is purely decorative; the rank
+                              number is exposed to assistive tech via the
+                              visually-hidden label so there's no a11y loss. */}
+                          <span className="pb-sr-only">Rank {rank}</span>
+                          <span className="pb-rank-emblem-art" aria-hidden="true">
+                            <FounderRing
+                              sku={PREVIEW_RANK_EMBLEMS[rank]}
+                              size={42}
+                              disc="monogram"
+                              monogramText={String(rank)}
+                            />
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="pb-rank-disc">{rank}</span>
+                      )}
+                    </td>
                     <td className="col-player">
                       {(() => {
                         const frameMeta = p.profile_frame ? FRAME_META[p.profile_frame] : null;

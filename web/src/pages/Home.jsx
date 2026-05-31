@@ -639,7 +639,7 @@ export default function Home() {
   if (!authLoading && steamUser) {
     return (
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <HomeBanner />
+        <div className="pb-home-notice"><HomeBanner /></div>
         <SponsorshipBanner slug="home_top" style={{ margin: '12px 0' }} />
         {tournamentBanner}
         <LiveQueueWidget />
@@ -683,7 +683,7 @@ export default function Home() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
-      <HomeBanner />
+      <div className="pb-home-notice"><HomeBanner /></div>
       <SignedOutHero signIn={signIn} />
       <SponsorshipBanner slug="home_top" style={{ margin: '12px 0' }} />
 

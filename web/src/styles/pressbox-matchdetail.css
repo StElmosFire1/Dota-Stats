@@ -336,3 +336,151 @@
   font-size: 0.92rem;
   color: var(--pb-brass-bright) !important;
 }
+
+/* Draft & Bans card — mirrors the mockup's grouped picks + bans layout. */
+.pb-match .pb-draft-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding-bottom: 0.85rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--pb-line);
+}
+
+.pb-match .pb-draft-head .pb-draft-icon {
+  color: var(--pb-brass);
+  flex-shrink: 0;
+}
+
+.pb-match .pb-draft-head > h3 {
+  margin: 0;
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--pb-text);
+}
+
+.pb-match .pb-draft-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.75rem;
+}
+
+.pb-match .pb-draft-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pb-match .pb-draft-row-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pb-match .pb-draft-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pb-match .pb-draft-team {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+
+.pb-match .pb-draft-picks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pb-match .pb-draft-pick {
+  position: relative;
+}
+
+.pb-match .pb-draft-portrait {
+  display: block;
+  width: 64px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: var(--pb-radius-sm);
+  border: 1px solid var(--pb-line);
+  background: var(--pb-elevated);
+}
+
+.pb-match .pb-draft-portrait--blank {
+  background: var(--pb-elevated);
+}
+
+.pb-match .pb-draft-order {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--pb-surface);
+  border: 1px solid var(--pb-line);
+  color: var(--pb-brass-bright);
+  font-family: var(--font-condensed);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.pb-match .pb-draft-bans {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+}
+
+.pb-match .pb-draft-bans-label {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--pb-faint);
+  flex-shrink: 0;
+}
+
+.pb-match .pb-draft-bans-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pb-match .pb-draft-ban {
+  position: relative;
+}
+
+.pb-match .pb-draft-ban-portrait {
+  display: block;
+  width: 40px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: var(--pb-radius-sm);
+  border: 1px solid var(--pb-line);
+  background: var(--pb-elevated);
+  filter: grayscale(85%) brightness(0.6);
+  opacity: 0.6;
+}
+
+.pb-match .pb-draft-ban-order {
+  top: -5px;
+  left: -5px;
+  color: var(--pb-muted);
+}

@@ -177,3 +177,129 @@
   text-transform: uppercase;
   letter-spacing: 0.16em;
 }
+
+/* ==================================================================
+   T003 — Max-fidelity restructure additions. Pull the live modules
+   closer to the upscale-2026/PlayerProfile mockup: editorial headline
+   stat tiles, brass-hairline chart panels, a magazine "anniversary
+   ribbon" card, and a trophy-cabinet achievements grid. Re-skin only —
+   no markup logic, data, or behaviour changes.
+   ================================================================== */
+
+/* ------------------------------------------------------------------
+   Headline stat tiles → Press Box cards. Gradient surface + brass
+   hairline + soft shadow, serif brass figures over condensed eyebrow
+   captions, with a subtle hover lift mirroring the mockup stat blocks.
+   ------------------------------------------------------------------ */
+.pb-profile .stats-grid .stat-card {
+  background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
+  border: 1px solid var(--pb-line);
+  border-radius: var(--pb-radius-sm);
+  box-shadow: var(--pb-shadow);
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+.pb-profile .stats-grid .stat-card:hover {
+  border-color: var(--pb-brass);
+  transform: translateY(-2px);
+}
+.pb-profile .stats-grid .stat-value {
+  font-family: var(--font-serif);
+  letter-spacing: 0.01em;
+}
+
+/* Dense "Averages" tiles stay calm: tighter radius, no heavy shadow. */
+.pb-profile .stats-grid .stat-card.sm {
+  border-radius: var(--pb-radius-sm);
+  box-shadow: none;
+}
+
+/* ------------------------------------------------------------------
+   Section headers that share a flex row with controls/meta keep the
+   condensed brass-eyebrow + hairline rule running the full width.
+   ------------------------------------------------------------------ */
+.pb-profile section > .section-title {
+  margin-top: 1.75rem;
+}
+
+/* ------------------------------------------------------------------
+   Anniversary ribbon → magazine "League Anniversary" card (mockup):
+   gradient pb-card surface, brass hairline, a brass circular icon, an
+   eyebrow kicker, serif title, and a quiet subtitle. A soft brass glow
+   bleeds from the left like the mockup's blurred accent.
+   ------------------------------------------------------------------ */
+.pb-profile .pb-anniversary {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 22px;
+  border-radius: var(--pb-radius);
+  border: 1px solid var(--pb-line);
+  background: linear-gradient(160deg, rgba(197, 169, 117, 0.10), transparent 60%),
+              linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);
+  box-shadow: var(--pb-shadow);
+}
+.pb-profile .pb-anniversary[data-milestone="true"] {
+  border-color: rgba(225, 199, 154, 0.55);
+}
+.pb-profile .pb-anniversary-glow {
+  position: absolute;
+  top: -40%;
+  left: -10%;
+  width: 280px;
+  height: 180%;
+  background: radial-gradient(closest-side, rgba(197, 169, 117, 0.18), transparent);
+  filter: blur(40px);
+  pointer-events: none;
+}
+.pb-profile .pb-anniversary-icon {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--pb-brass);
+  background: rgba(197, 169, 117, 0.10);
+  color: var(--pb-brass-bright);
+}
+.pb-profile .pb-anniversary-text {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.pb-profile .pb-anniversary-eyebrow {
+  color: var(--pb-brass);
+  margin-bottom: 1px;
+}
+.pb-profile .pb-anniversary-title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 1.45rem;
+  line-height: 1.1;
+  color: var(--pb-text);
+}
+.pb-profile .pb-anniversary[data-milestone="true"] .pb-anniversary-title {
+  color: var(--pb-brass-bright);
+}
+.pb-profile .pb-anniversary-sub {
+  font-size: 0.82rem;
+  color: var(--pb-muted);
+}
+
+/* ------------------------------------------------------------------
+   Achievements grid → trophy cabinet. The badge tiles & filter chips
+   carry their brass palette via inline styles (so :hover lift only).
+   ------------------------------------------------------------------ */
+.pb-profile .stat-card,
+.pb-profile .scoreboard-wrapper {
+  transition: border-color 0.18s ease;
+}

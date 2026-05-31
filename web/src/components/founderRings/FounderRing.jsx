@@ -18,7 +18,7 @@ const brass = '#c5a975';
 const brassDark = '#8a7448';
 const brassBright = '#e3c98a';
 const amber = '#f59e0b';
-const fSerif = 'Playfair Display, Georgia, serif';
+const fSerif = 'Newsreader, Georgia, serif';
 const fCond = 'Oswald, sans-serif';
 
 function useUid() {
