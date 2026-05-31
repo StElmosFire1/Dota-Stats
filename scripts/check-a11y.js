@@ -101,10 +101,21 @@ function walk(dir, exts, out = []) {
     throw err;
   }
   for (const ent of entries) {
-    if (ent.name === 'node_modules' || ent.name === 'dist' || ent.name.startsWith('.')) continue;
+    // Skip deps, build output, dotfiles, and test suites. Test files
+    // (`__tests__/` dirs + `*.test.*` / `*.spec.*`) legitimately reference
+    // production a11y shapes in assertions/queries (e.g. a RTL test calling
+    // `document.querySelector('[role="dialog"]')` to assert the shared Dialog
+    // rendered). They aren't shipped UI, so linting them produces false
+    // positives — the gate only governs production source under SCAN_ROOTS.
+    if (
+      ent.name === 'node_modules' ||
+      ent.name === 'dist' ||
+      ent.name === '__tests__' ||
+      ent.name.startsWith('.')
+    ) continue;
     const full = path.join(dir, ent.name);
     if (ent.isDirectory()) walk(full, exts, out);
-    else if (exts.has(path.extname(ent.name))) out.push(full);
+    else if (exts.has(path.extname(ent.name)) && !/\.(test|spec)\.[jt]sx?$/.test(ent.name)) out.push(full);
   }
   return out;
 }

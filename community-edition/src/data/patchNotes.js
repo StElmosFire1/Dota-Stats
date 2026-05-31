@@ -76,5 +76,11 @@ module.exports = [
     "title": "AI agent owner alerts now report hit counts + timestamps",
     "published_at": "2026-05-29",
     "content": "The AI-agent owner DM used to only say \"first-seen\". It now reports how many times an agent visited and when. _maybeAlertOwner accumulates every blockable hit per agent family (count + first/last timestamps); the first sighting still DMs immediately (count 1), then the family is suppressed for 24h while hits keep counting, and the next hit past the window flushes a digest: \"N hits between <first> and <last> (Sydney time)\". The DM is sent before the 403 block return, so turning on BLOCK_AI_AGENTS=1 never silences alerts — blocked agents are still counted and reported. Only ai-crawler / app-builder families are DM'd (unknown bots stay observability-only via the admin card). Applied identically to both editions."
+  },
+  {
+    "version": "1.7",
+    "title": "Hall of Fame page no longer errors",
+    "published_at": "2026-05-31",
+    "content": "The Hall of Fame page could fail to load because its career-stats query crashed in the database. The average-KDA and average-GPM calculations were rounding a floating-point average directly, which PostgreSQL rejects (\"function round(double precision, integer) does not exist\") — so the whole query threw and the page showed an error. Fixed by casting those averages to numeric before rounding (matching how the player-benchmark query already did it). This mirrors the same fix the full edition shipped. Verified against the live database: the corrected query now returns rows."
   }
 ];
