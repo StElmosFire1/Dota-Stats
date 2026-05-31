@@ -770,7 +770,7 @@ function Nav() {
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
         <Link to="/this-week" className={isActive('/this-week')}>This Week</Link>
         <NavPlayersLink isActive={isActive} count={liveCount} />
-        <DropdownMenu label="Tools">
+        <DropdownMenu label="More">
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
           <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>
           {showProReplays && <DropdownItem to="/pro-replays">Pro Replay Browser</DropdownItem>}

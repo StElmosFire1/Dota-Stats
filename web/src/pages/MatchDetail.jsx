@@ -4443,7 +4443,6 @@ function MatchDetailInner() {
           <span className={`match-result ${match.radiant_win ? 'radiant' : 'dire'}`}>
             {match.radiant_win ? 'Radiant' : 'Dire'} Victory
           </span>
-          {match.parse_method && <span className="parse-badge">{match.parse_method}</span>}
           {match.patch && <span className="patch-badge">Patch {match.patch}</span>}
           {match.season_id && (() => {
             const s = seasons.find(x => x.id === match.season_id);

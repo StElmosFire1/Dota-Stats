@@ -268,12 +268,8 @@ export default function MatchList() {
                       <span className="match-players">{match.player_count || '?'} players</span>
                     </div>
                     <MatchPlayersStrip players={match.players} radiantWin={match.radiant_win} />
-                    {((isSuperuser && match.parse_method) || match.patch || match.season_id || isSuperuser) && (
+                    {(match.patch || match.season_id || isSuperuser) && (
                       <div className="match-card-footer" style={{ alignItems: 'center' }}>
-                        {/* parse_method ("odota-parser", "live-gc", etc.) is an internal pipeline detail —
-                            visitors don't care which path a match came in on. Surfaced for superusers only
-                            so admins can still spot a stalled/skipped parse from the list. */}
-                        {isSuperuser && match.parse_method && <span className="parse-badge">{match.parse_method}</span>}
                         {match.lobby_name && <span className="lobby-name">{match.lobby_name}</span>}
                         {match.patch && <span className="patch-badge">Patch {match.patch}</span>}
 

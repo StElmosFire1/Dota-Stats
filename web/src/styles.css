@@ -409,10 +409,10 @@ a:hover {
 }
 
 .nav-link {
-  padding: 0.45rem 0.7rem;
+  padding: 0.4rem 0.6rem;
   border-radius: 6px;
   color: var(--text-secondary);
-  font-size: 0.85rem;
+  font-size: 0.83rem;
   font-weight: 500;
   transition: all 0.15s;
   white-space: nowrap;
@@ -2336,17 +2336,18 @@ body.overlay-mode {
 .global-search-trigger {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   height: 32px;
-  padding: 0 10px;
+  width: 36px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-primary);
   color: var(--text-muted);
   font-size: 12.5px;
   font-family: var(--font);
-  cursor: text;
-  min-width: 190px;
+  cursor: pointer;
   flex-shrink: 0;
   transition: border-color 0.15s, color 0.15s, box-shadow 0.15s;
 }
@@ -2357,10 +2358,10 @@ body.overlay-mode {
   outline: none;
   box-shadow: 0 0 0 2px rgba(197, 169, 117, 0.18);
 }
-.gs-trigger-ico { font-size: 13px; line-height: 1; opacity: 0.8; }
-.gs-trigger-label { flex: 1; text-align: left; white-space: nowrap; }
+.gs-trigger-ico { font-size: 15px; line-height: 1; opacity: 0.85; }
+.gs-trigger-label { display: none; }
 .gs-trigger-kbd {
-  display: inline-flex;
+  display: none;
   align-items: center;
   padding: 1px 6px;
   border-radius: 5px;
