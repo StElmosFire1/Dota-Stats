@@ -316,10 +316,16 @@ function MatchupColumn({ title, rows, good = false }) {
             {rows.map(r => {
               const pct = Math.round(r.wr * 100);
               const oppImg = getHeroImageUrl(r.opp_hero_id);
+              const href = `/heroes/${r.opp_hero_id}`;
+              const cellLink = { display: 'block', color: 'inherit', textDecoration: 'none' };
               return (
                 <tr key={r.opp_hero_id}>
-                  <td className="col-player">
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <td className="col-player" style={{ padding: 0 }}>
+                    <Link
+                      to={href}
+                      aria-label={`View ${formatHeroName(r.opp_hero_name)} hero page`}
+                      style={{ ...cellLink, padding: '8px 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+                    >
                       {oppImg && (
                         <img
                           src={oppImg}
@@ -329,10 +335,14 @@ function MatchupColumn({ title, rows, good = false }) {
                         />
                       )}
                       {formatHeroName(r.opp_hero_name)}
-                    </span>
+                    </Link>
                   </td>
-                  <td className="col-stat">{r.g}</td>
-                  <td className="col-stat" style={{ color: r.wr >= 0.5 ? '#4ade80' : '#f87171', fontWeight: 600 }}>{pct}%</td>
+                  <td className="col-stat" style={{ padding: 0 }}>
+                    <Link to={href} tabIndex={-1} aria-hidden="true" style={{ ...cellLink, padding: '8px 12px' }}>{r.g}</Link>
+                  </td>
+                  <td className="col-stat" style={{ padding: 0 }}>
+                    <Link to={href} tabIndex={-1} aria-hidden="true" style={{ ...cellLink, padding: '8px 12px', color: r.wr >= 0.5 ? '#4ade80' : '#f87171', fontWeight: 600 }}>{pct}%</Link>
+                  </td>
                 </tr>
               );
             })}

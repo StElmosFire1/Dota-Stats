@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "8.84",
+    "title": "Matchup rows are now links — hop straight to the opponent's hero page",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Click through the matchup web.** On each hero's page, the **Best against** / **Worst against** tables now make every opponent row a link. Click the opponent's portrait or name to jump straight to that hero's own detail page — no more bouncing back to the Heroes list to explore the next matchup.",
+      "**Scope.** Full edition only — community edition untouched. Keyboard- and screen-reader-accessible; a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.83",
     "title": "Home, Pick’em & Pro Replay polish — live games you can pick, a livelier welcome, and tidy hero icons",
     "published_at": "2026-05-31",
