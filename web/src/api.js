@@ -1843,6 +1843,18 @@ export async function getMyPayoutAccount() {
 export async function getMyPayouts() {
   return fetchJson('/me/payouts');
 }
+// Task #615 — flag a prize that the receipt marked paid but never arrived.
+export async function reportPayoutProblem(payoutId, message = '') {
+  const res = await fetch(BASE + `/me/payouts/${payoutId}/report`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed to submit report');
+  return d;
+}
 export async function startPayoutOnboarding(country = 'AU') {
   const res = await fetch(BASE + '/me/payout-account/onboard', {
     method: 'POST',

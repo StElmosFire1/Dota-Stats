@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getMyPayouts } from '../api';
+import { getMyPayouts, reportPayoutProblem } from '../api';
 
 function StatusBadge({ status }) {
   const map = {
@@ -26,6 +26,102 @@ function fmtDate(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function ReportProblemRow({ payout, colSpan }) {
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState('');
+  const [state, setState] = useState('idle'); // idle | sending | done | error
+  const [errMsg, setErrMsg] = useState(null);
+
+  if (state === 'done') {
+    return (
+      <tr>
+        <td colSpan={colSpan} style={{ padding: '6px 8px', color: '#10b981', fontSize: 12 }}>
+          ✓ Thanks — we've flagged this payout for an operator to look into. We'll follow up via Discord.
+        </td>
+      </tr>
+    );
+  }
+
+  const submit = async () => {
+    setState('sending');
+    setErrMsg(null);
+    try {
+      await reportPayoutProblem(payout.id, note.trim());
+      setState('done');
+    } catch (e) {
+      setErrMsg(e.message || 'Failed to submit report');
+      setState('error');
+    }
+  };
+
+  return (
+    <tr>
+      <td colSpan={colSpan} style={{ padding: '4px 8px' }}>
+        {!open ? (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            style={{
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+              color: 'var(--text-muted)', fontSize: 12, textDecoration: 'underline',
+            }}
+            aria-expanded="false"
+          >
+            Didn't receive this? Report a payment problem
+          </button>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '6px 0' }}>
+            <label htmlFor={`payout-report-${payout.id}`} style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              Tell us what's wrong (optional) — e.g. the money never reached your bank.
+            </label>
+            <textarea
+              id={`payout-report-${payout.id}`}
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              maxLength={1000}
+              rows={3}
+              placeholder="Optional details to help us chase it…"
+              style={{
+                width: '100%', resize: 'vertical', fontSize: 13, padding: '6px 8px',
+                borderRadius: 6, border: '1px solid var(--border)',
+                background: 'var(--bg-primary)', color: 'var(--text)',
+              }}
+            />
+            {state === 'error' && (
+              <div role="alert" style={{ fontSize: 12, color: '#ef4444' }}>{errMsg}</div>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={state === 'sending'}
+                style={{
+                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 700,
+                  cursor: state === 'sending' ? 'default' : 'pointer', opacity: state === 'sending' ? 0.6 : 1,
+                }}
+              >
+                {state === 'sending' ? 'Sending…' : 'Send report'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setOpen(false); setState('idle'); setErrMsg(null); }}
+                disabled={state === 'sending'}
+                style={{
+                  background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)',
+                  borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
 }
 
 export default function MyPayoutsCard() {
@@ -78,13 +174,18 @@ export default function MyPayoutsCard() {
             {payouts.map(p => {
               const date = fmtDate(p.transferred_at) || fmtDate(p.finalized_at);
               return (
-                <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: '6px 8px' }}>{p.tournament_name || `Tournament #${p.tournament_id}`}</td>
-                  <td style={{ padding: '6px 8px', fontWeight: 700 }}>#{p.place}</td>
-                  <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmtMoney(p.amount_cents, p.currency)}</td>
-                  <td style={{ padding: '6px 8px' }}><StatusBadge status={p.transfer_status} /></td>
-                  <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>{date || '—'}</td>
-                </tr>
+                <React.Fragment key={p.id}>
+                  <tr style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ padding: '6px 8px' }}>{p.tournament_name || `Tournament #${p.tournament_id}`}</td>
+                    <td style={{ padding: '6px 8px', fontWeight: 700 }}>#{p.place}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right' }}>{fmtMoney(p.amount_cents, p.currency)}</td>
+                    <td style={{ padding: '6px 8px' }}><StatusBadge status={p.transfer_status} /></td>
+                    <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>{date || '—'}</td>
+                  </tr>
+                  {p.transfer_status === 'paid' && (
+                    <ReportProblemRow payout={p} colSpan={5} />
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>

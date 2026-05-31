@@ -274,14 +274,15 @@ setInterval(() => { _runSmurfRecompute('cron').catch(() => {}); }, 24 * 60 * 60 
 //   3. Loud stderr line tagged [ROLLOVER FAILURE] — guaranteed to land in
 //      PM2 logs even when both 1 and 2 are unavailable, so the operator can
 //      find it after the fact.
-async function _alertOwnerOfRolloverFailure(season, err, bot) {
-  const text =
-    `🚨 [Auto-Rollover Failure] Season "${season.name}" (id=${season.id}): ` +
-    `${err.message || String(err)}. Season remains active; the next per-minute ` +
-    `cron tick will retry. Investigate before then.`;
+// Generic bot-independent owner alert. Tries, in order: bot._dmOwner (DMs
+// OWNER_DISCORD_ID), then OWNER_ALERT_WEBHOOK_URL (Discord/Slack-style
+// incoming webhook), then a loud stderr line so the alert is always
+// discoverable in PM2 logs. Returns whether a channel actually delivered.
+async function _alertOwner(text, { logTag = 'OWNER ALERT', bot } = {}) {
+  const b = bot || getDiscordBot();
   let delivered = false;
-  if (bot && typeof bot._dmOwner === 'function') {
-    try { await bot._dmOwner(text); delivered = true; } catch (_) {}
+  if (b && typeof b._dmOwner === 'function') {
+    try { await b._dmOwner(text); delivered = true; } catch (_) {}
   }
   if (!delivered && process.env.OWNER_ALERT_WEBHOOK_URL) {
     try {
@@ -293,11 +294,24 @@ async function _alertOwnerOfRolloverFailure(season, err, bot) {
       });
       if (r.ok) delivered = true;
     } catch (whErr) {
-      console.warn('[Season] OWNER_ALERT_WEBHOOK_URL post failed:', whErr.message);
+      console.warn('[OwnerAlert] OWNER_ALERT_WEBHOOK_URL post failed:', whErr.message);
     }
   }
-  // Always also log loud so a log-only alert is still discoverable.
-  console.error(`[ROLLOVER FAILURE] ${text}${delivered ? '' : ' (owner-alert channels unavailable — log-only)'}`);
+  if (!delivered) {
+    console.error(`[${logTag}] ${text} (owner-alert channels unavailable — log-only)`);
+  }
+  return delivered;
+}
+
+async function _alertOwnerOfRolloverFailure(season, err, bot) {
+  const text =
+    `🚨 [Auto-Rollover Failure] Season "${season.name}" (id=${season.id}): ` +
+    `${err.message || String(err)}. Season remains active; the next per-minute ` +
+    `cron tick will retry. Investigate before then.`;
+  const delivered = await _alertOwner(text, { logTag: 'ROLLOVER FAILURE', bot });
+  // Always also log loud so the rollover failure is discoverable even when a
+  // channel delivered.
+  if (delivered) console.error(`[ROLLOVER FAILURE] ${text}`);
 }
 
 // Task #419 — Season auto-rollover cron tick. Runs every minute, finds any
@@ -678,9 +692,14 @@ async function _sendPayoutPaidReceipt(row) {
   const prize = `${ccy} $${amount.toFixed(2)}`;
   const title = 'Your prize has been paid';
   const body = `Your ${prize} prize from "${row.tournament_name}" has landed in your connected payout account.`;
+  // Task #615 — give the winner a way to flag a payout that never actually
+  // reached their bank (Stripe transfer succeeded but the downstream payout
+  // bounced). The link drops them on their payout-history card where the
+  // "Report a payment problem" control lives.
+  const reportHint = "Didn't receive it? Open your payout history to report a payment problem.";
   await notify(row.account_id, 'tournament_payout_paid', {
-    discord: { content: `🏆 **${title}** — ${body}\nSee your payout history: ${(process.env.SITE_URL || '')}${url}` },
-    push: { title, body, url, data: { kind: 'tournament_payout_paid', tournament_id: row.tournament_id } },
+    discord: { content: `🏆 **${title}** — ${body}\n${reportHint}\nSee your payout history: ${(process.env.SITE_URL || '')}${url}` },
+    push: { title, body: `${body} ${reportHint}`, url, data: { kind: 'tournament_payout_paid', tournament_id: row.tournament_id } },
   });
 }
 
@@ -16732,6 +16751,45 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     } catch (err) {
       console.error('[API] me/payouts:', err.message);
       res.status(500).json({ error: err.message || 'Failed to fetch payouts' });
+    }
+  });
+
+  // Task #615 — let a winner flag a prize that the receipt said was "paid"
+  // but never actually landed in their bank (Stripe transfer succeeded yet the
+  // downstream payout bounced). Strictly scoped to the signed-in account —
+  // the payout id must belong to req.session.accountId. Fires an owner alert
+  // (Discord DM → webhook → loud log, same fan-out the rollover alert uses)
+  // with the payout id, tournament, amount, and account so an operator can
+  // chase it in Stripe.
+  router.post('/me/payouts/:id/report', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const payoutId = parseInt(req.params.id, 10);
+      if (!Number.isFinite(payoutId)) return res.status(400).json({ error: 'Invalid payout id' });
+
+      const payouts = await db.getPayoutsForAccount(accountId);
+      const row = (payouts || []).find(p => Number(p.id) === payoutId);
+      if (!row) return res.status(404).json({ error: 'Payout not found' });
+
+      const note = String(req.body?.message || '').trim().slice(0, 1000);
+      const amount = (Number(row.amount_cents) || 0) / 100;
+      const ccy = (row.currency || 'aud').toUpperCase();
+      const displayName = req.session.displayName || `Player ${accountId}`;
+      const text =
+        `🚩 [Payout Problem Reported] ${displayName} (account ${accountId}) says a prize ` +
+        `marked "${row.transfer_status}" hasn't arrived.\n` +
+        `• Payout id: ${row.id}\n` +
+        `• Tournament: ${row.tournament_name || `#${row.tournament_id}`} (id ${row.tournament_id}), place #${row.place}\n` +
+        `• Amount: ${ccy} $${amount.toFixed(2)}\n` +
+        `• Stripe transfer: ${row.stripe_transfer_id || '—'}\n` +
+        (note ? `• Note: ${note}` : '• Note: (none)');
+
+      await _alertOwner(text);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] me/payouts report:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to submit report' });
     }
   });
 

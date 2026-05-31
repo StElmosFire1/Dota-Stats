@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.61",
+    "title": "Winners can flag a prize that never actually arrived",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The 'prize landed' receipt tells a winner their money has hit their connected payout account, but if the Stripe transfer succeeded while the downstream bank payout bounced, the winner had no in-product way to flag it.",
+      "**What.** The paid-receipt DM/push now ends with a 'Didn't receive it? Open your payout history to report a payment problem' nudge, and each paid row on the My prize payouts card gains an inline 'Report a payment problem' control with an optional note.",
+      "**Operator alert.** Submitting it pings the owner (Discord DM → webhook → loud log) with the payout id, tournament, place, amount, Stripe transfer id, account, and any note so it can be chased in Stripe.",
+      "**Scope.** Full edition only. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.60",
     "title": "The home page Active Lobby and Recent Matches get the Press Box redesign",
     "published_at": "2026-05-31",
