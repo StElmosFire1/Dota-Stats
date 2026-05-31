@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.67",
+    "title": "Lock down the Voiceline audio proxy with tests",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** Voiceline clips are served only through an HMAC-signed audio proxy so the clip's slug — which is the answer to the daily/endless puzzle — never reaches the browser. The data layer had tests, but the proxy's own token signing/verification path didn't, so a regression there could leak the answer, serve the wrong clip, or let a crafted token through.",
+      "**Coverage.** New `tests/voiceAudioProxy.test.js` drives the real handler: a server-minted token streams exactly its matching clip; a token for one hero never resolves another; forged (wrong-key), tampered-signature, tampered-payload and signature-swap tokens are all rejected with no bytes served; non-voice tokens (image/hero/ability) can't be replayed at the audio proxy; and malformed, unknown-slug and path-traversal tokens are refused. Runs as part of `npm test`.",
+      "**Scope.** Full edition only. Test-only change — no runtime behavior altered."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.66",
     "title": "Logged-out account pages now show a clear Sign in with Steam prompt",
     "published_at": "2026-05-31",
