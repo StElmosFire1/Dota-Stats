@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.63",
+    "title": "Hero pages now show recent matches and best/worst matchups",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The per-hero page (Heroes → click a hero) showed aggregate stats and a player table, but the richest scouting data — which recent games featured the hero and who it beats or loses to — lived elsewhere. Now the hero page is the definitive place to scout a hero.",
+      "**Recent matches.** A new list shows the most recent games this hero was picked in: win/loss result, the player who piloted it, K/D/A, duration, lobby + date, and a link straight to the full match page.",
+      "**Matchups.** A compact 'Best against' / 'Worst against' pair of tables surfaces the hero's strongest and weakest opponents (only opponents faced at least twice, so a single lucky game doesn't skew it).",
+      "**Graceful.** Both sections degrade cleanly when there's no data yet, and the matchup view shows the usual Pro upsell for non-Pro visitors since matchup data is a Pro feature.",
+      "**Scope.** Full edition only. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.62",
     "title": "Global search now shows player and coach avatars",
     "published_at": "2026-05-31",

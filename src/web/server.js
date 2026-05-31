@@ -5828,6 +5828,20 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #618 — recent matches featuring a hero, for the per-hero detail page.
+  // Public, same trust as /heroes/:heroId/players.
+  router.get('/heroes/:heroId/recent-matches', async (req, res) => {
+    try {
+      const seasonId = req.query.season_id || null;
+      const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 50);
+      const matches = await db.getRecentMatchesForHero(parseInt(req.params.heroId), seasonId, limit);
+      res.json({ matches });
+    } catch (err) {
+      console.error('[API] Error fetching hero recent matches:', err.message);
+      res.status(500).json({ error: 'Failed to fetch hero recent matches' });
+    }
+  });
+
   router.get('/heroes/tier-list', async (req, res) => {
     try {
       const seasonId = req.query.season || null;

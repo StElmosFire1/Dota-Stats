@@ -1585,6 +1585,11 @@ export async function getHeroMatchups(heroId, seasonId = null) {
   return fetchJson(`/hero-matchups?${q}`);
 }
 
+export async function getHeroRecentMatches(heroId, seasonId = null, limit = 10) {
+  const q = new URLSearchParams({ limit, ...(seasonId ? { season_id: seasonId } : {}) });
+  return fetchJson(`/heroes/${heroId}/recent-matches?${q}`);
+}
+
 export async function getSchedule() {
   return fetchJson('/schedule');
 }

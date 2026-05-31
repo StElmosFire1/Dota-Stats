@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getHeroStats, getHeroPlayers } from '../api';
+import { getHeroStats, getHeroPlayers, getHeroMatchups, getHeroRecentMatches } from '../api';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import { useSeason } from '../context/SeasonContext';
+import PaywallCard from '../components/PaywallCard';
 
 // Task #589 — per-hero detail route (/heroes/:heroId). Gives the global
 // command palette a real "jump to hero" target instead of bouncing every
@@ -20,16 +21,28 @@ export default function HeroDetail() {
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [playersLoading, setPlayersLoading] = useState(true);
+  const [recentMatches, setRecentMatches] = useState([]);
+  const [recentLoading, setRecentLoading] = useState(true);
+  const [matchups, setMatchups] = useState([]);
+  const [matchupsLoading, setMatchupsLoading] = useState(true);
+  const [matchupsPaywall, setMatchupsPaywall] = useState(null);
 
   const heroName = getHeroName(heroId);
   const heroImg = getHeroImageUrl(heroId);
   const validHero = Number.isFinite(heroId) && heroName && !heroName.startsWith('Hero #');
 
   useEffect(() => {
-    if (!validHero) { setLoading(false); setPlayersLoading(false); return; }
+    if (!validHero) {
+      setLoading(false); setPlayersLoading(false);
+      setRecentLoading(false); setMatchupsLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setPlayersLoading(true);
+    setRecentLoading(true);
+    setMatchupsLoading(true);
+    setMatchupsPaywall(null);
     getHeroStats(seasonId)
       .then(data => {
         if (cancelled) return;
@@ -44,6 +57,18 @@ export default function HeroDetail() {
       .then(data => { if (!cancelled) setPlayers(data.players || []); })
       .catch(() => { if (!cancelled) setPlayers([]); })
       .finally(() => { if (!cancelled) setPlayersLoading(false); });
+    getHeroRecentMatches(heroId, seasonId, 10)
+      .then(data => { if (!cancelled) setRecentMatches(data.matches || []); })
+      .catch(() => { if (!cancelled) setRecentMatches([]); })
+      .finally(() => { if (!cancelled) setRecentLoading(false); });
+    getHeroMatchups(heroId, seasonId)
+      .then(data => { if (!cancelled) setMatchups(data.matchups || []); })
+      .catch(err => {
+        if (cancelled) return;
+        setMatchups([]);
+        if (err.paywall) setMatchupsPaywall(err);
+      })
+      .finally(() => { if (!cancelled) setMatchupsLoading(false); });
     return () => { cancelled = true; };
   }, [heroId, seasonId, validHero]);
 
@@ -74,6 +99,31 @@ export default function HeroDetail() {
   ];
 
   const avg = (v) => (v != null && v !== '' ? parseFloat(v).toFixed(1) : '—');
+
+  const fmtDuration = (secs) => {
+    const s = parseInt(secs);
+    if (!Number.isFinite(s) || s <= 0) return '—';
+    const m = Math.floor(s / 60);
+    return `${m}:${String(s % 60).padStart(2, '0')}`;
+  };
+  const fmtDate = (d) => {
+    if (!d) return '';
+    const dt = new Date(d);
+    if (Number.isNaN(dt.getTime())) return '';
+    return dt.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  // Best/worst opponents: only consider matchups with >= 2 games so a single
+  // lucky/unlucky game doesn't dominate. Sorted by win rate.
+  const rankedMatchups = matchups
+    .map(m => {
+      const g = parseInt(m.matchups) || 0;
+      const w = parseInt(m.wins) || 0;
+      return { ...m, g, w, wr: g > 0 ? w / g : 0 };
+    })
+    .filter(m => m.g >= 2);
+  const bestOpponents = [...rankedMatchups].sort((a, b) => b.wr - a.wr || b.g - a.g).slice(0, 5);
+  const worstOpponents = [...rankedMatchups].sort((a, b) => a.wr - b.wr || b.g - a.g).slice(0, 5);
 
   return (
     <div>
@@ -179,8 +229,103 @@ export default function HeroDetail() {
               </table>
             </div>
           )}
+
+          <h2 style={{ fontSize: 16, margin: '28px 0 10px' }}>Recent matches</h2>
+          {recentLoading ? (
+            <div className="loading">Loading recent matches…</div>
+          ) : recentMatches.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)' }}>No recorded matches with this hero yet.</p>
+          ) : (
+            <div className="scoreboard-wrapper">
+              <table className="scoreboard">
+                <thead>
+                  <tr>
+                    <th className="col-stat">Result</th>
+                    <th className="col-player">Player</th>
+                    <th className="col-stat">K / D / A</th>
+                    <th className="col-stat">Duration</th>
+                    <th className="col-player">Lobby</th>
+                    <th className="col-stat">Match</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentMatches.map(m => {
+                    const pName = m.nickname || m.persona_name || (m.account_id > 0 ? String(m.account_id) : 'Unknown');
+                    const won = m.hero_won === true || m.hero_won === 't';
+                    const pLink = m.account_id > 0 ? `/player/${m.account_id}` : null;
+                    return (
+                      <tr key={m.match_id}>
+                        <td className="col-stat" style={{ color: won ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+                          {won ? 'Win' : 'Loss'}
+                        </td>
+                        <td className="col-player">
+                          {pLink
+                            ? <Link to={pLink} style={{ color: '#60a5fa', textDecoration: 'none' }}>{pName}</Link>
+                            : <span>{pName}</span>}
+                        </td>
+                        <td className="col-stat">{m.kills ?? '—'} / {m.deaths ?? '—'} / {m.assists ?? '—'}</td>
+                        <td className="col-stat">{fmtDuration(m.duration)}</td>
+                        <td className="col-player" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+                          {m.lobby_name || '—'}
+                          {fmtDate(m.date) ? <span style={{ marginLeft: 6 }}>· {fmtDate(m.date)}</span> : null}
+                        </td>
+                        <td className="col-stat">
+                          <Link to={`/match/${m.match_id}`} style={{ color: '#60a5fa', textDecoration: 'none' }}>View →</Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <h2 style={{ fontSize: 16, margin: '28px 0 10px' }}>Matchups</h2>
+          {matchupsLoading ? (
+            <div className="loading">Loading matchups…</div>
+          ) : matchupsPaywall ? (
+            <PaywallCard feature={matchupsPaywall.feature || 'hero_matchups'} signedIn={matchupsPaywall.signedIn} compact />
+          ) : rankedMatchups.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)' }}>Not enough matchup data yet — needs at least two games against an opponent.</p>
+          ) : (
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <MatchupColumn title="Best against" rows={bestOpponents} good />
+              <MatchupColumn title="Worst against" rows={worstOpponents} />
+            </div>
+          )}
         </>
       )}
+    </div>
+  );
+}
+
+function MatchupColumn({ title, rows, good = false }) {
+  return (
+    <div style={{ flex: '1 1 280px', minWidth: 260 }}>
+      <h3 style={{ fontSize: 13, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 8px' }}>{title}</h3>
+      <div className="scoreboard-wrapper">
+        <table className="scoreboard">
+          <thead>
+            <tr>
+              <th className="col-player">Opponent</th>
+              <th className="col-stat">Games</th>
+              <th className="col-stat">Win %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => {
+              const pct = Math.round(r.wr * 100);
+              return (
+                <tr key={r.opp_hero_id}>
+                  <td className="col-player">{formatHeroName(r.opp_hero_name)}</td>
+                  <td className="col-stat">{r.g}</td>
+                  <td className="col-stat" style={{ color: r.wr >= 0.5 ? '#4ade80' : '#f87171', fontWeight: 600 }}>{pct}%</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

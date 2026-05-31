@@ -9024,6 +9024,44 @@ async function getHeroPlayers(heroId, seasonId = null) {
   return result.rows;
 }
 
+// Task #618 — recent matches featuring a given hero, newest-first. Powers the
+// "Recent matches" list on the per-hero detail page (/heroes/:heroId). Returns
+// one row per match the hero was picked in, with the picking player's display
+// name + whether the hero's side won. Public, same trust as getHeroPlayers.
+async function getRecentMatchesForHero(heroId, seasonId = null, limit = 10) {
+  const p = getPool();
+  const lim = Math.min(Math.max(parseInt(limit) || 10, 1), 50);
+  const params = [parseInt(heroId)];
+  const sc = _sc(seasonId, params, 'm');
+  params.push(lim);
+  const result = await p.query(
+    `SELECT
+       m.match_id,
+       m.date,
+       m.duration,
+       m.lobby_name,
+       m.radiant_win,
+       ps.team,
+       ps.kills, ps.deaths, ps.assists,
+       COALESCE(NULLIF(ps.account_id, 0), 0) as account_id,
+       ps.persona_name,
+       n.nickname,
+       ((ps.team = 'radiant' AND m.radiant_win = true)
+         OR (ps.team = 'dire' AND m.radiant_win = false)) as hero_won
+     FROM player_stats ps
+     JOIN matches m ON m.match_id = ps.match_id
+     LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+     WHERE ps.hero_id = $1${sc}
+     ORDER BY m.date DESC
+     LIMIT $${params.length}`,
+    params
+  );
+  for (const row of result.rows) {
+    row.persona_name = decodeByteString(row.persona_name);
+  }
+  return result.rows;
+}
+
 async function registerPlayer(discordId, discordName, steamId64) {
   const p = getPool();
   const accountId32 = (BigInt(steamId64) - BigInt('76561197960265728')).toString();
@@ -25163,6 +25201,7 @@ module.exports = {
   getPlayerHeroes,
   getPlayerPositions,
   getHeroPlayers,
+  getRecentMatchesForHero,
   getPlayerPositionProfiles,
   getPlayerHeroProfiles,
   registerPlayer,
