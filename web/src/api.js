@@ -538,6 +538,13 @@ export async function getMatch(matchId) {
   return fetchJson(`/matches/${matchId}`);
 }
 
+// Task #588 — unified command-palette search. Single bounded endpoint backing
+// the header ⌘K palette across players, coaches, teams and tournaments. Heroes
+// are matched client-side from the static registry (heroNames.js).
+export async function globalSearch(q) {
+  return fetchJson(`/search?q=${encodeURIComponent(q)}`);
+}
+
 // Task #272 — one-click "Post to #highlights" from the match share popover.
 // Server gates by signed-in + viewer-was-in-match + Discord-linked, and
 // rate-limits per-user-per-match.

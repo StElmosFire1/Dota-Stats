@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Dialog from './Dialog';
-import { getAllPlayers, getMatches } from '../api';
+import { globalSearch } from '../api';
 import { ALL_HEROES, getHeroImageUrl } from '../heroNames';
 
-// Task #586 — global search + ⌘K / Ctrl-K command palette (full edition).
+// Task #586 / #588 — global search + ⌘K / Ctrl-K command palette (full edition).
 //
 // One feature, two surfaces:
 //   - a search field in the top header (collapses to an icon on mobile)
 //   - a command-palette overlay opened by the header field OR the global
 //     ⌘K / Ctrl-K shortcut from anywhere on the site.
 //
-// Results are grouped Players / Heroes / Pages / Matches and reuse the same
-// data the per-page lists already query (getAllPlayers, getMatches, the static
-// hero registry, and a curated route table) — no new server-side search.
+// Results are grouped Players / Coaches / Teams / Tournaments / Heroes. The
+// first four come from one bounded, debounced server lookup (GET /api/search)
+// so the palette never pulls whole lists client-side; heroes are matched
+// in-process against the static registry (heroNames.js) for instant feedback.
 //
 // Accessibility: the overlay is built on the shared <Dialog> primitive
 // (focus trap / restore, Escape-to-close, backdrop, body-scroll lock). The
@@ -21,81 +22,69 @@ import { ALL_HEROES, getHeroImageUrl } from '../heroNames';
 // keys move the highlight while DOM focus stays in the field; a polite live
 // region announces the result count.
 
-// Curated page/route registry. `keywords` widen substring matching beyond the
-// visible label (all lowercase). Icons are decorative.
-const PAGES = [
-  { label: 'Home', path: '/', icon: '🏠', keywords: 'dashboard front start' },
-  { label: 'Leaderboard', path: '/leaderboard', icon: '🏆', keywords: 'ladder ranking rank mmr trueskill' },
-  { label: 'Player Stats', path: '/stats', icon: '📊', keywords: 'overall statistics' },
-  { label: 'Positions', path: '/positions', icon: '🧭', keywords: 'roles position lane' },
-  { label: 'Heroes', path: '/heroes', icon: '🦸', keywords: 'hero meta winrate tier' },
-  { label: 'Synergy', path: '/synergy', icon: '🔗', keywords: 'pairs combos duo synergies' },
-  { label: 'Matches', path: '/matches', icon: '⚔️', keywords: 'games history replays' },
-  { label: 'This Week', path: '/this-week', icon: '📅', keywords: 'weekly recap' },
-  { label: 'Players', path: '/players', icon: '👥', keywords: 'roster directory live now' },
-  { label: 'Records', path: '/records', icon: '📜', keywords: 'hall of fame multikills records' },
-  { label: 'Predictions', path: '/predictions', icon: '🔮', keywords: 'pickem forecast' },
-  { label: "Pick'em", path: '/pickem', icon: '✅', keywords: 'predictions vote' },
-  { label: 'Patch Notes', path: '/patch-notes', icon: '🗒️', keywords: 'changelog updates version' },
-  { label: 'Draft & Assistant', path: '/draft', icon: '🎯', keywords: 'drafting counter pick assistant' },
-  { label: 'Upload Replay', path: '/upload', icon: '⬆️', keywords: 'parse demo replay' },
-  { label: 'Inhouse Lobby', path: '/inhouse', icon: '🎮', keywords: 'faceit lobby queue captain draft' },
-  { label: 'Tournaments', path: '/tournaments', icon: '🏅', keywords: 'cup bracket buyin' },
-  { label: 'Leagues', path: '/leagues', icon: '🛡️', keywords: 'division' },
-  { label: 'Teams', path: '/teams', icon: '🤝', keywords: 'team roster' },
-  { label: 'Coaching Marketplace', path: '/coaches', icon: '🎓', keywords: 'coach lessons mentor booking' },
-  { label: 'Daily Mini-Games', path: '/games', icon: '🕹️', keywords: 'dotadle wordle puzzle heroguessr' },
-  { label: 'Game Schedule', path: '/schedule', icon: '🗓️', keywords: 'calendar fixtures' },
-  { label: 'Pudge Hook Stats', path: '/pudge-stats', icon: '🪝', keywords: 'hooks pudge' },
-  { label: 'Sponsor a Slot', path: '/sponsorships', icon: '💼', keywords: 'sponsorship ads' },
-  { label: 'Cosmetics Shop', path: '/shop', icon: '🛍️', keywords: 'coins frames cosmetics buy spend' },
-  { label: 'Season Pass', path: '/season-pass', icon: '🎟️', keywords: 'battle pass rewards' },
-  { label: 'Pro Membership', path: '/pro', icon: '★', keywords: 'upgrade premium subscription analytics' },
-  { label: 'Hall of Fame', path: '/hall-of-fame', icon: '🌟', keywords: 'legends plaques' },
-  { label: 'Join the League', path: '/join', icon: '✍️', keywords: 'sign up register' },
-  { label: 'Settings', path: '/settings', icon: '⚙️', keywords: 'preferences account profile' },
-  { label: 'Notifications', path: '/settings/notifications', icon: '🔔', keywords: 'alerts push' },
-  { label: 'Billing', path: '/settings/billing', icon: '💳', keywords: 'payment subscription invoice' },
+// Empty-state quick links — the five searchable section landing pages.
+const QUICK_LINKS = [
+  { label: 'Players', path: '/players', icon: '👥' },
+  { label: 'Coaches', path: '/coaches', icon: '🎓' },
+  { label: 'Teams', path: '/teams', icon: '🤝' },
+  { label: 'Tournaments', path: '/tournaments', icon: '🏅' },
+  { label: 'Heroes', path: '/heroes', icon: '🦸' },
 ];
 
-// Empty-state quick links (subset of PAGES, by path).
-const QUICK_LINK_PATHS = [
-  '/leaderboard', '/heroes', '/matches', '/players',
-  '/inhouse', '/this-week', '/shop', '/pro',
-];
-const QUICK_LINKS = QUICK_LINK_PATHS
-  .map(p => PAGES.find(pg => pg.path === p))
-  .filter(Boolean);
+const EMPTY_RESULTS = { players: [], coaches: [], teams: [], tournaments: [] };
+
+function formatRate(cents, currency) {
+  if (cents == null) return '';
+  const amount = Math.round(cents / 100);
+  return `$${amount} ${(currency || 'aud').toUpperCase()}/hr`;
+}
 
 function CommandPalette({ open, onClose }) {
   const navigate = useNavigate();
   const inputRef = useRef(null);
-  const loadedRef = useRef(false);
 
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
-  const [players, setPlayers] = useState([]);
-  const [recentMatches, setRecentMatches] = useState([]);
+  const [results, setResults] = useState(EMPTY_RESULTS);
+  const [loading, setLoading] = useState(false);
 
-  // Lazy-load the searchable datasets the first time the palette opens.
+  // Reset query + highlight + results each time the palette opens.
   useEffect(() => {
-    if (!open || loadedRef.current) return;
-    loadedRef.current = true;
-    getAllPlayers()
-      .then(d => setPlayers(Array.isArray(d?.players) ? d.players : []))
-      .catch(() => {});
-    getMatches(50, 0)
-      .then(d => setRecentMatches(Array.isArray(d?.matches) ? d.matches : []))
-      .catch(() => {});
-  }, [open]);
-
-  // Reset query + highlight each time the palette opens.
-  useEffect(() => {
-    if (open) { setQuery(''); setActiveIndex(0); }
+    if (open) { setQuery(''); setActiveIndex(0); setResults(EMPTY_RESULTS); setLoading(false); }
   }, [open]);
 
   // Reset highlight whenever the query changes.
   useEffect(() => { setActiveIndex(0); }, [query]);
+
+  // Debounced server search. Queries shorter than 2 chars short-circuit to an
+  // empty result set (matching the server's own min-length guard); a cancelled
+  // flag drops stale responses so fast typing can't flash older results.
+  useEffect(() => {
+    if (!open) return;
+    const raw = query.trim();
+    if (raw.length < 2) {
+      setResults(EMPTY_RESULTS);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    let cancelled = false;
+    const t = setTimeout(() => {
+      globalSearch(raw)
+        .then(d => {
+          if (cancelled) return;
+          setResults({
+            players: Array.isArray(d?.players) ? d.players : [],
+            coaches: Array.isArray(d?.coaches) ? d.coaches : [],
+            teams: Array.isArray(d?.teams) ? d.teams : [],
+            tournaments: Array.isArray(d?.tournaments) ? d.tournaments : [],
+          });
+        })
+        .catch(() => { if (!cancelled) setResults(EMPTY_RESULTS); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    }, 200);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [query, open]);
 
   const groups = useMemo(() => {
     const raw = query.trim();
@@ -104,9 +93,9 @@ function CommandPalette({ open, onClose }) {
     if (!raw) {
       return [{
         key: 'quick',
-        title: 'Quick links',
+        title: 'Jump to',
         items: QUICK_LINKS.map(pg => ({
-          id: `quick-${pg.path}`, label: pg.label, sub: pg.path,
+          id: `quick-${pg.path}`, label: pg.label, sub: '',
           icon: pg.icon, kind: 'Page', path: pg.path,
         })),
       }];
@@ -114,21 +103,43 @@ function CommandPalette({ open, onClose }) {
 
     const out = [];
 
-    // Players — match across every name field, not just the first non-empty one.
-    const playerItems = players
-      .filter(p => `${p.nickname || ''} ${p.display_name || ''} ${p.persona_name || ''}`.toLowerCase().includes(q))
-      .slice(0, 6)
-      .map(p => {
-        const name = p.nickname || p.display_name || p.persona_name || `Player ${p.account_id}`;
-        const path = p.account_id > 0
-          ? `/player/${p.account_id}`
-          : `/player/${encodeURIComponent(p.player_key || p.persona_name || '')}`;
-        const sub = p.persona_name && p.persona_name !== name ? p.persona_name : '';
-        return { id: `p-${p.player_key || p.account_id || name}`, label: name, sub, icon: '👤', kind: 'Player', path };
-      });
+    // Players
+    const playerItems = (results.players || []).map(p => {
+      const path = p.account_id > 0
+        ? `/player/${p.account_id}`
+        : `/player/${encodeURIComponent(p.player_key || p.name || '')}`;
+      const sub = p.persona_name && p.persona_name !== p.name
+        ? p.persona_name
+        : (p.games_played ? `${p.games_played} game${p.games_played === 1 ? '' : 's'}` : '');
+      return { id: `p-${p.player_key || p.account_id || p.name}`, label: p.name, sub, icon: '👤', kind: 'Player', path };
+    });
     if (playerItems.length) out.push({ key: 'players', title: 'Players', items: playerItems });
 
-    // Heroes
+    // Coaches
+    const coachItems = (results.coaches || []).map(c => ({
+      id: `c-${c.id}`, label: c.name,
+      sub: formatRate(c.hourly_rate_cents, c.currency) || (c.taught_roles || ''),
+      icon: '🎓', kind: 'Coach', path: `/coaches/${c.id}`,
+    }));
+    if (coachItems.length) out.push({ key: 'coaches', title: 'Coaches', items: coachItems });
+
+    // Teams
+    const teamItems = (results.teams || []).map(t => ({
+      id: `t-${t.id}`, label: t.name,
+      sub: `[${t.tag}]${t.member_count ? ` · ${t.member_count} member${t.member_count === 1 ? '' : 's'}` : ''}`,
+      icon: '🤝', kind: 'Team', path: `/teams/${t.id}`,
+    }));
+    if (teamItems.length) out.push({ key: 'teams', title: 'Teams', items: teamItems });
+
+    // Tournaments
+    const tournamentItems = (results.tournaments || []).map(t => ({
+      id: `tn-${t.id}`, label: t.name,
+      sub: [t.status, t.season_name].filter(Boolean).join(' · '),
+      icon: '🏅', kind: 'Tournament', path: `/tournaments/${t.id}`,
+    }));
+    if (tournamentItems.length) out.push({ key: 'tournaments', title: 'Tournaments', items: tournamentItems });
+
+    // Heroes — matched client-side against the static registry.
     const heroItems = ALL_HEROES
       .filter(h => h.name.toLowerCase().includes(q))
       .slice(0, 6)
@@ -138,32 +149,8 @@ function CommandPalette({ open, onClose }) {
       }));
     if (heroItems.length) out.push({ key: 'heroes', title: 'Heroes', items: heroItems });
 
-    // Pages
-    const pageItems = PAGES
-      .filter(pg => pg.label.toLowerCase().includes(q) || (pg.keywords || '').includes(q))
-      .slice(0, 6)
-      .map(pg => ({ id: `pg-${pg.path}`, label: pg.label, sub: pg.path, icon: pg.icon, kind: 'Page', path: pg.path }));
-    if (pageItems.length) out.push({ key: 'pages', title: 'Pages', items: pageItems });
-
-    // Matches — numeric direct-jump plus substring match against recent matches.
-    const matchItems = [];
-    const seen = new Set();
-    if (/^\d{2,}$/.test(raw)) {
-      matchItems.push({ id: `m-direct-${raw}`, label: `Match #${raw}`, sub: 'Open match detail', icon: '⚔️', kind: 'Match', path: `/match/${raw}` });
-      seen.add(raw);
-    }
-    for (const m of recentMatches) {
-      if (matchItems.length >= 6) break;
-      const idStr = String(m.match_id);
-      if (!idStr.includes(raw) || seen.has(idStr)) continue;
-      seen.add(idStr);
-      const sub = m.radiant_win != null ? (m.radiant_win ? 'Radiant Victory' : 'Dire Victory') : '';
-      matchItems.push({ id: `m-${idStr}`, label: `Match #${idStr}`, sub, icon: '⚔️', kind: 'Match', path: `/match/${idStr}` });
-    }
-    if (matchItems.length) out.push({ key: 'matches', title: 'Matches', items: matchItems });
-
     return out;
-  }, [query, players, recentMatches]);
+  }, [query, results]);
 
   const flat = useMemo(() => groups.flatMap(g => g.items), [groups]);
   const hasQuery = query.trim().length > 0;
@@ -201,6 +188,15 @@ function CommandPalette({ open, onClose }) {
   const safeActive = Math.min(activeIndex, Math.max(flat.length - 1, 0));
   let counter = -1;
 
+  // Empty-state copy depends on what the user has typed and whether a request
+  // is in flight.
+  let emptyMessage = 'Start typing to search…';
+  if (hasQuery) {
+    if (query.trim().length < 2) emptyMessage = 'Keep typing to search…';
+    else if (loading) emptyMessage = 'Searching…';
+    else emptyMessage = `No results for “${query.trim()}”`;
+  }
+
   return (
     <Dialog
       open={open}
@@ -220,9 +216,9 @@ function CommandPalette({ open, onClose }) {
           aria-expanded="true"
           aria-controls="cmdk-list"
           aria-autocomplete="list"
-          aria-label="Search players, heroes, pages and matches"
+          aria-label="Search players, coaches, teams, tournaments and heroes"
           aria-activedescendant={flat.length ? `cmdk-opt-${safeActive}` : undefined}
-          placeholder="Search players, heroes, pages…"
+          placeholder="Search players, coaches, teams, tournaments, heroes…"
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={onInputKey}
@@ -234,9 +230,7 @@ function CommandPalette({ open, onClose }) {
 
       <div className="cmdk-list" id="cmdk-list" role="listbox" aria-label="Search results">
         {flat.length === 0 ? (
-          <div className="cmdk-empty">
-            {hasQuery ? `No results for “${query.trim()}”` : 'Start typing to search…'}
-          </div>
+          <div className="cmdk-empty">{emptyMessage}</div>
         ) : (
           groups.map(group => (
             <div className="cmdk-group" role="group" aria-labelledby={`cmdk-grp-${group.key}`} key={group.key}>
@@ -283,7 +277,7 @@ function CommandPalette({ open, onClose }) {
       </div>
 
       <div className="cmdk-sr-only" role="status" aria-live="polite">
-        {hasQuery ? `${flat.length} result${flat.length === 1 ? '' : 's'} for ${query.trim()}` : ''}
+        {hasQuery && !loading ? `${flat.length} result${flat.length === 1 ? '' : 's'} for ${query.trim()}` : ''}
       </div>
     </Dialog>
   );

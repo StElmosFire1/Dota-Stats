@@ -21974,6 +21974,116 @@ async function listTeams({ limit = 50 } = {}) {
   );
   return r.rows;
 }
+// Task #588 — thin search helpers backing the unified GET /api/search command
+// palette (full edition). Each is case-insensitive (ILIKE), capped, and returns
+// only the few fields the palette renders. The `%`-wrapping happens here so the
+// route handler can pass the raw query straight through.
+async function searchPlayers(q, limit = 6) {
+  const term = String(q || '').trim();
+  if (!term) return [];
+  const p = getPool();
+  const like = `%${term}%`;
+  const r = await p.query(
+    `SELECT
+       COALESCE(MAX(NULLIF(ps.account_id, 0)), 0) AS account_id,
+       COALESCE(
+         MAX(n.nickname),
+         CASE WHEN MAX(NULLIF(ps.account_id, 0)) IS NOT NULL
+           THEN MAX(NULLIF(ps.account_id, 0))::text
+           ELSE MAX(ps.persona_name) END
+       ) AS player_key,
+       MAX(ps.persona_name) AS persona_name,
+       MAX(n.nickname) AS nickname,
+       COUNT(DISTINCT ps.match_id) AS games_played
+     FROM player_stats ps
+     LEFT JOIN nicknames n ON n.account_id = ps.account_id AND ps.account_id != 0
+     WHERE (n.nickname ILIKE $1 OR ps.persona_name ILIKE $1)
+     GROUP BY
+       COALESCE(n.nickname, CASE WHEN ps.account_id != 0 THEN ps.account_id::text ELSE ps.persona_name END)
+     ORDER BY games_played DESC
+     LIMIT $2`,
+    [like, limit]
+  );
+  return r.rows.map(row => ({
+    account_id: Number(row.account_id) || 0,
+    player_key: row.player_key,
+    name: row.nickname || row.persona_name || row.player_key || `Player ${row.account_id}`,
+    persona_name: row.persona_name || null,
+    games_played: Number(row.games_played) || 0,
+  }));
+}
+
+async function searchCoaches(q, limit = 6) {
+  const term = String(q || '').trim();
+  if (!term) return [];
+  const p = getPool();
+  const like = `%${term}%`;
+  const r = await p.query(
+    `SELECT c.id, c.account_id, c.taught_roles, c.hourly_rate_cents, c.currency,
+            COALESCE(n.nickname, c.account_id::text) AS display_name
+       FROM coaches c
+       LEFT JOIN nicknames n ON n.account_id = c.account_id
+      WHERE c.status = 'active'
+        AND (COALESCE(n.nickname, '') ILIKE $1 OR c.account_id::text ILIKE $1)
+      ORDER BY display_name ASC
+      LIMIT $2`,
+    [like, limit]
+  );
+  return r.rows.map(row => ({
+    id: Number(row.id),
+    account_id: String(row.account_id),
+    name: row.display_name,
+    taught_roles: row.taught_roles || null,
+    hourly_rate_cents: row.hourly_rate_cents ?? null,
+    currency: row.currency || null,
+  }));
+}
+
+async function searchTeams(q, limit = 6) {
+  const term = String(q || '').trim();
+  if (!term) return [];
+  const p = getPool();
+  const like = `%${term}%`;
+  const r = await p.query(
+    `SELECT t.id, t.name, t.tag,
+            (SELECT COUNT(*) FROM team_members tm WHERE tm.team_id = t.id)::int AS member_count
+       FROM teams t
+      WHERE t.is_active = TRUE
+        AND (t.name ILIKE $1 OR t.tag ILIKE $1)
+      ORDER BY member_count DESC, t.created_at DESC
+      LIMIT $2`,
+    [like, limit]
+  );
+  return r.rows.map(row => ({
+    id: Number(row.id),
+    name: row.name,
+    tag: row.tag,
+    member_count: Number(row.member_count) || 0,
+  }));
+}
+
+async function searchTournaments(q, limit = 6) {
+  const term = String(q || '').trim();
+  if (!term) return [];
+  const p = getPool();
+  const like = `%${term}%`;
+  const r = await p.query(
+    `SELECT t.id, t.name, t.status, s.name AS season_name
+       FROM tournaments t
+       LEFT JOIN seasons s ON s.id = t.season_id
+      WHERE t.name ILIKE $1
+      ORDER BY t.created_at DESC
+      LIMIT $2`,
+    [like, limit]
+  );
+  return r.rows.map(row => ({
+    id: Number(row.id),
+    name: row.name,
+    status: row.status || null,
+    season_name: row.season_name || null,
+  }));
+}
+
 async function getTeamMembers(teamId) {
   const p = getPool();
   const r = await p.query(
@@ -25221,6 +25331,10 @@ module.exports = {
   confirmTeamCreation,
   getTeamById,
   listTeams,
+  searchPlayers,
+  searchCoaches,
+  searchTeams,
+  searchTournaments,
   getTeamMembers,
   getTeamForAccount,
   updateTeamProfile,

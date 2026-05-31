@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.51",
+    "title": "Search the whole site from one box (⌘K)",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** Finding a player, coach, team, or tournament meant going to the right page first and hunting from there.",
+      "**What.** A new search box lives in the top header — click it or press ⌘K (Ctrl+K on Windows) from anywhere to open a command palette and jump straight to players, coaches, teams, tournaments, and heroes.",
+      "**How it works.** Start typing and grouped results appear instantly; arrow keys move the highlight, Enter opens the result, Esc closes. On mobile the box collapses to a search icon.",
+      "**Fast and light.** Results come from a single bounded server lookup so it stays quick even as the community grows.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.50",
     "title": "Get a receipt the moment your prize is paid",
     "published_at": "2026-05-31",

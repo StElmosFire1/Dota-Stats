@@ -11402,7 +11402,29 @@ NOTES
     }
   });
 
-  // Patch notes
+  // Task #588 — unified command-palette search (full edition). One bounded,
+  // case-insensitive lookup across players, coaches, teams and tournaments so
+  // the header ⌘K palette can debounce-call a single endpoint instead of
+  // pulling whole lists client-side. Heroes are matched in-process by the
+  // frontend (static registry), so they're deliberately not queried here.
+  router.get('/search', async (req, res) => {
+    try {
+      const q = String(req.query.q || '').trim();
+      if (q.length < 2) {
+        return res.json({ query: q, players: [], coaches: [], teams: [], tournaments: [] });
+      }
+      const [players, coaches, teams, tournaments] = await Promise.all([
+        db.searchPlayers(q, 6).catch(() => []),
+        db.searchCoaches(q, 6).catch(() => []),
+        db.searchTeams(q, 6).catch(() => []),
+        db.searchTournaments(q, 6).catch(() => []),
+      ]);
+      res.json({ query: q, players, coaches, teams, tournaments });
+    } catch (err) {
+      res.status(500).json({ error: 'Search failed' });
+    }
+  });
+
   router.get('/patch-notes', async (req, res) => {
     try {
       const notes = await db.getPatchNotes();
