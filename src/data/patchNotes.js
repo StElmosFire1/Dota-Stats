@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.92",
+    "title": "Browser-smoke now watches the How It Works guide",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Regression cover for the guide.** The weekly browser-smoke suite now loads `/how-it-works` as a first-class journey and perceptual-diffs it against a stored baseline, so any visual or routing regression on the public guide page gets caught before deploy instead of in the wild.",
+      "**Cleaner, more stable screenshots.** The smoke runner now also dismisses the guest \"take the tour\" nudge up front (alongside the existing welcome/onboarding modal suppression) so it can't float over the bottom of an anonymous page and cause a flaky diff.",
+      "**Scope.** Full edition only — community edition is untouched."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "8.91",
     "title": "A real walkthrough video on the How It Works guide",
     "published_at": "2026-05-31",

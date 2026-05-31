@@ -164,17 +164,23 @@ async function runSmoke({ trigger = 'manual', baseUrl = null, diffThreshold = DE
 
     // Suppress site-wide modals that would otherwise overlay every screenshot.
     // The runner starts from a fresh context (no prior "dismissed" flags), so
-    // the WelcomeModal ("what's new") and the onboarding nudge pop on every
-    // page. The WelcomeModal's dismiss key is version-stamped
-    // (`welcome_modal_dismissed_v<n>`) and that version is fetched at runtime,
-    // so rather than guess it we intercept getItem to report any such key as
-    // already-dismissed. Runs before any page script on every navigation.
+    // the WelcomeModal ("what's new"), the onboarding nudge, and the guest
+    // "take the tour" nudge pop on every page. The WelcomeModal's dismiss key
+    // is version-stamped (`welcome_modal_dismissed_v<n>`) and that version is
+    // fetched at runtime, so rather than guess it we intercept getItem to
+    // report any such key as already-dismissed. The guest tour nudge
+    // (GuestTourNudge) keys off `oi_tutorial_intro_seen_v1` and fires ~1.4s
+    // after load for anonymous visitors — left unstamped it would float over
+    // the bottom of any anon journey (e.g. /how-it-works) non-deterministically
+    // depending on per-page timing, poisoning the diff. We stamp it seen up
+    // front. Runs before any page script on every navigation.
     await context.addInitScript(() => {
       try {
         const orig = window.localStorage.getItem.bind(window.localStorage);
         window.localStorage.getItem = (key) =>
           (typeof key === 'string' && key.indexOf('welcome_modal_dismissed_v') === 0) ? '1' : orig(key);
         window.localStorage.setItem('onboarding_modal_seen', '1');
+        window.localStorage.setItem('oi_tutorial_intro_seen_v1', '1');
       } catch (_) { /* storage unavailable — nothing to suppress */ }
     });
 

@@ -37,6 +37,7 @@ const JOURNEYS = [
   { key: 'tournaments',  path: '/tournaments',                     label: 'Tournaments index',   expect: '.tournaments, .tournament, h1' },
   { key: 'tournament_detail', path: `/tournaments/${SAMPLE_TOURNAMENT}`, label: 'Tournament detail', expect: '.tournament-layout, .page-title, .error-state, h1, h2' },
   { key: 'inhouse',      path: '/inhouse',                         label: 'Inhouse lobby (anon)',expect: 'h1, main' },
+  { key: 'how_it_works', path: '/how-it-works',                    label: 'How it works guide',  expect: '.hiw-page, .hiw-hero, .hiw-title, h1' },
   { key: 'patch_notes',  path: '/patch-notes',                     label: 'Patch notes',         expect: '.patch-notes, h1, article' },
   { key: 'health_json',  path: '/api/health',                      label: '/v1/health endpoint', expect: null, asJson: true },
 
