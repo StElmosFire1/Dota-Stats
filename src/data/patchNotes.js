@@ -14,6 +14,18 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "8.72",
+    "title": "Navigation rebuilt into hubs + a more useful signed-in home",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The top nav had grown into nine flat links plus a single 16-item \"More\" dropdown that had become a junk drawer — Ward Maps, Benchmarks, Pick'em, Season Wrapped, Draft Trainer, Multi-Kills, Hall of Fame and the Head-to-Head tools were all but impossible to find.",
+      "**What — hubs.** The menu is now grouped into four clear hubs — **Stats**, **Heroes & Draft**, **Play** and **Community** — with the two highest-traffic destinations (Leaderboard and Matches) kept as direct links beside Home. Every previously-buried page now lives in an obvious hub, and the live-players signal moved onto the Community hub as a pulsing count badge.",
+      "**What — home.** The signed-in dashboard gains a **Growth Coach** shortcut in the welcome strip (your \"one thing to improve\", shown once you have games on record) and a new **Discover** rail of one-click cards into Synergy, Benchmarks, Ward Maps, the Draft Assistant & Trainer, Pick'em, Records and Season Wrapped.",
+      "**Scope.** Full edition only — community edition untouched. Keyboard/screen-reader behaviour preserved (a11y gate green)."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.70",
     "title": "Growth Coach — a personal PERF improvement plan on your profile",
     "published_at": "2026-05-31",

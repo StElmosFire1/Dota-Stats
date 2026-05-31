@@ -454,6 +454,15 @@ function PersonalisedDashboard({ steamUser }) {
             <Link to="/matches" className="btn" style={{ fontSize: 13 }}>
               Matches
             </Link>
+            {/* Task #629 — "one thing to improve" entry point. The Growth Coach
+                page distils the player's weakest dimension into an actionable
+                plan; surface it straight from the welcome strip once they have
+                games on record. */}
+            {accountId && homeData && homeData.games_played > 0 && (
+              <Link to={`/player/${accountId}/growth`} className="btn" style={{ fontSize: 13 }}>
+                Growth Coach
+              </Link>
+            )}
           </div>
         </div>
 
@@ -659,7 +668,52 @@ function PersonalisedDashboard({ steamUser }) {
           </div>
         </div>
       ) : null}
+
+      <DiscoverGrid />
     </>
+  );
+}
+
+// Task #629 — discoverability rail. The nav consolidation tucks deeper tools
+// behind hubs; this surfaces the high-value analysis pages straight on the
+// signed-in dashboard so they're one click away rather than two hovers deep.
+const DISCOVER_LINKS = [
+  { to: '/synergy', icon: '🤝', title: 'Synergy', sub: 'Best & worst duos' },
+  { to: '/benchmarks', icon: '📊', title: 'Benchmarks', sub: 'How you stack up' },
+  { to: '/ward-map', icon: '🗺️', title: 'Ward Maps', sub: 'Vision heatmaps' },
+  { to: '/draft-assistant', icon: '🧠', title: 'Draft Assistant', sub: 'Live counter-picks' },
+  { to: '/heroes/draft-trainer', icon: '🎯', title: 'Draft Trainer', sub: 'Practice your reads' },
+  { to: '/pickem', icon: '🔮', title: "Pick'em", sub: 'Predict & earn' },
+  { to: '/records', icon: '🏆', title: 'Records', sub: 'Hall of Fame & feats' },
+  { to: '/wrapped/me/latest', icon: '🎁', title: 'Season Wrapped', sub: 'Your season in review' },
+];
+
+function DiscoverGrid() {
+  return (
+    <div style={{ marginBottom: 32 }}>
+      <div className="pb-section-head" style={{ marginBottom: 14 }}>
+        <h2 className="pb-section-head-title" style={{ fontSize: 20 }}>Discover</h2>
+        <span className="pb-eyebrow">Explore the league</span>
+      </div>
+      <div className="oa-discover-grid" style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12,
+      }}>
+        {DISCOVER_LINKS.map(l => (
+          <Link key={l.to} to={l.to} className="pb-card" style={{
+            display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
+            textDecoration: 'none',
+          }}>
+            <span aria-hidden="true" style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>{l.icon}</span>
+            <span style={{ minWidth: 0 }}>
+              <span className="pb-serif" style={{
+                display: 'block', fontSize: 15, fontWeight: 700, color: 'var(--pb-text, var(--text-primary))',
+              }}>{l.title}</span>
+              <span style={{ display: 'block', fontSize: 12, color: 'var(--pb-muted, var(--text-muted))' }}>{l.sub}</span>
+            </span>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 

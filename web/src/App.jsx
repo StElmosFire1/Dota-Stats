@@ -466,7 +466,7 @@ function SuperuserButton() {
   );
 }
 
-function DropdownMenu({ label, children }) {
+function DropdownMenu({ label, children, badge }) {
   const [open, setOpen] = useState(false);
   const location = useLocation();
   useEffect(() => setOpen(false), [location]);
@@ -488,9 +488,11 @@ function DropdownMenu({ label, children }) {
         tabIndex={0}
         aria-haspopup="menu"
         aria-expanded={open}
-        style={{ cursor: 'pointer', userSelect: 'none', display: 'inline-flex', alignItems: 'center' }}
+        style={{ cursor: 'pointer', userSelect: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
       >
-        {label} <span style={{ fontSize: 9, opacity: 0.6 }}>▼</span>
+        {label}
+        {badge}
+        <span style={{ fontSize: 9, opacity: 0.6 }}>▼</span>
       </span>
       {open && (
         <div role="menu" style={{
@@ -635,55 +637,6 @@ function MobileLiveBadge({ count }) {
   );
 }
 
-function NavPlayersLink({ isActive, count }) {
-  const hasLive = count > 0;
-  // Class isActive() matches by exact pathname, so /players stays active
-  // regardless of the ?tab=live query string.
-  const to = hasLive ? '/players?tab=live' : '/players';
-  return (
-    <Link
-      to={to}
-      className={isActive('/players')}
-      aria-label={hasLive ? `Players — ${count} live now` : 'Players'}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-    >
-      <span>Players</span>
-      {hasLive && (
-        <span
-          className="nav-live-badge"
-          aria-hidden="true"
-          title={`${count} player${count === 1 ? '' : 's'} live now`}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '1px 6px 1px 5px',
-            borderRadius: 999,
-            background: 'rgba(34,197,94,0.14)',
-            border: '1px solid rgba(34,197,94,0.45)',
-            color: '#22c55e',
-            fontSize: 11,
-            fontWeight: 700,
-            lineHeight: 1.2,
-          }}
-        >
-          <span
-            style={{
-              width: 7,
-              height: 7,
-              borderRadius: '50%',
-              background: '#22c55e',
-              boxShadow: '0 0 0 0 rgba(34,197,94,0.7)',
-              animation: 'oi-live-pulse 1.6s ease-out infinite',
-            }}
-          />
-          {count}
-        </span>
-      )}
-    </Link>
-  );
-}
-
 // Task #313 / v6.79 — Coin balance pill in the navbar. Polls /api/coins/me
 // once on sign-in + every 60s so a freshly-recorded match bumps the balance
 // without a hard reload. Hidden when signed-out. Links to /shop so a click
@@ -721,6 +674,31 @@ function NavCoinPill({ accountId }) {
       <span aria-hidden="true" style={{ fontSize: 13 }}>🪙</span>
       {balance.toLocaleString()}
     </Link>
+  );
+}
+
+// Task #629 — compact live-now pulse badge shown on the "Community" hub
+// label (which now hosts the Players link) so the desktop live-player signal
+// survives the nav consolidation without a standalone top-level link.
+function NavLivePulse({ count }) {
+  if (!count || count <= 0) return null;
+  return (
+    <span
+      aria-hidden="true"
+      title={`${count} player${count === 1 ? '' : 's'} live now`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        padding: '1px 6px 1px 5px', borderRadius: 999,
+        background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.45)',
+        color: '#22c55e', fontSize: 11, fontWeight: 700, lineHeight: 1.2,
+      }}
+    >
+      <span style={{
+        width: 7, height: 7, borderRadius: '50%', background: '#22c55e',
+        boxShadow: '0 0 0 0 rgba(34,197,94,0.7)', animation: 'oi-live-pulse 1.6s ease-out infinite',
+      }} />
+      {count}
+    </span>
   );
 }
 
@@ -762,37 +740,62 @@ function Nav() {
       <WatchLiveBadge variant="nav" />
       {/* Task #313 / v6.79 — coin balance pill, signed-in only. */}
       <NavCoinPill accountId={accountId} />
+      {/* Task #629 — consolidated hub navigation. The previous flat list of
+          nine top-level links plus a 16-item catch-all "More" dropdown buried
+          most of the site (ward maps, benchmarks, pick'em, wrapped, draft
+          trainer, multi-kills, hall of fame, player tools were all but
+          unreachable from the menu). The surface is now grouped into a few
+          clear hubs — Stats, Heroes & Draft, Play, Community — with the two
+          highest-traffic destinations (Leaderboard, Matches) kept as direct
+          links. */}
       <div className="nav-links">
         <Link to="/" className={isActive('/')}>Home</Link>
         <Link to="/leaderboard" className={isActive('/leaderboard')}>Leaderboard</Link>
-        <Link to="/stats" className={isActive('/stats')}>Player Stats</Link>
-        <Link to="/positions" className={isActive('/positions')}>Positions</Link>
-        <Link to="/heroes" className={isActive('/heroes')}>Heroes</Link>
-        <Link to="/synergy" className={isActive('/synergy')}>Synergy</Link>
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
-        <Link to="/this-week" className={isActive('/this-week')}>This Week</Link>
-        <NavPlayersLink isActive={isActive} count={liveCount} />
-        <DropdownMenu label="More">
-          <DropdownItem to="/upload">Upload Replay</DropdownItem>
-          <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>
-          {showProReplays && <DropdownItem to="/pro-replays">Pro Replay Browser</DropdownItem>}
-          <DropdownItem to="/records">Records</DropdownItem>
+        <DropdownMenu label="Stats">
+          <DropdownItem to="/stats">Player Stats</DropdownItem>
+          <DropdownItem to="/positions">Positions</DropdownItem>
+          <DropdownItem to="/this-week">This Week</DropdownItem>
+          <DropdownItem to="/records">Records &amp; Hall of Fame</DropdownItem>
+          <DropdownItem to="/benchmarks">Benchmarks</DropdownItem>
+          <DropdownItem to="/player-tools">Head-to-Head &amp; Compare</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
-          <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
+          <DropdownItem to="/upload">Upload Replay</DropdownItem>
+        </DropdownMenu>
+        <DropdownMenu label="Heroes &amp; Draft">
+          <DropdownItem to="/heroes">Heroes</DropdownItem>
+          <DropdownItem to="/synergy">Synergy</DropdownItem>
+          <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>
+          <DropdownItem to="/heroes/draft-trainer">Draft Trainer</DropdownItem>
+          <DropdownItem to="/ward-map">Ward Maps</DropdownItem>
+          <DropdownItem to="/multikills">Multi-Kills</DropdownItem>
           <DropdownItem to="/pudge-stats">Pudge Hook Stats</DropdownItem>
-          <DropdownItem to="/schedule">Game Schedule</DropdownItem>
-          <DropdownItem to="/games">Daily Mini-Games</DropdownItem>
+          {showProReplays && <DropdownItem to="/pro-replays">Pro Replay Browser</DropdownItem>}
+        </DropdownMenu>
+        <DropdownMenu label="Play">
           <DropdownItem to="/inhouse">Inhouse Lobby</DropdownItem>
           <DropdownItem to="/tournaments">Tournaments</DropdownItem>
           <DropdownItem to="/leagues">Leagues</DropdownItem>
+          <DropdownItem to="/teams">Teams</DropdownItem>
+          <DropdownItem to="/schedule">Game Schedule</DropdownItem>
+          <DropdownItem to="/games">Daily Mini-Games</DropdownItem>
+          <DropdownItem to="/pickem">Pick&apos;em</DropdownItem>
+          <DropdownItem to="/join">Join the League</DropdownItem>
+        </DropdownMenu>
+        <DropdownMenu label="Community" badge={<NavLivePulse count={liveCount} />}>
+          <DropdownItem to={liveCount > 0 ? '/players?tab=live' : '/players'}>
+            {liveCount > 0 ? `Players · ${liveCount} live` : 'Players'}
+          </DropdownItem>
           <DropdownItem to="/coaches">Coaching Marketplace</DropdownItem>
           <DropdownItem to="/sponsorships">Sponsor a Slot</DropdownItem>
+          <DropdownItem to="/social">Social Feed</DropdownItem>
+          <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
+          {/* Task #443 — personal Season Wrapped; signed-in only. */}
+          {accountId && <DropdownItem to="/wrapped/me/latest">Season Wrapped</DropdownItem>}
           {/* v6.62 / Task #206 — only signed-in players need the cosmetics shop;
               anonymous viewers can't apply anything yet. The /pro CTA in the
               nav bar covers their upgrade path. */}
           {accountId && <DropdownItem to="/shop">Cosmetics Shop</DropdownItem>}
-          {/* v5.88 — Hall of Fame and Multi-Kills now live as tabs inside the Records page. */}
-          <DropdownItem to="/join">Join the League</DropdownItem>
         </DropdownMenu>
         <Link
           to="/pro"
