@@ -315,9 +315,22 @@ function MatchupColumn({ title, rows, good = false }) {
           <tbody>
             {rows.map(r => {
               const pct = Math.round(r.wr * 100);
+              const oppImg = getHeroImageUrl(r.opp_hero_id);
               return (
                 <tr key={r.opp_hero_id}>
-                  <td className="col-player">{formatHeroName(r.opp_hero_name)}</td>
+                  <td className="col-player">
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      {oppImg && (
+                        <img
+                          src={oppImg}
+                          alt=""
+                          style={{ width: 32, height: 18, objectFit: 'cover', borderRadius: 3, flexShrink: 0 }}
+                          onError={e => { e.currentTarget.style.display = 'none'; }}
+                        />
+                      )}
+                      {formatHeroName(r.opp_hero_name)}
+                    </span>
+                  </td>
                   <td className="col-stat">{r.g}</td>
                   <td className="col-stat" style={{ color: r.wr >= 0.5 ? '#4ade80' : '#f87171', fontWeight: 600 }}>{pct}%</td>
                 </tr>

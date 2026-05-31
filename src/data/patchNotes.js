@@ -3861,12 +3861,23 @@ module.exports = [
     "author": "System"
   },
   {
-    "version": "8.75",
+    "version": "8.76",
     "title": "Team logos and tournament monograms in the ⌘K search palette",
     "published_at": "2026-05-31",
     "notes": [
       "**What.** When you search teams in the command palette (⌘K / Ctrl-K), any team that has set a logo now shows that logo as its result thumbnail instead of the generic 🤝 emoji — so results are quicker to scan and match the player/coach portraits already shown there.",
       "**Monograms.** Teams without a logo, and tournaments (which don't store an image), now get a tidy initials chip in the site palette — brass for teams, amber for tournaments — instead of a plain emoji, so every search result has a distinct thumbnail.",
+      "**Scope.** Full edition only — community edition untouched. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
+    "version": "8.77",
+    "title": "Opponent hero portraits in the per-hero matchup tables",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**What.** The Best against / Worst against tables on each hero's page now show the opponent's hero portrait next to their name, so the matchups are quicker to scan and visually consistent with the rest of the Heroes UI.",
+      "**Graceful fallback.** If a portrait can't be resolved for a given hero, the icon is simply hidden and the name still reads cleanly.",
       "**Scope.** Full edition only — community edition untouched. A11y gate green."
     ],
     "author": "System"
