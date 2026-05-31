@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
+import '../styles/pressbox-inhouse.css';
 
 // Placeholder players for the sandbox. `kda` / `winRate` / `games` /
 // `prefPos` / `topHeroes` are all fabricated demo numbers — nothing here is
@@ -23,84 +24,80 @@ const PLACEHOLDER_PLAYERS = [
 // Index: 0..7 — value: which captain picks (1 or 2).
 const PICK_SEQUENCE = [1, 2, 2, 1, 1, 2, 2, 1];
 
-// Court & Pitch palette anchors (kept here as constants so colour decisions
-// match the global brand without depending on the theme being loaded yet).
-const CP = {
-  inkNavy: '#0d1424',
-  cardSurface: '#152036',
-  brass: '#c5a975',
-  amber: '#f59e0b',
-  parchment: '#f5efe2',
-  radiant: '#22c55e',
-  dire: '#ef4444',
-};
-const FONT_DISPLAY = '"Playfair Display", Georgia, serif';
-const FONT_CONDENSED = '"Oswald", "Inter", sans-serif';
-
+// Position role colours (QOL — lets admins read a player's natural role at a
+// glance). Uses theme tokens so the chip tracks light/dark like the rest of
+// the Press Box surface.
 const POS_COLOR = {
-  '1': CP.amber,
-  '2': CP.radiant,
-  '3': CP.dire,
+  '1': 'var(--pb-amber)',
+  '2': 'var(--pb-radiant)',
+  '3': 'var(--pb-dire)',
   '4': '#60a5fa',
   '5': '#a78bfa',
+};
+const POS_LABEL = {
+  '1': 'Carry',
+  '2': 'Mid',
+  '3': 'Offlane',
+  '4': 'Soft Sup',
+  '5': 'Hard Sup',
 };
 
 // Floating tooltip card shown on player hover. Renders absolutely positioned
 // over the card itself so it appears next to whatever was hovered without
 // needing portal mechanics. Uses pointerEvents:'none' so it doesn't steal
-// hover state from the underlying card.
+// hover state from the underlying card. (QOL — preserved from the original
+// sandbox so admins can preview the captain-pick hover experience.)
 function PlayerHoverCard({ p }) {
-  const winColor = p.winRate >= 60 ? CP.radiant : p.winRate >= 50 ? CP.amber : CP.dire;
+  const winColor = p.winRate >= 60 ? 'var(--pb-radiant)' : p.winRate >= 50 ? 'var(--pb-amber)' : 'var(--pb-dire)';
   return (
     <div style={{
-      position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 50,
-      width: 280, padding: '12px 14px', borderRadius: 6,
-      background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
-      border: `1px solid ${CP.brass}`, borderLeft: `3px solid ${CP.amber}`,
-      boxShadow: `0 8px 24px ${CP.inkNavy}cc, 0 0 0 1px ${CP.brass}33`,
-      pointerEvents: 'none', fontFamily: FONT_CONDENSED, color: CP.parchment,
+      position: 'absolute', top: '100%', left: 0, marginTop: 8, zIndex: 50,
+      width: 282, padding: '14px 16px', borderRadius: 'var(--pb-radius-sm)',
+      background: 'linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%)',
+      border: '1px solid var(--pb-line)', borderTop: '3px solid var(--pb-brass)',
+      boxShadow: 'var(--pb-shadow)',
+      pointerEvents: 'none', color: 'var(--pb-text)',
     }}>
-      <div style={{
-        fontSize: 10, color: CP.brass, letterSpacing: 2,
-        borderBottom: `1px solid ${CP.brass}33`, paddingBottom: 6, marginBottom: 8,
+      <div className="pb-eyebrow" style={{
+        borderBottom: '1px solid var(--pb-line)', paddingBottom: 7, marginBottom: 10,
       }}>
-        ━ PLAYER STATS ━
+        Player Stats
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 14px', marginBottom: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px', marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 9, color: CP.brass, letterSpacing: 1.2 }}>KDA RATIO</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: CP.amber }}>{p.kda.toFixed(2)}</div>
+          <div className="pb-eyebrow" style={{ fontSize: 9, letterSpacing: '0.14em' }}>KDA Ratio</div>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 19, fontWeight: 700, color: 'var(--pb-brass-bright)' }}>{p.kda.toFixed(2)}</div>
         </div>
         <div>
-          <div style={{ fontSize: 9, color: CP.brass, letterSpacing: 1.2 }}>WIN RATE</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: winColor }}>{p.winRate}%</div>
+          <div className="pb-eyebrow" style={{ fontSize: 9, letterSpacing: '0.14em' }}>Win Rate</div>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 19, fontWeight: 700, color: winColor }}>{p.winRate}%</div>
         </div>
         <div>
-          <div style={{ fontSize: 9, color: CP.brass, letterSpacing: 1.2 }}>GAMES</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: CP.parchment }}>{p.games}</div>
+          <div className="pb-eyebrow" style={{ fontSize: 9, letterSpacing: '0.14em' }}>Games</div>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16, fontWeight: 700, color: 'var(--pb-text)' }}>{p.games}</div>
         </div>
         <div>
-          <div style={{ fontSize: 9, color: CP.brass, letterSpacing: 1.2 }}>MMR</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: CP.parchment }}>{p.mmr}</div>
+          <div className="pb-eyebrow" style={{ fontSize: 9, letterSpacing: '0.14em' }}>MMR</div>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16, fontWeight: 700, color: 'var(--pb-text)' }}>{p.mmr}</div>
         </div>
       </div>
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 9, color: CP.brass, letterSpacing: 1.2, marginBottom: 4 }}>PREFERRED POSITIONS</div>
+      <div style={{ marginBottom: 10 }}>
+        <div className="pb-eyebrow" style={{ fontSize: 9, letterSpacing: '0.14em', marginBottom: 5 }}>Preferred Positions</div>
         <div style={{ display: 'flex', gap: 5 }}>
           {(p.prefPos || []).map(pos => (
             <span key={pos} style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               width: 22, height: 22, borderRadius: '50%',
-              background: POS_COLOR[pos] || '#888', color: CP.inkNavy,
-              fontSize: 11, fontWeight: 800,
+              background: POS_COLOR[pos] || 'var(--pb-faint)', color: '#0d1424',
+              fontSize: 11, fontWeight: 800, fontFamily: 'var(--font-condensed)',
             }}>{pos}</span>
           ))}
         </div>
       </div>
       {p.topHeroes && p.topHeroes.length > 0 && (
         <div>
-          <div style={{ fontSize: 9, color: CP.brass, letterSpacing: 1.2, marginBottom: 3 }}>TOP HEROES</div>
-          <div style={{ fontSize: 12, color: CP.parchment, fontFamily: '"Inter", sans-serif', lineHeight: 1.4 }}>
+          <div className="pb-eyebrow" style={{ fontSize: 9, letterSpacing: '0.14em', marginBottom: 4 }}>Top Heroes</div>
+          <div style={{ fontSize: 12, color: 'var(--pb-muted)', lineHeight: 1.5 }}>
             {p.topHeroes.join(' · ')}
           </div>
         </div>
@@ -109,11 +106,26 @@ function PlayerHoverCard({ p }) {
   );
 }
 
-function PlayerCard({ p, onPick, disabled, picked, team }) {
+// Position monogram chip — colour-coded role indicator reused across the pool
+// and roster cards.
+function PosChip({ pos, size = 30 }) {
+  return (
+    <span aria-hidden="true" style={{
+      width: size, height: size, borderRadius: 8,
+      background: 'var(--pb-elevated)',
+      border: `1px solid ${POS_COLOR[pos] || 'var(--pb-line)'}`,
+      color: POS_COLOR[pos] || 'var(--pb-brass)',
+      fontSize: size > 26 ? 14 : 12, fontWeight: 800, fontFamily: 'var(--font-condensed)',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    }}>{pos}</span>
+  );
+}
+
+// Pool player card — Press Box surface with the hover tooltip preserved. The
+// tooltip also opens on keyboard focus (the inner PICK button bubbles
+// focus/blur up to the card) so the reveal isn't hover-only.
+function PoolCard({ p, onPick, disabled }) {
   const [hover, setHover] = useState(false);
-  const teamColor = team === 1 ? CP.radiant
-                  : team === 2 ? CP.dire
-                  : `${CP.brass}55`;
   return (
     <div
       onMouseEnter={() => setHover(true)}
@@ -121,145 +133,112 @@ function PlayerCard({ p, onPick, disabled, picked, team }) {
       onFocus={() => setHover(true)}
       onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setHover(false); }}
       style={{
-      position: 'relative',
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '12px 14px', borderRadius: 6,
-      background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
-      border: `1px solid ${hover ? CP.amber : teamColor}`,
-      borderLeft: `3px solid ${hover ? CP.amber : teamColor}`,
-      opacity: picked && !team ? 0.4 : 1,
-      transition: 'transform 100ms, border-color 100ms',
-    }}>
-      <div style={{
-        width: 32, height: 32, borderRadius: '50%',
-        background: POS_COLOR[p.pos] || '#888',
-        color: CP.inkNavy, fontWeight: 800, fontSize: 14, fontFamily: FONT_CONDENSED,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: `0 0 0 2px ${CP.cardSurface}, 0 0 0 3px ${POS_COLOR[p.pos] || '#888'}66`,
-      }}>{p.pos}</div>
+        position: 'relative',
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '10px 12px',
+        background: hover ? 'var(--pb-elevated)' : 'var(--pb-surface)',
+        border: `1px solid ${hover ? 'color-mix(in srgb, var(--pb-brass) 45%, var(--pb-line))' : 'var(--pb-line)'}`,
+        borderRadius: 8,
+        transition: 'background 120ms, border-color 120ms',
+      }}
+    >
+      <PosChip pos={p.pos} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, color: CP.parchment, letterSpacing: 0.3 }}>{p.name}</div>
-        <div style={{ fontSize: 12, color: `${CP.brass}cc`, fontFamily: FONT_CONDENSED, letterSpacing: 0.5 }}>
-          <span style={{ color: CP.amber, fontWeight: 700 }}>{p.mmr}</span>
-          <span style={{ opacity: 0.5 }}> MMR · </span>
-          <span style={{ fontFamily: 'inherit' }}>{p.flair}</span>
+        <div style={{ fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 600, color: 'var(--pb-text)' }}>{p.name}</div>
+        <div style={{ fontSize: 12, color: 'var(--pb-faint)', fontFamily: 'var(--font-condensed)' }}>
+          <span style={{ color: 'var(--pb-brass-bright)', fontWeight: 700 }}>{p.mmr}</span> MMR · {POS_LABEL[p.pos] || `Pos ${p.pos}`} · {p.flair}
         </div>
       </div>
-      {team ? (
-        <span style={{
-          fontSize: 10, fontWeight: 800, padding: '4px 10px', borderRadius: 3,
-          background: teamColor, color: CP.inkNavy, fontFamily: FONT_CONDENSED, letterSpacing: 1.5,
-        }}>
-          TEAM {team}
-        </span>
-      ) : (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => onPick(p.id)}
-          style={{
-            padding: '6px 14px', borderRadius: 4, border: `1px solid ${CP.brass}`,
-            background: disabled ? 'transparent' : `linear-gradient(180deg, ${CP.brass} 0%, #a08858 100%)`,
-            color: disabled ? `${CP.brass}66` : CP.inkNavy,
-            fontWeight: 800, fontSize: 12, letterSpacing: 1, fontFamily: FONT_CONDENSED,
-            cursor: disabled ? 'not-allowed' : 'pointer', textTransform: 'uppercase',
-          }}
-        >
-          PICK →
-        </button>
-      )}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onPick(p.id)}
+        aria-label={`Pick ${p.name}`}
+        style={{
+          padding: '7px 14px', borderRadius: 5, border: '1px solid var(--pb-brass)',
+          background: disabled ? 'transparent' : 'var(--pb-amber)',
+          color: disabled ? 'var(--pb-faint)' : '#0d1424',
+          fontWeight: 700, fontSize: 12, letterSpacing: '0.08em',
+          fontFamily: 'var(--font-condensed)', textTransform: 'uppercase',
+          cursor: disabled ? 'not-allowed' : 'pointer', flexShrink: 0,
+        }}
+      >
+        Pick →
+      </button>
       {hover && <PlayerHoverCard p={p} />}
     </div>
   );
 }
 
-function TeamColumn({ label, color, captain, players, totalMmr }) {
+// Roster row — picked player on a team column. Mirrors the Inhouse roster
+// PlayerRow surface treatment.
+function RosterRow({ p, accent }) {
   return (
     <div style={{
-      flex: 1, minWidth: 260,
-      background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
-      borderRadius: 8, padding: 0, border: `1px solid ${color}`,
-      boxShadow: `inset 0 1px 0 ${CP.brass}33`,
-      overflow: 'hidden',
+      position: 'relative',
+      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '9px 12px 9px 14px',
+      background: 'var(--pb-surface)',
+      border: '1px solid var(--pb-line)',
+      borderRadius: 6, marginBottom: 6,
     }}>
-      {/* Heraldic header band */}
-      <div style={{
-        background: `linear-gradient(90deg, ${color}33 0%, transparent 100%)`,
-        borderBottom: `1px solid ${color}66`,
-        padding: '10px 14px',
-      }}>
-        <div style={{
-          fontSize: 11, fontWeight: 800, color, letterSpacing: 2.5,
-          textAlign: 'center', fontFamily: FONT_CONDENSED, textTransform: 'uppercase',
-        }}>
-          ━ {label} ━
-        </div>
-        <div style={{
-          marginTop: 4, fontSize: 22, fontWeight: 800, color: CP.parchment,
-          textAlign: 'center', fontFamily: FONT_CONDENSED, letterSpacing: 1,
-        }}>
-          {players.length}<span style={{ color: `${CP.brass}88`, fontSize: 16 }}> / 5</span>
+      <span aria-hidden="true" style={{
+        position: 'absolute', left: 0, top: 9, bottom: 9, width: 2, borderRadius: 2,
+        background: `linear-gradient(to bottom, transparent, ${accent} 30%, ${accent} 70%, transparent)`,
+        opacity: 0.7,
+      }} />
+      <PosChip pos={p.pos} size={26} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: 'var(--font-serif)', fontSize: 14, fontWeight: 600, color: 'var(--pb-text)' }}>{p.name}</div>
+        <div style={{ fontSize: 11, color: 'var(--pb-faint)', fontFamily: 'var(--font-condensed)' }}>
+          {POS_LABEL[p.pos] || `Pos ${p.pos}`} · {p.flair}
         </div>
       </div>
+      <span style={{ fontFamily: 'var(--font-serif)', fontSize: 15, fontWeight: 700, color: 'var(--pb-brass-bright)' }}>{p.mmr}</span>
+    </div>
+  );
+}
 
-      {/* Captain row */}
-      <div style={{
-        padding: '8px 14px', borderBottom: `1px solid ${CP.brass}22`,
-        background: `${CP.inkNavy}88`,
-      }}>
-        <div style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5, fontFamily: FONT_CONDENSED }}>
-          ⚜ CAPTAIN
-        </div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: CP.parchment }}>
-          {captain ? captain.name : '—'}
-          {captain && (
-            <span style={{ marginLeft: 8, fontSize: 11, color: `${CP.brass}aa`, fontFamily: FONT_CONDENSED }}>
-              {captain.mmr} MMR
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Roster */}
-      <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 5 }}>
-        {players.map(p => (
-          <div key={p.id} style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '7px 10px', borderRadius: 4,
-            background: `${CP.cardSurface}cc`,
-            borderLeft: `2px solid ${POS_COLOR[p.pos] || '#888'}`,
-            fontSize: 13,
+// Team roster column — brass/accent top-rule card with serif captain lockup,
+// matching the Inhouse captain-draft RosterPanel.
+function RosterPanel({ label, accent, captain, players, totalMmr }) {
+  return (
+    <div className="pb-card" style={{
+      borderTop: `3px solid ${accent}`,
+      padding: '14px 12px 12px',
+      minHeight: 320,
+    }}>
+      <div style={{ marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid var(--pb-line)' }}>
+        <div className="pb-eyebrow" style={{ letterSpacing: '0.16em', color: accent }}>{label}</div>
+        <div style={{
+          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+          gap: 8, flexWrap: 'wrap', marginTop: 4,
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700, color: 'var(--pb-text)',
+            display: 'flex', alignItems: 'baseline', gap: 6,
           }}>
-            <span style={{
-              width: 22, height: 22, borderRadius: '50%',
-              background: POS_COLOR[p.pos] || '#888', color: CP.inkNavy,
-              fontSize: 11, fontWeight: 800, fontFamily: FONT_CONDENSED,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>{p.pos}</span>
-            <span style={{ flex: 1, color: CP.parchment }}>{p.name}</span>
-            <span style={{ fontSize: 12, color: CP.amber, fontFamily: FONT_CONDENSED, fontWeight: 700 }}>{p.mmr}</span>
+            <span style={{ color: accent }}>★</span>
+            <span>{captain ? captain.name : '—'}</span>
+            <span className="pb-eyebrow" style={{ fontSize: 9 }}>Captain</span>
           </div>
-        ))}
-        {Array.from({ length: 5 - players.length }).map((_, i) => (
-          <div key={`slot-${i}`} style={{
-            padding: '7px 10px', borderRadius: 4, fontSize: 11,
-            color: `${CP.brass}55`, fontStyle: 'italic', textAlign: 'center',
-            border: `1px dashed ${CP.brass}33`, fontFamily: FONT_CONDENSED, letterSpacing: 1,
-          }}>· EMPTY SLOT ·</div>
-        ))}
-      </div>
-
-      {/* MMR footer */}
-      {players.length > 0 && (
-        <div style={{
-          padding: '8px 14px', borderTop: `1px solid ${CP.brass}22`,
-          background: `${CP.inkNavy}cc`, textAlign: 'center',
-          fontFamily: FONT_CONDENSED, letterSpacing: 2,
-        }}>
-          <span style={{ fontSize: 10, color: CP.brass }}>TOTAL MMR </span>
-          <span style={{ fontSize: 16, fontWeight: 800, color: CP.amber }}>{totalMmr}</span>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16, fontWeight: 700, color: 'var(--pb-brass-bright)' }}>{totalMmr.toLocaleString()}</div>
+            <div className="pb-eyebrow" style={{ fontSize: 9, color: 'var(--pb-faint)' }}>Total · {players.length}/5</div>
+          </div>
         </div>
-      )}
+      </div>
+      {players.length === 0
+        ? <div style={{ color: 'var(--pb-faint)', fontSize: 13, fontStyle: 'italic', padding: '6px 4px' }}>No picks yet</div>
+        : players.map(p => <RosterRow key={p.id} p={p} accent={accent} />)}
+      {players.length > 0 && Array.from({ length: 5 - players.length }).map((_, i) => (
+        <div key={`slot-${i}`} style={{
+          padding: '9px 12px', borderRadius: 6, marginBottom: 6, fontSize: 11,
+          color: 'var(--pb-faint)', fontStyle: 'italic', textAlign: 'center',
+          border: '1px dashed var(--pb-line)', fontFamily: 'var(--font-condensed)',
+          letterSpacing: '0.12em', textTransform: 'uppercase',
+        }}>Awaiting pick</div>
+      ))}
     </div>
   );
 }
@@ -346,185 +325,179 @@ export default function DraftSandbox() {
 
   const t1Mmr = team1.reduce((s, p) => s + p.mmr, 0);
   const t2Mmr = team2.reduce((s, p) => s + p.mmr, 0);
-
   const mmrDelta = Math.abs(t1Mmr - t2Mmr);
   const balanced = mmrDelta < 1500;
 
-  const btn = (extra = {}) => ({
-    padding: '8px 14px', borderRadius: 4, border: `1px solid ${CP.brass}`,
-    background: 'transparent', color: CP.brass,
-    fontFamily: FONT_CONDENSED, fontWeight: 700, fontSize: 12,
-    letterSpacing: 1.2, textTransform: 'uppercase', cursor: 'pointer',
+  const team1Label = 'Team 1 · Radiant';
+  const team2Label = 'Team 2 · Dire';
+
+  // Shared control-button style (condensed, outlined brass).
+  const ctrlBtn = (extra = {}) => ({
+    padding: '8px 14px', borderRadius: 5, border: '1px solid var(--pb-line)',
+    background: 'var(--pb-surface)', color: 'var(--pb-brass)',
+    fontFamily: 'var(--font-condensed)', fontWeight: 600, fontSize: 12,
+    letterSpacing: '0.1em', textTransform: 'uppercase', cursor: 'pointer',
     ...extra,
   });
 
   return (
-    <div style={{
-      maxWidth: 1280, margin: '0 auto', padding: '28px 16px 40px',
-      background: CP.inkNavy, minHeight: '100vh', color: CP.parchment,
-    }}>
-      {/* Header band — heraldic */}
+    <div className="pb-inhouse" style={{ padding: 20, maxWidth: 1280, margin: '0 auto' }}>
+      {/* Header */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        flexWrap: 'wrap', gap: 12, marginBottom: 8,
-        paddingBottom: 14, borderBottom: `1px solid ${CP.brass}55`,
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+        flexWrap: 'wrap', gap: 12,
+        paddingBottom: 14,
+        background:
+          'linear-gradient(to right, var(--pb-brass), transparent 30%) bottom/100% 2px no-repeat,' +
+          'linear-gradient(to right, var(--pb-line), var(--pb-line)) bottom/100% 1px no-repeat',
       }}>
         <div>
-          <div style={{
-            fontSize: 11, color: CP.brass, letterSpacing: 4,
-            fontFamily: FONT_CONDENSED, fontWeight: 700,
-          }}>
-            ⚔ OCE INHOUSE · ADMIN TOOLING
-          </div>
-          <h1 style={{
-            margin: '4px 0 0', fontSize: 36, fontFamily: FONT_DISPLAY,
-            color: CP.parchment, letterSpacing: 0.5, fontWeight: 700,
-          }}>
-            Draft Sandbox
-          </h1>
+          <div className="pb-eyebrow" style={{ marginBottom: 6 }}>Admin Tooling · Captain Draft</div>
+          <h1 className="pb-page-title" style={{ margin: 0, fontSize: '2.1rem' }}>Draft Sandbox</h1>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Link to="/inhouse" style={btn({ textDecoration: 'none', display: 'inline-block', borderColor: CP.amber, color: CP.amber })}>
+          <Link to="/inhouse" style={ctrlBtn({ textDecoration: 'none', display: 'inline-block', borderColor: 'var(--pb-amber)', color: 'var(--pb-amber)' })}>
             Try the live flow →
           </Link>
-          <Link to="/admin" style={btn({ textDecoration: 'none', display: 'inline-block' })}>← Admin Panel</Link>
+          <Link to="/admin" style={ctrlBtn({ textDecoration: 'none', display: 'inline-block' })}>← Admin Panel</Link>
         </div>
       </div>
 
-      <p style={{ color: `${CP.parchment}99`, fontSize: 14, marginTop: 14, marginBottom: 22, maxWidth: 760 }}>
+      <p style={{ color: 'var(--pb-muted)', fontSize: 14, margin: '14px 0 22px', maxWidth: 760 }}>
         Self-contained client-side simulator of the inhouse captain-pick draft. Ten placeholder players
-        (modeled on real Dota 2 pros) walk through the standard <strong style={{ color: CP.amber }}>1-2-2-2-1</strong> alternating
-        pick order. <strong style={{ color: CP.brass }}>Zero backend writes</strong> — nothing here touches the live lobby, database, or Steam bot.
+        (modeled on real Dota 2 pros) walk through the standard <strong style={{ color: 'var(--pb-amber)' }}>1-2-2-2-1</strong> alternating
+        pick order. <strong style={{ color: 'var(--pb-brass)' }}>Zero backend writes</strong> — nothing here touches the live lobby, database, or Steam bot.
       </p>
 
-      {/* Status bar */}
-      <div style={{
-        display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 14,
-        padding: '14px 18px', marginBottom: 22, borderRadius: 6,
-        background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
-        border: `1px solid ${CP.brass}55`, borderLeft: `4px solid ${CP.amber}`,
+      {/* Status / turn strip */}
+      <div className="pb-card" style={{
+        borderTop: '3px solid var(--pb-brass)',
+        padding: '14px 16px', marginBottom: 16,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 14, flexWrap: 'wrap',
       }}>
-        <div style={{ fontFamily: FONT_CONDENSED }}>
-          <div style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5 }}>ON THE CLOCK</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: CP.parchment, letterSpacing: 1 }}>
-            PICK <span style={{ color: CP.amber }}>#{Math.min(pickIdx + 1, PICK_SEQUENCE.length)}</span>
-            <span style={{ color: `${CP.brass}66`, fontSize: 16 }}> / {PICK_SEQUENCE.length}</span>
+        <div>
+          <div className="pb-eyebrow">On the Clock</div>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, color: 'var(--pb-text)', marginTop: 2 }}>
+            Pick <span style={{ color: 'var(--pb-brass-bright)' }}>#{Math.min(pickIdx + 1, PICK_SEQUENCE.length)}</span>
+            <span style={{ color: 'var(--pb-faint)', fontSize: 16 }}> / {PICK_SEQUENCE.length}</span>
           </div>
         </div>
-        <div style={{ flex: 1, minWidth: 200, paddingLeft: 14, borderLeft: `1px solid ${CP.brass}33` }}>
+        <div style={{ flex: '1 1 220px', minWidth: 200 }}>
           {draftDone ? (
-            <div>
-              <div style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5, fontFamily: FONT_CONDENSED }}>STATUS</div>
-              <div style={{ fontSize: 18, color: CP.radiant, fontWeight: 700, fontFamily: FONT_CONDENSED, letterSpacing: 1 }}>
-                ✓ DRAFT COMPLETE
+            <>
+              <div className="pb-eyebrow">Status</div>
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700, color: 'var(--pb-radiant)', marginTop: 2 }}>
+                ✓ Draft complete
               </div>
-            </div>
+            </>
           ) : (
-            <div>
-              <div style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5, fontFamily: FONT_CONDENSED }}>NEXT TO PICK</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: onClock === 1 ? CP.radiant : CP.dire, fontFamily: FONT_CONDENSED, letterSpacing: 1 }}>
-                CAPTAIN {onClock} — {onClock === 1 ? c1?.name : c2?.name}
+            <>
+              <div className="pb-eyebrow">Next to Pick</div>
+              <div style={{
+                fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700, marginTop: 2,
+                color: onClock === 1 ? 'var(--pb-radiant)' : 'var(--pb-dire)',
+              }}>
+                Captain {onClock} — {onClock === 1 ? c1?.name : c2?.name}
               </div>
-            </div>
+            </>
           )}
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <button onClick={autoPickNext} disabled={draftDone} style={btn({ opacity: draftDone ? 0.4 : 1, cursor: draftDone ? 'not-allowed' : 'pointer' })}>🤖 Auto-pick</button>
-          <button onClick={autoCompleteAll} disabled={draftDone} style={btn({ opacity: draftDone ? 0.4 : 1, cursor: draftDone ? 'not-allowed' : 'pointer' })}>⏩ Simulate</button>
-          <button onClick={reroll} style={btn()}>🎲 Reroll</button>
-          <button onClick={reset} disabled={pickHistory.length === 0} style={btn({ opacity: pickHistory.length === 0 ? 0.4 : 1, cursor: pickHistory.length === 0 ? 'not-allowed' : 'pointer' })}>↺ Reset</button>
+          <button type="button" onClick={autoPickNext} disabled={draftDone} style={ctrlBtn({ opacity: draftDone ? 0.4 : 1, cursor: draftDone ? 'not-allowed' : 'pointer' })}>🤖 Auto-pick</button>
+          <button type="button" onClick={autoCompleteAll} disabled={draftDone} style={ctrlBtn({ opacity: draftDone ? 0.4 : 1, cursor: draftDone ? 'not-allowed' : 'pointer' })}>⏩ Simulate</button>
+          <button type="button" onClick={reroll} style={ctrlBtn()}>🎲 Reroll</button>
+          <button type="button" onClick={reset} disabled={pickHistory.length === 0} style={ctrlBtn({ opacity: pickHistory.length === 0 ? 0.4 : 1, cursor: pickHistory.length === 0 ? 'not-allowed' : 'pointer' })}>↺ Reset</button>
         </div>
-      </div>
-
-      {/* Teams */}
-      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 18 }}>
-        <TeamColumn label="TEAM 1 · RADIANT" color={CP.radiant} captain={c1} players={team1} totalMmr={t1Mmr} />
-        <TeamColumn label="TEAM 2 · DIRE"    color={CP.dire}    captain={c2} players={team2} totalMmr={t2Mmr} />
       </div>
 
       {/* MMR balance summary */}
       {(team1.length > 0 || team2.length > 0) && (
-        <div style={{
-          padding: '12px 18px', marginBottom: 22, borderRadius: 6,
-          background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
-          border: `1px solid ${balanced ? CP.brass : CP.amber}66`,
-          display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'center',
-          fontFamily: FONT_CONDENSED,
+        <div className="pb-card" style={{
+          borderTop: `3px solid ${balanced ? 'var(--pb-brass)' : 'var(--pb-amber)'}`,
+          padding: '12px 16px', marginBottom: 16,
+          display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 14, alignItems: 'center',
         }}>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5 }}>TEAM 1</span>
-            <span style={{ fontSize: 20, color: CP.radiant, fontWeight: 800 }}>{t1Mmr}</span>
+          <div style={{ borderLeft: '3px solid var(--pb-radiant)', paddingLeft: 10 }}>
+            <div className="pb-eyebrow" style={{ fontSize: 10 }}>{team1Label}</div>
+            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, color: 'var(--pb-brass-bright)' }}>{t1Mmr.toLocaleString()}</div>
           </div>
-          <div style={{ fontSize: 26, color: `${CP.brass}66`, fontWeight: 300 }}>vs</div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5 }}>TEAM 2</span>
-            <span style={{ fontSize: 20, color: CP.dire, fontWeight: 800 }}>{t2Mmr}</span>
-          </div>
-          <div style={{ flex: 1, paddingLeft: 18, borderLeft: `1px solid ${CP.brass}33` }}>
-            <span style={{ fontSize: 10, color: CP.brass, letterSpacing: 1.5 }}>DIFFERENCE</span>
-            <div style={{ fontSize: 22, fontWeight: 800, color: balanced ? CP.radiant : CP.amber, letterSpacing: 1 }}>
-              Δ {mmrDelta} MMR
-              <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 600, letterSpacing: 2, opacity: 0.8 }}>
-                {balanced ? '· BALANCED' : '· SKEWED'}
-              </span>
+          <div style={{ textAlign: 'center' }}>
+            <div className="pb-eyebrow" style={{ fontSize: 10 }}>Difference</div>
+            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 700, color: balanced ? 'var(--pb-radiant)' : 'var(--pb-amber)' }}>
+              Δ {mmrDelta}
             </div>
+            <div className="pb-eyebrow" style={{ fontSize: 9, color: balanced ? 'var(--pb-radiant)' : 'var(--pb-amber)' }}>
+              {balanced ? 'Balanced' : 'Skewed'}
+            </div>
+          </div>
+          <div style={{ borderRight: '3px solid var(--pb-dire)', paddingRight: 10, textAlign: 'right' }}>
+            <div className="pb-eyebrow" style={{ fontSize: 10 }}>{team2Label}</div>
+            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, color: 'var(--pb-brass-bright)' }}>{t2Mmr.toLocaleString()}</div>
           </div>
         </div>
       )}
 
-      {/* Pool */}
+      {/* Three-column board: roster · pool · roster */}
       <div style={{
-        marginBottom: 10, paddingBottom: 8, borderBottom: `1px solid ${CP.brass}33`,
-        display: 'flex', alignItems: 'baseline', gap: 12, justifyContent: 'space-between',
-      }}>
-        <h2 style={{
-          margin: 0, fontSize: 14, color: CP.brass, letterSpacing: 3,
-          fontFamily: FONT_CONDENSED, fontWeight: 700,
+        display: 'grid',
+        gridTemplateColumns: 'minmax(220px, 1fr) minmax(260px, 1.4fr) minmax(220px, 1fr)',
+        gap: 14,
+      }} className="inhouse-draft-board">
+        <RosterPanel label={team1Label} accent="var(--pb-radiant)" captain={c1} players={team1} totalMmr={t1Mmr} />
+
+        {/* Centre pool */}
+        <div className="pb-card" style={{
+          borderTop: '3px solid var(--pb-brass)',
+          padding: '14px 12px 12px',
+          minHeight: 320,
         }}>
-          ━ AVAILABLE POOL ━
-        </h2>
-        <span style={{ fontSize: 18, color: CP.amber, fontWeight: 800, fontFamily: FONT_CONDENSED }}>
-          {pool.length}<span style={{ color: `${CP.brass}66`, fontSize: 14 }}> remaining</span>
-        </span>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 8 }}>
-        {pool.map(p => (
-          <PlayerCard key={p.id} p={p} picked={false} team={null}
-            disabled={draftDone} onPick={(id) => pick(id)} />
-        ))}
-        {pool.length === 0 && (
           <div style={{
-            padding: 18, textAlign: 'center', color: `${CP.brass}88`,
-            fontStyle: 'italic', fontFamily: FONT_CONDENSED, letterSpacing: 1.5,
-          }}>· POOL IS EMPTY ·</div>
-        )}
+            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+            gap: 8, marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid var(--pb-line)',
+          }}>
+            <div>
+              <div className="pb-eyebrow" style={{ letterSpacing: '0.16em' }}>The Pool</div>
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700, color: 'var(--pb-text)', marginTop: 2 }}>
+                Available players
+              </div>
+            </div>
+            <span style={{ fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700, color: 'var(--pb-brass-bright)' }}>
+              {pool.length}<span style={{ color: 'var(--pb-faint)', fontSize: 13, fontFamily: 'var(--font-condensed)' }}> left</span>
+            </span>
+          </div>
+          {pool.length === 0
+            ? <div style={{ color: 'var(--pb-faint)', fontSize: 13, fontStyle: 'italic', padding: '6px 4px', textAlign: 'center' }}>Pool is empty</div>
+            : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {pool.map(p => (
+                  <PoolCard key={p.id} p={p} disabled={draftDone} onPick={(id) => pick(id)} />
+                ))}
+              </div>}
+        </div>
+
+        <RosterPanel label={team2Label} accent="var(--pb-dire)" captain={c2} players={team2} totalMmr={t2Mmr} />
       </div>
 
       {/* Pick order reference */}
-      <div style={{
-        marginTop: 28, padding: '14px 18px', borderRadius: 6,
-        background: `linear-gradient(180deg, ${CP.cardSurface} 0%, ${CP.inkNavy} 100%)`,
-        border: `1px solid ${CP.brass}55`,
+      <div className="pb-card" style={{
+        borderTop: '3px solid var(--pb-brass)',
+        padding: '14px 16px', marginTop: 16,
       }}>
-        <div style={{
-          fontSize: 10, color: CP.brass, letterSpacing: 2.5, fontFamily: FONT_CONDENSED,
-          fontWeight: 700, marginBottom: 8,
-        }}>
-          ━ PICK ORDER (1-2-2-2-1) ━
-        </div>
+        <div className="pb-eyebrow" style={{ marginBottom: 10 }}>Pick Order · 1-2-2-2-1</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {PICK_SEQUENCE.map((c, i) => {
             const past = i < pickIdx;
             const current = i === pickIdx;
+            const teamColor = c === 1 ? 'var(--pb-radiant)' : 'var(--pb-dire)';
             return (
               <span key={i} style={{
                 display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '6px 12px', borderRadius: 4, fontFamily: FONT_CONDENSED,
-                background: current ? CP.amber : (past ? `${CP.cardSurface}` : 'transparent'),
-                color: current ? CP.inkNavy : (past ? `${CP.parchment}55` : (c === 1 ? CP.radiant : CP.dire)),
-                fontWeight: current ? 800 : 700, fontSize: 12, letterSpacing: 1,
-                border: `1px solid ${current ? CP.amber : (c === 1 ? CP.radiant : CP.dire)}66`,
-                opacity: past ? 0.5 : 1,
+                padding: '6px 12px', borderRadius: 5, fontFamily: 'var(--font-condensed)',
+                background: current ? 'var(--pb-amber)' : (past ? 'var(--pb-elevated)' : 'transparent'),
+                color: current ? '#0d1424' : (past ? 'var(--pb-faint)' : teamColor),
+                fontWeight: current ? 800 : 700, fontSize: 12, letterSpacing: '0.06em',
+                border: `1px solid ${current ? 'var(--pb-amber)' : (past ? 'var(--pb-line)' : teamColor)}`,
+                opacity: past ? 0.6 : 1,
               }}>
                 #{i + 1} · C{c}
               </span>

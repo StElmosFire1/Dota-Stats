@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.57",
+    "title": "Draft Sandbox gets the new captain-draft look",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The standalone admin Draft Sandbox still used the old visual style while the live Inhouse captain draft had moved to the cleaner Press Box design.",
+      "**What.** The Draft Sandbox now mirrors the live draft board — brass-ruled panels, serif/eyebrow headers, Radiant/Dire roster columns, and a centred player pool — all theme-aware (light/dark).",
+      "**Kept.** Every quality-of-life touch stays: colour-coded player positions, MMR, role and flair, the hover stat tooltips (KDA, win rate, games, preferred positions, top heroes), the auto-pick / simulate / reroll controls, the MMR-balance readout, and the pick-order strip.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.56",
     "title": "Match history loads again, with the right hero portraits",
     "published_at": "2026-05-31",
