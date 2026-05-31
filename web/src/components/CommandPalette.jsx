@@ -33,10 +33,72 @@ const QUICK_LINKS = [
 
 const EMPTY_RESULTS = { players: [], coaches: [], teams: [], tournaments: [] };
 
+// Per-group cap so a flood of matches can never make the list unwieldy. The
+// server already bounds each group to 6; this is the client-side backstop and
+// also caps the in-process hero matches.
+const GROUP_CAP = 6;
+
 function formatRate(cents, currency) {
   if (cents == null) return '';
   const amount = Math.round(cents / 100);
   return `$${amount} ${(currency || 'aud').toUpperCase()}/hr`;
+}
+
+// True if every char of `q` appears in `text` in order (allowing gaps) — a
+// cheap fuzzy/subsequence test so minor typos / omitted letters still surface
+// results (e.g. "invk" → "Invoker"). Assumes both args already lower-cased.
+function isSubsequence(q, text) {
+  if (!q) return true;
+  let i = 0;
+  for (let j = 0; j < text.length && i < q.length; j++) {
+    if (text[j] === q[i]) i++;
+  }
+  return i === q.length;
+}
+
+// Score one piece of text against the lower-cased query. Higher is more
+// relevant. Returns -Infinity when there's no match at all (not even fuzzy).
+//   exact ............. 1000
+//   prefix ............ 800
+//   word-start prefix . 600 (matches the start of any space/-/_/'-separated word)
+//   substring ......... 400 minus the offset (earlier matches rank higher)
+//   fuzzy subsequence . 100
+function scoreText(text, q) {
+  if (!text) return -Infinity;
+  const t = String(text).toLowerCase();
+  if (t === q) return 1000;
+  if (t.startsWith(q)) return 800;
+  const words = t.split(/[\s\-_']+/);
+  if (words.some(w => w.startsWith(q))) return 600;
+  const idx = t.indexOf(q);
+  if (idx >= 0) return 400 - Math.min(idx, 399);
+  if (isSubsequence(q, t)) return 100;
+  return -Infinity;
+}
+
+// Best score across an item's primary label plus any secondary fields (persona
+// name, tag, etc.) so a query that only matches an alias still ranks sensibly.
+function scoreItem(q, primary, ...extras) {
+  let best = scoreText(primary, q);
+  for (const ex of extras) {
+    if (ex == null) continue;
+    const s = scoreText(ex, q);
+    if (s > best) best = s;
+  }
+  return best;
+}
+
+// Stable sort by descending score, then cap. Items keep their original
+// (server) order within a score tier. When `dropMisses` is true, items with no
+// match at all are removed (used for the client-side hero list); for server
+// groups we keep everything the server returned and only re-order it.
+function rankAndCap(scored, { dropMisses = false, cap = GROUP_CAP } = {}) {
+  return scored
+    .map((entry, i) => ({ ...entry, i }))
+    .filter(e => !dropMisses || e.score > -Infinity)
+    .sort((a, b) => (b.score - a.score) || (a.i - b.i))
+    .slice(0, cap)
+    .map(e => e.item);
 }
 
 function CommandPalette({ open, onClose }) {
@@ -103,50 +165,70 @@ function CommandPalette({ open, onClose }) {
 
     const out = [];
 
-    // Players
-    const playerItems = (results.players || []).map(p => {
+    // Each group is scored against the query and re-ordered (exact > prefix >
+    // word-start > substring > fuzzy) before the per-group cap. Server groups
+    // keep every row the server returned — we only re-order them, scoring the
+    // label plus any alias / tag so an alias-only hit still ranks. The hero
+    // list is matched + fuzzy-filtered in-process, so misses are dropped.
+
+    // Players — score label + persona alias.
+    const playerItems = rankAndCap((results.players || []).map(p => {
       const path = p.account_id > 0
         ? `/player/${p.account_id}`
         : `/player/${encodeURIComponent(p.player_key || p.name || '')}`;
       const sub = p.persona_name && p.persona_name !== p.name
         ? p.persona_name
         : (p.games_played ? `${p.games_played} game${p.games_played === 1 ? '' : 's'}` : '');
-      return { id: `p-${p.player_key || p.account_id || p.name}`, label: p.name, sub, icon: '👤', kind: 'Player', path };
-    });
+      const item = { id: `p-${p.player_key || p.account_id || p.name}`, label: p.name, sub, icon: '👤', kind: 'Player', path };
+      return { item, score: scoreItem(q, p.name, p.persona_name) };
+    }));
     if (playerItems.length) out.push({ key: 'players', title: 'Players', items: playerItems });
 
     // Coaches
-    const coachItems = (results.coaches || []).map(c => ({
-      id: `c-${c.id}`, label: c.name,
-      sub: formatRate(c.hourly_rate_cents, c.currency) || (c.taught_roles || ''),
-      icon: '🎓', kind: 'Coach', path: `/coaches/${c.id}`,
+    const coachItems = rankAndCap((results.coaches || []).map(c => {
+      const item = {
+        id: `c-${c.id}`, label: c.name,
+        sub: formatRate(c.hourly_rate_cents, c.currency) || (c.taught_roles || ''),
+        icon: '🎓', kind: 'Coach', path: `/coaches/${c.id}`,
+      };
+      return { item, score: scoreItem(q, c.name) };
     }));
     if (coachItems.length) out.push({ key: 'coaches', title: 'Coaches', items: coachItems });
 
-    // Teams
-    const teamItems = (results.teams || []).map(t => ({
-      id: `t-${t.id}`, label: t.name,
-      sub: `[${t.tag}]${t.member_count ? ` · ${t.member_count} member${t.member_count === 1 ? '' : 's'}` : ''}`,
-      icon: '🤝', kind: 'Team', path: `/teams/${t.id}`,
+    // Teams — score name + tag.
+    const teamItems = rankAndCap((results.teams || []).map(t => {
+      const item = {
+        id: `t-${t.id}`, label: t.name,
+        sub: `[${t.tag}]${t.member_count ? ` · ${t.member_count} member${t.member_count === 1 ? '' : 's'}` : ''}`,
+        icon: '🤝', kind: 'Team', path: `/teams/${t.id}`,
+      };
+      return { item, score: scoreItem(q, t.name, t.tag) };
     }));
     if (teamItems.length) out.push({ key: 'teams', title: 'Teams', items: teamItems });
 
     // Tournaments
-    const tournamentItems = (results.tournaments || []).map(t => ({
-      id: `tn-${t.id}`, label: t.name,
-      sub: [t.status, t.season_name].filter(Boolean).join(' · '),
-      icon: '🏅', kind: 'Tournament', path: `/tournaments/${t.id}`,
+    const tournamentItems = rankAndCap((results.tournaments || []).map(t => {
+      const item = {
+        id: `tn-${t.id}`, label: t.name,
+        sub: [t.status, t.season_name].filter(Boolean).join(' · '),
+        icon: '🏅', kind: 'Tournament', path: `/tournaments/${t.id}`,
+      };
+      return { item, score: scoreItem(q, t.name) };
     }));
     if (tournamentItems.length) out.push({ key: 'tournaments', title: 'Tournaments', items: tournamentItems });
 
-    // Heroes — matched client-side against the static registry.
-    const heroItems = ALL_HEROES
-      .filter(h => h.name.toLowerCase().includes(q))
-      .slice(0, 6)
-      .map(h => ({
-        id: `h-${h.id}`, label: h.name, sub: '',
-        img: getHeroImageUrl(h.id, h.name), icon: '🦸', kind: 'Hero', path: `/heroes/${h.id}`,
-      }));
+    // Heroes — matched client-side against the static registry; misses (incl.
+    // fuzzy non-matches) are dropped before ranking + capping.
+    const heroItems = rankAndCap(
+      ALL_HEROES.map(h => ({
+        item: {
+          id: `h-${h.id}`, label: h.name, sub: '',
+          img: getHeroImageUrl(h.id, h.name), icon: '🦸', kind: 'Hero', path: `/heroes/${h.id}`,
+        },
+        score: scoreText(h.name, q),
+      })),
+      { dropMisses: true },
+    );
     if (heroItems.length) out.push({ key: 'heroes', title: 'Heroes', items: heroItems });
 
     return out;

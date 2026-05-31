@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.53",
+    "title": "Sharper, ranked command-palette results",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The ⌘K search matched names with a plain substring check and no ordering, so an exact name could appear below a loose partial match.",
+      "**What.** Results in each group now rank by relevance — exact matches first, then prefix, then start-of-word, then substring, with earlier matches winning ties.",
+      "**Typo-friendly.** A light fuzzy match means small typos or skipped letters still surface results (e.g. \"invk\" finds Invoker).",
+      "**Still tidy.** Each group stays capped so the list never gets unwieldy.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.52",
     "title": "Jump straight to a hero from search",
     "published_at": "2026-05-31",
