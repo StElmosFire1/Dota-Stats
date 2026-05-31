@@ -12,6 +12,17 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "8.74",
+    "title": "Admins can resend a prize receipt that never reached a winner",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The admin \"Prize receipts sent\" card showed when a winner's \"prize landed\" receipt went out — and flagged the ones that never did (e.g. the winner had Discord DMs closed and push wasn't on at the time) — but operators could only see the gap, not act on it.",
+      "**What.** Each row in that card now has a per-winner **Resend receipt** action. It re-fires the same one-shot \"prize landed\" DM/push the system sends automatically, then refreshes the card to show the new sent timestamp. Rows that were never receipted read **Send receipt**; already-sent rows can be force re-sent when a winner says it never arrived.",
+      "**Scope.** Full edition only — community edition untouched. Superuser-gated, reuses the existing receipt-send path. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.71",
     "title": "Profile portraits get framed, clearer rank emblems, sticky sign-in, and the Inhouse page un-blanked",
     "published_at": "2026-05-31",

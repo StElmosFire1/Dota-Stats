@@ -1880,6 +1880,15 @@ export async function getPayoutsAwaitingConnect(superuserKey) {
 export async function getPaidPayoutReceipts(superuserKey) {
   return superuserJson('/admin/tournament-payouts/paid-receipts', { superuserKey });
 }
+// Task #630 — re-trigger the one-shot "prize landed" receipt for a single paid payout.
+export async function resendPayoutReceipt(payoutId, superuserKey) {
+  const res = await superuserFetch(BASE + `/admin/tournament-payouts/${payoutId}/resend-receipt`, {
+    method: 'POST', headers: { 'x-superuser-key': superuserKey },
+  });
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Failed to resend receipt');
+  return d;
+}
 export async function retryFailedTournamentPayout(payoutId, superuserKey) {
   const res = await superuserFetch(BASE + `/admin/tournament-payouts/${payoutId}/retry`, {
     method: 'POST', headers: { 'x-superuser-key': superuserKey },

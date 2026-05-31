@@ -5506,6 +5506,26 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #630 — re-trigger the one-shot "prize landed" receipt for a single
+  // paid payout from the PaidPayoutReceiptsPanel card. Reuses the same send
+  // path as the background sweep (`_sendPayoutPaidReceipt`) and re-stamps
+  // `paid_notified_at` on success. Force-allowed on rows that were already
+  // receipted so an operator can re-send when a winner says it never arrived.
+  router.post('/admin/tournament-payouts/:payoutId/resend-receipt', requireSuperuser, async (req, res) => {
+    try {
+      const row = await db.getTournamentPayoutRow(req.params.payoutId);
+      if (!row) return res.status(404).json({ error: 'Payout not found' });
+      if (row.transfer_status !== 'paid') {
+        return res.status(400).json({ error: 'Only a paid prize can be receipted' });
+      }
+      await _sendPayoutPaidReceipt(row);
+      const updated = await db.markTournamentPayoutPaidNotified(row.id, { force: true });
+      res.json({ ok: true, paid_notified_at: updated?.paid_notified_at || null });
+    } catch (err) {
+      res.status(400).json({ error: err.message || 'Failed to resend receipt' });
+    }
+  });
+
   router.post('/admin/tournament-payouts/:payoutId/retry', requireSuperuser, async (req, res) => {
     try {
       const row = await db.getTournamentPayoutRow(req.params.payoutId);

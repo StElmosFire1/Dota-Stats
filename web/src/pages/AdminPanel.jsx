@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
@@ -7505,13 +7505,31 @@ function TournamentBracketPanel() {
 function PaidPayoutReceiptsPanel() {
   const { superuserKey } = useSuperuser();
   const [rows, setRows] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [feedback, setFeedback] = useState(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!superuserKey) return;
     getPaidPayoutReceipts(superuserKey)
       .then(d => setRows(d?.payouts || []))
       .catch(() => setRows([]));
   }, [superuserKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleResend = async (p) => {
+    setBusyId(p.id);
+    setFeedback(null);
+    try {
+      await resendPayoutReceipt(p.id, superuserKey);
+      setFeedback({ id: p.id, ok: true, text: 'Receipt re-sent' });
+      load();
+    } catch (e) {
+      setFeedback({ id: p.id, ok: false, text: e.message || 'Failed to resend' });
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   if (!rows || rows.length === 0) return null;
 
@@ -7534,6 +7552,7 @@ function PaidPayoutReceiptsPanel() {
             <th style={{ padding: '6px 8px', textAlign: 'right' }}>Amount</th>
             <th style={{ padding: '6px 8px' }}>Transferred</th>
             <th style={{ padding: '6px 8px' }}>Receipt sent</th>
+            <th style={{ padding: '6px 8px', textAlign: 'right' }}>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -7556,6 +7575,23 @@ function PaidPayoutReceiptsPanel() {
                 {p.paid_notified_at
                   ? <span style={{ color: '#22c55e' }} title={new Date(p.paid_notified_at).toLocaleString()}>✓ {new Date(p.paid_notified_at).toLocaleDateString()}</span>
                   : <span style={{ color: 'var(--amber)' }}>Not yet</span>}
+              </td>
+              <td style={{ padding: '6px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ fontSize: 11, padding: '3px 8px' }}
+                  disabled={busyId === p.id}
+                  onClick={() => handleResend(p)}
+                  title={p.paid_notified_at ? 'Re-send the prize receipt to this winner' : 'Send the prize receipt to this winner'}
+                >
+                  {busyId === p.id ? 'Sending…' : (p.paid_notified_at ? 'Resend receipt' : 'Send receipt')}
+                </button>
+                {feedback && feedback.id === p.id && (
+                  <div style={{ fontSize: 11, marginTop: 4, color: feedback.ok ? '#22c55e' : 'var(--amber)' }}>
+                    {feedback.text}
+                  </div>
+                )}
               </td>
             </tr>
           ))}

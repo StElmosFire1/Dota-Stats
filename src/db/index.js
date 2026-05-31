@@ -28334,9 +28334,12 @@ async function getPendingTournamentPayouts(tournamentId) {
 async function getTournamentPayoutRow(payoutId) {
   const p = getPool();
   const r = await p.query(
-    `SELECT id, tournament_id, account_id::text AS account_id, place,
-            amount_cents, currency, transfer_status, stripe_transfer_id
-       FROM tournament_payouts WHERE id = $1`, [parseInt(payoutId)]);
+    `SELECT tp.id, tp.tournament_id, tp.account_id::text AS account_id, tp.place,
+            tp.amount_cents, tp.currency, tp.transfer_status, tp.stripe_transfer_id,
+            t.name AS tournament_name
+       FROM tournament_payouts tp
+       JOIN tournaments t ON t.id = tp.tournament_id
+      WHERE tp.id = $1`, [parseInt(payoutId)]);
   return r.rows[0] || null;
 }
 
@@ -28485,11 +28488,14 @@ async function getPayoutsNeedingPaidReceipt() {
 // Task #582 — stamp the one-shot paid-receipt marker so a winner is sent the
 // "prize landed" receipt exactly once. Best-effort: returns the updated row (or
 // null when already stamped / not found).
-async function markTournamentPayoutPaidNotified(payoutId) {
+async function markTournamentPayoutPaidNotified(payoutId, { force = false } = {}) {
   const p = getPool();
+  // Task #630 — `force` re-stamps an already-receipted row so an operator can
+  // re-send a receipt that a winner says never arrived. Default (unforced)
+  // behaviour is unchanged: only stamp when the one-shot marker is still null.
   const r = await p.query(
     `UPDATE tournament_payouts SET paid_notified_at = NOW()
-      WHERE id = $1 AND paid_notified_at IS NULL RETURNING id`,
+      WHERE id = $1${force ? '' : ' AND paid_notified_at IS NULL'} RETURNING id, paid_notified_at`,
     [parseInt(payoutId)]);
   return r.rows[0] || null;
 }
