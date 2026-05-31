@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.79",
+    "title": "Growth Coach now tells you how to close each gap",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**What.** Each weak-spot card on your Growth Coach already showed which dimension trails your role's peers and what number to aim for — now it also adds a short, position-aware **How to improve** tip telling you *how* to close the gap (e.g. Pos 1 last hits: \"focus the first 10 minutes and aim for ~50 CS by 10:00\").",
+      "**How it works.** Tips are drawn from a hand-written, reviewable map keyed by stat + role — not free-text AI — so the advice stays stable and on-message, and adapts to whether you main carry, mid, offlane, or support.",
+      "**Graceful by design.** If we haven't written a tip for a particular stat/role combo, the card simply omits the tip rather than showing a blank or generic line.",
+      "**Scope.** Full edition only — community edition has no Growth Coach. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.76",
     "title": "Stay signed in — no more being logged out after an update",
     "published_at": "2026-05-31",

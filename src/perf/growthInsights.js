@@ -208,6 +208,70 @@ function _exampleMatches(dim, matches, n = 3) {
   }));
 }
 
+// Position-aware "how to improve" tips, keyed by stat → position (1..5). These
+// are hand-written, reviewable coaching one-liners (NOT AI free-text) so they
+// stay stable and on-message. `growthTipFor` resolves position 0/unknown to the
+// offlane (3) baseline and returns null when no tip exists, so the UI degrades
+// gracefully for stats/positions we haven't written copy for.
+const GROWTH_TIPS = {
+  last_hits_min: {
+    1: 'Last-hitting is your job — focus the first 10 minutes and aim for ~50 CS by 10:00. Pull and stack camps between waves to keep farm flowing.',
+    2: 'Win your lane on creeps — aim for ~40 CS by 10:00 and deny when you can to starve your opponent of gold and XP.',
+    3: "You won't out-farm a carry, but secure ranged creeps and the easy camp — don't leave free gold on the map between fights.",
+    4: "Don't take farm off your cores, but soak unclaimed creeps and jungle camps when nobody's there to speed up your items.",
+    5: 'Last hits are lowest priority, but grab leftover creeps after pulls so your support items come online sooner.',
+  },
+  gold_min: {
+    1: 'GPM follows farm efficiency — cut downtime between camps, shove waves before rotating, and carry a TP to get back to farm fast.',
+    2: 'Turn lane control into pressure — take side camps with your waves and convert kills into pickups to keep GPM high.',
+    3: 'Trade space for gold — when the enemy carry leaves your lane, shove and take the jungle, and turn kills into pickups.',
+    4: 'Roam with purpose — kills and assists pay better than creeps for you, so hunt pickoffs while keeping wards up.',
+    5: 'Your gold comes from assists and bounty runes — prioritise impact over farm and let your cores take the lane gold.',
+  },
+  xp_min: {
+    1: "Stay in XP range of your lane — don't AFK jungle while waves are up, and soak XP from fights even when you can't last-hit.",
+    2: 'Mid should out-level everyone — never miss a wave, grab the XP rune, and rotate back before your own creeps die.',
+    3: 'Hold the offlane XP zone — even when zoned, hang at max range to soak XP rather than retreating all the way to base.',
+    4: 'Stay near fights and share kill XP — being level-starved makes your spells weak, so avoid wandering the map alone.',
+    5: 'Soak XP from teamfights and waves between pulls — a level-5 support helps far more than a level-2 one.',
+  },
+  kills_min: {
+    1: 'Your kills come mid-to-late — survive laning, hit your timing items, then group up to look for pickoffs.',
+    2: 'Mid sets the tempo — use rune control and early ganks to rack up kills and snowball your lane lead.',
+    3: 'Initiate fights you can win — your kills come from catching cores out of position with your team in range.',
+    4: 'Roam for kills — set up ganks with your stun and hunt the enemy supports when lanes go quiet.',
+    5: 'Your kills come from teamfight cleanup and saves — position to finish low targets rather than diving in first.',
+  },
+  assists_min: {
+    1: 'Group for fights once you have items — showing up to teamfights converts your farm into closed-out games.',
+    2: 'Rotate to the side lanes after winning mid — your presence in ganks turns into assists and map control.',
+    3: 'Be in the thick of fights — your initiation should net assists, so commit when your team can follow up.',
+    4: 'Vision and stuns become assists — be present for every gank and teamfight to maximise your impact.',
+    5: "Assists are your bread and butter — stay with your team, save your cores, and join every fight.",
+  },
+  hero_damage_min: {
+    1: 'Damage scales with items — farm your spikes, then deal that damage in fights instead of split-pushing alone.',
+    2: 'Mid should top the damage charts — pick fights where your spells and items connect, and don\'t sit back.',
+    3: 'Get your damage out in fights — even tanky offlaners must spend spells and items, not just initiate and die.',
+    4: "Don't just stun and run — land your full combo and add chip damage during fights to boost your team's burst.",
+    5: 'Use offensive spells in fights, not just saves — but never trade away positioning or your save items to do it.',
+  },
+  deaths_min: {
+    1: 'Deaths set your farm back hardest — carry a TP, ward your jungle, and don\'t greed risky farm without vision.',
+    2: 'Dying mid loses tempo — track enemy supports, hold a TP, and don\'t overstay on low HP for one more last hit.',
+    3: "Initiating isn't suiciding — pick fights your team can follow up on and buy survivability before you dive.",
+    4: 'Roaming makes you a target — carry a TP, ward your routes, and don\'t dive without an escape or backup.',
+    5: 'Position at the edge of fights — you save more alive, so buy detection and avoid getting caught warding solo.',
+  },
+};
+
+function growthTipFor(statKey, position) {
+  const byPos = GROWTH_TIPS[statKey];
+  if (!byPos) return null;
+  const pos = (position >= 1 && position <= 5) ? position : 3;
+  return byPos[pos] || null;
+}
+
 function _targetFor(statKey, position) {
   const map = TARGET_MAP[statKey];
   const pos = (position >= 1 && position <= 5) ? position : 3;
@@ -291,6 +355,7 @@ async function buildPerfGrowth(pool, { accountId, mergedIds = null, minGames = 5
         lower_better: d.lower_better,
         format: STAT_FORMAT[d.stat] || 'dec1',
         target,
+        tip: growthTipFor(d.stat, position),
         examples: _exampleMatches(d, recent, 3),
       };
     });
@@ -316,7 +381,9 @@ module.exports = {
   STAT_DIMS,
   TARGET_MAP,
   STAT_FORMAT,
+  GROWTH_TIPS,
   statKeyFor,
+  growthTipFor,
   computeWeakestDimensions,
   buildPerfGrowth,
 };

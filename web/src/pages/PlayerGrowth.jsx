@@ -176,6 +176,21 @@ function DimensionCard({ dim, position }) {
         )}
       </p>
 
+      {dim.tip && (
+        <div style={{
+          display: 'flex', gap: 8, alignItems: 'flex-start',
+          background: 'var(--bg-hover, rgba(255,255,255,.04))',
+          border: '1px solid var(--border)', borderRadius: 8,
+          padding: '8px 10px', marginBottom: 10,
+        }}>
+          <span aria-hidden="true" style={{ fontSize: 14, lineHeight: 1.5, flexShrink: 0 }}>💡</span>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>
+            <strong style={{ color: 'var(--amber, #f59e0b)' }}>How to improve:</strong>{' '}
+            {dim.tip}
+          </p>
+        </div>
+      )}
+
       {dim.examples && dim.examples.length > 0 && (
         <div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>
