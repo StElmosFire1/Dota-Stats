@@ -2339,19 +2339,20 @@ body.overlay-mode {
 .global-search-trigger {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
-  height: 32px;
-  width: 36px;
-  padding: 0;
+  height: 34px;
+  width: 220px;
+  max-width: 220px;
+  padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-primary);
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: 13px;
   font-family: var(--font);
   cursor: pointer;
-  flex-shrink: 0;
+  flex-shrink: 1;
   transition: border-color 0.15s, color 0.15s, box-shadow 0.15s;
 }
 .global-search-trigger:hover,
@@ -2361,10 +2362,18 @@ body.overlay-mode {
   outline: none;
   box-shadow: 0 0 0 2px rgba(197, 169, 117, 0.18);
 }
-.gs-trigger-ico { font-size: 15px; line-height: 1; opacity: 0.85; }
-.gs-trigger-label { display: none; }
+.gs-trigger-ico { font-size: 15px; line-height: 1; opacity: 0.85; flex-shrink: 0; }
+.gs-trigger-label {
+  display: inline-block;
+  flex: 1 1 auto;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .gs-trigger-kbd {
-  display: none;
+  display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   padding: 1px 6px;
   border-radius: 5px;
@@ -2380,8 +2389,11 @@ body.overlay-mode {
   .global-search-trigger {
     min-width: 0;
     width: 34px;
+    max-width: 34px;
     padding: 0;
+    gap: 0;
     justify-content: center;
+    flex-shrink: 0;
     cursor: pointer;
   }
   .gs-trigger-label,

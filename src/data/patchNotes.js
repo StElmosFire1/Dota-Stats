@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.86",
+    "title": "The top-bar search is now an obvious search box",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Search is easier to spot.** The global search in the top navigation used to be a tiny magnifying-glass icon that was easy to miss. It's now a proper search box — a wider field showing the magnifying glass, a **Search…** label, and the **⌘K** keyboard hint — so it reads as search at a glance. Clicking it opens the same command palette as before.",
+      "**Still tidy on mobile.** On narrow screens the box collapses back to the compact icon so it doesn't crowd the navbar.",
+      "**Scope.** Full edition only — community edition untouched. Keyboard and screen-reader behaviour preserved; a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.85",
     "title": "Stay signed in across refreshes — Steam login now survives reloads and apex↔www",
     "published_at": "2026-05-31",
