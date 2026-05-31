@@ -10,7 +10,7 @@ Node.js Discord bot + React/Express dashboard for an OCE Dota 2 inhouse communit
   ```
   git -c credential.helper='!f() { echo "username=StElmosFire1"; echo "password=${GITHUB_PERSONAL_ACCESS_TOKEN}"; }; f' push origin HEAD:main
   ```
-  The hook self-heals non-fast-forward rejections (it fetches the platform's recommitted SHA, verifies the tree matches, and force-with-lease pushes). The only allowed source of divergence is `artifacts/mockup-sandbox/src/.generated/`.
+  The hook self-heals non-fast-forward rejections (it fetches the platform's recommitted SHA, verifies the tree matches, and force-with-lease pushes). The only allowed source of divergence is `artifacts/mockup-sandbox/src/.generated/`. **Genuine divergence** — where `origin/main` carries a unique commit that local lacks (remote is *not* an ancestor of HEAD) and the trees differ in real source — is treated as **non-fatal** (warn + `exit 0`): the hook refuses to force-push (so it never clobbers remote work) but does NOT fail post-merge setup, because reconciliation needs a merge commit + conflict resolution that only the dedicated "push outstanding commits to GitHub" task can perform. This keeps every merge's post-merge setup green while the GitHub mirror sync is deferred to that task.
 
 ## Editions & deploys
 Two checkouts side-by-side on the prod host. Each edition has its own deploy script — they are deliberately independent so a mistaken invocation can never cross-deploy.
