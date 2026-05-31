@@ -6,6 +6,8 @@ import { useSeason } from '../context/SeasonContext';
 import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
+import { useTour } from '../components/SpotlightTour';
+import { clearIntroSeen, hasSeenIntro } from '../config/tutorial';
 import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
 import { TierBadge, MMR_TIERS } from './Leaderboard';
 import { ALL_HEROES, getHeroName } from '../heroNames';
@@ -73,6 +75,51 @@ function OverviewCard({ label, value, sub }) {
       <div className="stat-label">{label}</div>
       {sub && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
     </div>
+  );
+}
+
+// Task #656 — admin controls to test/review the new-visitor tutorial. Lets a
+// superuser launch the spotlight tour, open the public guide, and reset the
+// guest auto-offer flag so the once-per-browser nudge fires again.
+function TutorialReviewCard() {
+  const { startTour } = useTour() || {};
+  const [seen, setSeen] = useState(() => hasSeenIntro());
+  return (
+    <section style={{ marginBottom: 36 }}>
+      <div className="admin-card" style={{
+        padding: 18, borderRadius: 10, border: '1px solid var(--border)',
+        background: 'var(--bg-card)',
+      }}>
+        <h3 style={{ margin: '0 0 6px' }}>🎓 New-visitor tutorial</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '0 0 14px' }}>
+          Review the onboarding experience. Launch the interactive spotlight tour,
+          open the public guide page, or reset the once-per-browser guest auto-offer
+          so the nudge appears again on the next page load.
+        </p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => startTour && startTour()}
+          >
+            ▶ Take the tour
+          </button>
+          <Link to="/how-it-works" className="btn" style={{ textDecoration: 'none' }}>
+            📖 Open guide page
+          </Link>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => { clearIntroSeen(); setSeen(false); window.location.reload(); }}
+          >
+            ♻ Replay guest auto-offer
+          </button>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Guest auto-offer on this browser: <strong>{seen ? 'already shown' : 'not yet shown'}</strong>
+          </span>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -5679,6 +5726,9 @@ export default function AdminPanel() {
 
       {/* Task #450 — coin betting controls */}
       <BettingControlsCard superuserKey={superuserKey} />
+
+      {/* Task #656 — new-visitor tutorial review controls */}
+      <TutorialReviewCard />
 
       </>)}
 

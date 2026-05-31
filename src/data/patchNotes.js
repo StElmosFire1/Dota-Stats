@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.81",
+    "title": "New-visitor tutorial: guide page + interactive site tour",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**What.** First-timers now have two ways to learn the ropes. A public **How it works** guide page (`/how-it-works`) walks through the whole flow — what OCE Inhouse is, signing in with Steam, joining an inhouse lobby, climbing the MMR ladder, and coaching — with an embedded walkthrough video (graceful \"coming soon\" placeholder until the video URL is set). And an **interactive spotlight tour** highlights the real navbar — your account button, the leaderboard, the Play menu and the Help menu — with next/back/skip, full keyboard control (arrow keys, Esc, trapped Tab) and screen-reader announcements.",
+      "**Always available.** The guide is linked from the main nav (Help menu) and the logged-out home page. \"Take the tour\" lives in the Help menu and on the guide page, so anyone can replay it any time — guest or signed in.",
+      "**Shown once, never naggy.** Guests get a one-time auto-offer nudge (remembered per browser via cookie + localStorage). Signed-in newcomers keep using the existing onboarding wizard, so the two never double-fire. Finishing the tour while signed in records completion server-side so it follows you across devices.",
+      "**For admins.** The Overview tab has a new \"New-visitor tutorial\" card to launch the tour, open the guide, and reset the guest auto-offer for review.",
+      "**Scope.** Full edition only — community edition is untouched. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.80",
     "title": "Resend every unsent prize receipt in one click",
     "published_at": "2026-05-31",

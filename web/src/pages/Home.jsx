@@ -172,6 +172,10 @@ function SignedOutHero({ signIn }) {
             Explore the League
             <span aria-hidden="true">↗</span>
           </Link>
+          <Link to="/how-it-works" className="pb-btn-ghost">
+            How it works
+            <span aria-hidden="true">↗</span>
+          </Link>
         </div>
         <div className="pb-trust-line">
           <span aria-hidden="true" style={{ color: 'var(--pb-brass)' }}>◈</span>

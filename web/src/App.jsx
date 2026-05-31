@@ -18,6 +18,7 @@ import WelcomeModal from './components/WelcomeModal';
 import { WhyIsThisSafeLink } from './components/SteamTrustModal';
 import OnboardingWizard from './components/OnboardingWizard';
 import OnboardingNudge from './components/OnboardingNudge';
+import { TourProvider, useTour } from './components/SpotlightTour';
 import DiscordLinkModal from './components/DiscordLinkModal';
 import DiscordRetryBanner from './components/DiscordRetryBanner';
 import SideBanners from './components/SideBanner';
@@ -79,6 +80,7 @@ const Pickem = lazy(() => import('./pages/Pickem'));
 const SponsorshipInbox = lazy(() => import('./pages/SponsorshipInbox'));
 const Sponsorships = lazy(() => import('./pages/Sponsorships'));
 const Home = lazy(() => import('./pages/Home'));
+const HowItWorks = lazy(() => import('./pages/HowItWorks'));
 const MultiKills = lazy(() => import('./pages/MultiKills'));
 const WardMap = lazy(() => import('./pages/WardMap'));
 const Records = lazy(() => import('./pages/Records'));
@@ -292,7 +294,7 @@ function SteamButton() {
       e.currentTarget.style.background = on ? 'var(--bg-hover)' : 'transparent';
     };
     return (
-      <span ref={wrapRef} style={{ position: 'relative', display: 'inline-flex', marginLeft: 4 }}>
+      <span ref={wrapRef} data-tour="account" style={{ position: 'relative', display: 'inline-flex', marginLeft: 4 }}>
         <button
           type="button"
           className="btn btn-small steam-signed-in"
@@ -406,7 +408,7 @@ function SteamButton() {
     // button. The "?" pill opens the SteamTrustModal directly and the
     // longer reassurance copy lives on its title tooltip + the modal,
     // so nothing renders outside the button's own row anymore.
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
+    <span data-tour="account" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 4 }}>
       <button
         className="btn btn-small steam-login-btn"
         onClick={signIn}
@@ -466,7 +468,7 @@ function SuperuserButton() {
   );
 }
 
-function DropdownMenu({ label, children, badge }) {
+function DropdownMenu({ label, children, badge, dataTour }) {
   const [open, setOpen] = useState(false);
   const location = useLocation();
   useEffect(() => setOpen(false), [location]);
@@ -475,6 +477,7 @@ function DropdownMenu({ label, children, badge }) {
   };
   return (
     <span
+      data-tour={dataTour}
       style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
@@ -508,16 +511,34 @@ function DropdownMenu({ label, children, badge }) {
   );
 }
 
-function DropdownItem({ to, children }) {
+function DropdownItem({ to, onClick, children }) {
+  const sharedStyle = {
+    display: 'block', width: '100%', textAlign: 'left',
+    padding: '7px 16px', fontSize: 13,
+    color: 'var(--text-primary)', textDecoration: 'none',
+    background: 'transparent', border: 'none', cursor: 'pointer',
+  };
+  const onEnter = e => e.currentTarget.style.background = 'var(--bg-hover)';
+  const onLeave = e => e.currentTarget.style.background = 'transparent';
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={sharedStyle}
+        onMouseEnter={onEnter}
+        onMouseLeave={onLeave}
+      >
+        {children}
+      </button>
+    );
+  }
   return (
     <Link
       to={to}
-      style={{
-        display: 'block', padding: '7px 16px', fontSize: 13,
-        color: 'var(--text-primary)', textDecoration: 'none',
-      }}
-      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-      onMouseLeave={e => e.currentTarget.style.background = ''}
+      style={sharedStyle}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
     >
       {children}
     </Link>
@@ -702,6 +723,20 @@ function NavLivePulse({ count }) {
   );
 }
 
+// Task #656 — Help hub in the main nav. Hosts the public How-It-Works guide
+// link and a manual "Take the tour" trigger so the interactive spotlight tour
+// is always re-launchable for guests and signed-in users alike.
+function NavHelpMenu() {
+  const { startTour } = useTour() || {};
+  return (
+    <DropdownMenu label="Help" dataTour="nav-guide">
+      <DropdownItem to="/how-it-works">How it works</DropdownItem>
+      <DropdownItem onClick={() => startTour && startTour()}>Take the tour</DropdownItem>
+      <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
+    </DropdownMenu>
+  );
+}
+
 function Nav() {
   const location = useLocation();
   const isActive = (path) => location.pathname === path ? 'nav-link active' : 'nav-link';
@@ -720,7 +755,7 @@ function Nav() {
 
   return (
     <nav className="navbar">
-      <Link to="/" className="nav-brand">
+      <Link to="/" className="nav-brand" data-tour="nav-home">
         <img src="/oa-logo.png" alt="OA" className="brand-logo" />
         <span className="brand-lockup">
           <span className="brand-lockup-top">OCE</span>
@@ -750,7 +785,7 @@ function Nav() {
           links. */}
       <div className="nav-links">
         <Link to="/" className={isActive('/')}>Home</Link>
-        <Link to="/leaderboard" className={isActive('/leaderboard')}>Leaderboard</Link>
+        <Link to="/leaderboard" className={isActive('/leaderboard')} data-tour="nav-leaderboard">Leaderboard</Link>
         <Link to="/matches" className={isActive('/matches')}>Matches</Link>
         <DropdownMenu label="Stats">
           <DropdownItem to="/stats">Player Stats</DropdownItem>
@@ -772,7 +807,7 @@ function Nav() {
           <DropdownItem to="/pudge-stats">Pudge Hook Stats</DropdownItem>
           {showProReplays && <DropdownItem to="/pro-replays">Pro Replay Browser</DropdownItem>}
         </DropdownMenu>
-        <DropdownMenu label="Play">
+        <DropdownMenu label="Play" dataTour="nav-play">
           <DropdownItem to="/inhouse">Inhouse Lobby</DropdownItem>
           <DropdownItem to="/tournaments">Tournaments</DropdownItem>
           <DropdownItem to="/leagues">Leagues</DropdownItem>
@@ -797,6 +832,7 @@ function Nav() {
               nav bar covers their upgrade path. */}
           {accountId && <DropdownItem to="/shop">Cosmetics Shop</DropdownItem>}
         </DropdownMenu>
+        <NavHelpMenu />
         <Link
           to="/pro"
           className={isActive('/pro')}
@@ -1327,6 +1363,7 @@ function AppRoutes() {
   return (
     <Routes>
                 <Route path="/" element={<Home />} />
+                <Route path="/how-it-works" element={<HowItWorks />} />
                 <Route path="/leaderboard" element={<Leaderboard />} />
                 <Route path="/matches" element={<MatchList />} />
                 <Route path="/this-week" element={<ThisWeek />} />
@@ -1449,7 +1486,9 @@ export default function App() {
         <SuperuserProvider>
           <FeatureFlagsProvider>
           <SeasonProvider>
-            <AppShell />
+            <TourProvider>
+              <AppShell />
+            </TourProvider>
           </SeasonProvider>
           </FeatureFlagsProvider>
         </SuperuserProvider>
