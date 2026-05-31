@@ -21057,6 +21057,27 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     }
   }
 
+  // Task #664 — Lootbox & Collection routes (full edition only). Mounted with
+  // the same fail-fast-in-prod posture as the magazineV3 bundle.
+  try {
+    const { mountLootboxRoutes } = require('../monetization/lootbox');
+    mountLootboxRoutes({
+      router,
+      express,
+      deps: {
+        db,
+        lootbox: db.lootbox,
+        isSuperuser: _isSu,
+      },
+    });
+  } catch (e) {
+    console.error('[lootbox] route mount failed:', e && e.stack || e && e.message || e);
+    if (process.env.NODE_ENV === 'production'
+        && process.env.MAGV3_ROUTES_OPTIONAL !== '1') {
+      throw e;
+    }
+  }
+
   return router;
 }
 

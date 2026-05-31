@@ -1508,6 +1508,9 @@ export default function PlayerProfile() {
         nameAdornments={headerNameAdornments}
         tier={headerMmr != null ? getTier(headerMmr, { isLeader }) : null}
         founderRing={showProfileCustomization && profileCard?.equipped_founder_ring ? profileCard.equipped_founder_ring : null}
+        avatarRing={showProfileCustomization ? (profileCard?.equipped_avatar_ring || null) : null}
+        profileBanner={showProfileCustomization ? (profileCard?.equipped_profile_banner || null) : null}
+        nameplateFx={showProfileCustomization ? (profileCard?.equipped_nameplate_fx || null) : null}
       />
       {/* upscale-2026 redesign — the magazine cover is replaced by the
           mockup-aligned <ProfileHeader> above. Kept here, disabled behind a

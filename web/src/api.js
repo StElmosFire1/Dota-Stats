@@ -130,6 +130,48 @@ export async function setRivalExempt(superuserKey, accountId, exempt) {
   });
 }
 
+// ── Task #664 — Lootbox & collection (full edition only) ────────────────────
+// Published odds come from GET /lootbox/catalog (the server catalog is the
+// single source of truth — the UI never hardcodes drop rates).
+export async function getLootboxCatalog() {
+  const res = await fetch(BASE + '/lootbox/catalog', { credentials: 'same-origin' });
+  if (!res.ok) throw new Error('Failed to load lootbox catalog');
+  return res.json();
+}
+export async function getLootboxMe() {
+  const res = await fetch(BASE + '/lootbox/me', { credentials: 'same-origin' });
+  if (!res.ok) throw new Error('Failed to load lootbox status');
+  return res.json();
+}
+export async function getLootboxCollection() {
+  const res = await fetch(BASE + '/lootbox/collection', { credentials: 'same-origin' });
+  if (!res.ok) throw new Error('Failed to load collection');
+  return res.json();
+}
+async function _lootboxPost(path, body) {
+  const res = await fetch(BASE + path, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || 'Request failed');
+  return data;
+}
+export async function openLootbox(boxId) {
+  return _lootboxPost('/lootbox/open', { boxId });
+}
+export async function claimFreeLootbox() {
+  return _lootboxPost('/lootbox/free', {});
+}
+export async function redeemWildcard(sku) {
+  return _lootboxPost('/lootbox/wildcard/redeem', { sku });
+}
+export async function equipCosmetic(kind, value) {
+  return _lootboxPost('/lootbox/equip', { kind, value });
+}
+
 // Task #492 — AI agent traffic report (superuser).
 export async function getAgentTrafficReport(superuserKey, days = 7) {
   const qs = days ? `?days=${encodeURIComponent(days)}` : '';

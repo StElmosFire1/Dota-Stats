@@ -2861,6 +2861,16 @@ async function init() {
       console.warn('[DB] continuing because MAGV3_SCHEMA_OPTIONAL=1 — v3 routes may misbehave.');
     }
 
+    // Task #664 — Lootbox & Collection schema (full edition only). Re-uses the
+    // MAGV3_SCHEMA_OPTIONAL escape hatch so dev hosts can opt out together.
+    try {
+      await _lootbox.applyLootboxSchema(p);
+    } catch (e) {
+      console.error('[DB] lootbox schema apply failed:', e.message);
+      if (process.env.MAGV3_SCHEMA_OPTIONAL !== '1') throw e;
+      console.warn('[DB] continuing because MAGV3_SCHEMA_OPTIONAL=1 — lootbox routes may misbehave.');
+    }
+
     // Task #313 — Admin role tiers + audit log.
     // Tiered alternative to the legacy SUPERUSER_PASSWORD / UPLOAD_KEY
     // shared secrets. See src/auth/adminRoles.js for the role model. Both
@@ -15603,7 +15613,10 @@ async function getPlayerProfileCustomization(accountId) {
     `SELECT id, account_id, bio, custom_title, theme_accent,
             pinned_hero_id, pinned_hero_caption, pinned_match_id,
             profile_frame, profile_layout_theme, selected_voice_pack, extras,
-            pinned_achievements, cover_fx, created_at, updated_at
+            pinned_achievements, cover_fx,
+            equipped_avatar_ring, equipped_profile_banner,
+            equipped_nameplate_fx, equipped_recap_skin,
+            created_at, updated_at
        FROM player_profiles
       WHERE account_id = $1`,
     [accountId]
@@ -17273,9 +17286,14 @@ async function isProMember(accountId) {
   // Task #318 — monthly subscriptions grant Pro while active/past_due
   // (past_due is a Stripe-driven grace window for failed invoices).
   // Lifetime founders are always Pro.
+  // Task #664 — comp rows (Pro-time lootbox drops) carry status='active' but
+  // are time-bounded: they only grant Pro while current_period_end is in the
+  // future. Every non-comp plan_type keeps its existing behaviour unchanged.
   const r = await p.query(
     `SELECT 1 FROM pro_subscriptions
       WHERE account_id = $1 AND status IN ('active','lifetime','past_due')
+        AND (plan_type IS DISTINCT FROM 'comp'
+             OR (current_period_end IS NOT NULL AND current_period_end > NOW()))
       LIMIT 1`,
     [accountId]
   );
@@ -20997,6 +21015,10 @@ const _magV3 = require('../monetization/magazineV3').createMagazineV3Db({
   getPool,
   grantCoins: (args) => grantCoins(args),
 });
+
+// Task #664 — Lootbox & Collection (full edition only). Same factory pattern:
+// closes over getPool so it shares the pool with everything else in this file.
+const _lootbox = require('../monetization/lootbox').createLootboxDb({ getPool });
 
 // ─── Task #316 — engagement loop helpers ──────────────────────────────────
 // Hero mastery (per account + hero + position). Position values match the
@@ -25162,6 +25184,8 @@ module.exports = {
   listRecentWebhookDeliveries,
   // Magazine v3 (Task #157) — exposed via the same shape as the rest of `db`.
   magV3: _magV3,
+  // Lootbox & Collection (Task #664, full edition only).
+  lootbox: _lootbox,
   // Task #316 — engagement loop helpers.
   upsertHeroMastery,
   getHeroMastery,

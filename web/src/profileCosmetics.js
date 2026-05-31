@@ -263,3 +263,71 @@ export const DEFAULT_EXTRAS = {
   // who explicitly want hero suggestions during inhouse draft see them.
   pick_advisor_optin: false,
 };
+
+// ---------------------------------------------------------------------------
+// Task #664 — Lootbox cosmetic render metadata (full edition only).
+// RENDER-ONLY. These maps drive how equipped lootbox cosmetics look in the UI.
+// They intentionally have NO server-side mirror: equip requests are validated
+// against the lootbox catalog (src/monetization/lootbox/catalog.js) + actual
+// ownership, never against this file, so there is no /me/profile divergence to
+// keep in sync. CSS-only (no external assets), static (no motion) to respect
+// the reduced-motion / a11y house rules.
+// ---------------------------------------------------------------------------
+export const LOOTBOX_AVATAR_RINGS = {
+  'brass-pulse':  { label: 'Brass Pulse',  boxShadow: '0 0 0 3px #c5a975, 0 0 12px rgba(197,169,117,.55)' },
+  'radiant':      { label: 'Radiant',      boxShadow: '0 0 0 3px #22c55e, 0 0 12px rgba(34,197,94,.5)' },
+  'dire':         { label: 'Dire',         boxShadow: '0 0 0 3px #ef4444, 0 0 12px rgba(239,68,68,.5)' },
+  'frost':        { label: 'Frost Halo',   boxShadow: '0 0 0 3px #67e8f9, 0 0 14px rgba(103,232,249,.6)' },
+  'ember':        { label: 'Ember Halo',   boxShadow: '0 0 0 3px #f97316, 0 0 16px rgba(249,115,22,.7)' },
+  'prismatic':    { label: 'Prismatic Halo', boxShadow: '0 0 0 3px #a855f7, 0 0 18px rgba(168,85,247,.8)' },
+  'cup-champion': { label: 'Cup Champion', boxShadow: '0 0 0 3px #f59e0b, 0 0 18px rgba(245,158,11,.8)' },
+};
+export function avatarRingStyle(value) {
+  const m = LOOTBOX_AVATAR_RINGS[value];
+  return m ? { boxShadow: m.boxShadow } : null;
+}
+
+export const LOOTBOX_BANNERS = {
+  parchment:  { label: 'Parchment', background: 'linear-gradient(135deg,#f5efe2,#e7dcc3)' },
+  court:      { label: 'Court',     background: 'linear-gradient(135deg,#0d1424,#1b2a4a)' },
+  pitch:      { label: 'Pitch',     background: 'linear-gradient(135deg,#0b3d2e,#137a52)' },
+  nightfall:  { label: 'Nightfall', background: 'linear-gradient(135deg,#0d1424,#3b1d5e)' },
+  aurora:     { label: 'Aurora',    background: 'linear-gradient(120deg,#22c55e,#06b6d4,#a855f7)' },
+  galaxy:     { label: 'Galaxy',    background: 'radial-gradient(circle at 30% 30%,#3b1d5e,#0d1424 70%)' },
+  'cup-2026': { label: 'OCE Cup 2026', background: 'linear-gradient(135deg,#c5a975,#f59e0b)' },
+};
+export function bannerStyle(value) {
+  const m = LOOTBOX_BANNERS[value];
+  return m ? { background: m.background } : null;
+}
+
+const _TEXT_GRAD = (grad) => ({
+  background: grad, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+});
+export const LOOTBOX_NAMEPLATES = {
+  shine:      { label: 'Shine',   style: { textShadow: '0 0 8px rgba(255,255,255,.5)' } },
+  sparkle:    { label: 'Sparkle', style: { textShadow: '0 0 10px rgba(245,158,11,.6)' } },
+  flame:      { label: 'Flame Text', style: _TEXT_GRAD('linear-gradient(0deg,#f97316,#fbbf24)') },
+  rainbow:    { label: 'Rainbow Wave', style: _TEXT_GRAD('linear-gradient(90deg,#ef4444,#f59e0b,#22c55e,#06b6d4,#a855f7)') },
+  'cup-gold': { label: 'Cup Gold Glow', style: { ..._TEXT_GRAD('linear-gradient(90deg,#c5a975,#fbbf24)'), textShadow: '0 0 12px rgba(245,158,11,.4)' } },
+};
+export function nameplateStyle(value) {
+  const m = LOOTBOX_NAMEPLATES[value];
+  return m ? m.style : null;
+}
+
+export const RECAP_SKINS = {
+  classic:    { label: 'Classic Recap', accent: '#c5a975', bg: '#0d1424' },
+  noir:       { label: 'Noir Recap',    accent: '#9ca3af', bg: '#000000' },
+  gold:       { label: 'Gold Recap',    accent: '#f59e0b', bg: '#1a1408' },
+  holo:       { label: 'Holo Recap',    accent: '#a855f7', bg: '#160d24' },
+  'cup-2026': { label: 'OCE Cup 2026 Recap', accent: '#f59e0b', bg: '#0d1424' },
+};
+export function recapSkinSwatch(value) {
+  const m = RECAP_SKINS[value];
+  return m ? { background: `linear-gradient(135deg, ${m.bg}, ${m.accent})` } : null;
+}
+
+export const RARITY_COLORS = {
+  common: '#9ca3af', rare: '#3b82f6', epic: '#a855f7', legendary: '#f59e0b',
+};

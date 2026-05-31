@@ -1,6 +1,6 @@
 import React from 'react';
 import { getHeroImageUrl } from '../heroNames';
-import { FRAME_META } from '../profileCosmetics';
+import { FRAME_META, avatarRingStyle, bannerStyle, nameplateStyle } from '../profileCosmetics';
 import FounderRing from './founderRings/FounderRing';
 
 /**
@@ -37,11 +37,18 @@ export default function ProfileHeader({
   rankLabel = null,
   founderRing = null,
   tier = null,
+  avatarRing = null,
+  profileBanner = null,
+  nameplateFx = null,
 }) {
   const meta = FRAME_META[frameId] || {};
   const portrait = heroPortraitId ? getHeroImageUrl(heroPortraitId) : null;
   const RING_SIZE = 152;
   const PORTRAIT_SIZE = 140;
+  // Task #664 — equipped lootbox cosmetics (CSS-only render layers).
+  const ringStyle = avatarRing ? avatarRingStyle(avatarRing) : null;
+  const bannerBg = profileBanner ? bannerStyle(profileBanner) : null;
+  const namePlate = nameplateFx ? nameplateStyle(nameplateFx) : null;
 
   // Circular portrait fill (hero art or monogram fallback). Reused inside the
   // founder-ring overlay and the plain circular tile.
@@ -85,6 +92,7 @@ export default function ProfileHeader({
   return (
     <header style={{
       display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 28, marginBottom: 28,
+      ...(bannerBg ? { ...bannerBg, padding: '24px 28px', borderRadius: 16, border: '1px solid var(--border)' } : {}),
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 24, flexWrap: 'wrap' }}>
         {/* Portrait tile */}
@@ -99,6 +107,7 @@ export default function ProfileHeader({
                 borderRadius: '50%', overflow: 'hidden',
                 boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.5)',
                 background: 'linear-gradient(180deg, var(--bg-card) 0%, rgba(0,0,0,0.35) 100%)',
+                ...(ringStyle || {}),
               }}>
                 {portraitFill}
               </div>
@@ -108,6 +117,7 @@ export default function ProfileHeader({
               width: PORTRAIT_SIZE, height: PORTRAIT_SIZE, overflow: 'hidden',
               background: 'linear-gradient(180deg, var(--bg-card) 0%, rgba(0,0,0,0.35) 100%)',
               ...(meta.style || { border: '1px solid var(--border)' }),
+              ...(ringStyle || {}),
               borderRadius: '50%',
             }}>
               {portraitFill}
@@ -168,6 +178,7 @@ export default function ProfileHeader({
           <h1 style={{
             margin: 0, fontFamily: 'var(--font-serif, inherit)', fontWeight: 800,
             fontSize: 'clamp(2.2rem, 5vw, 4rem)', lineHeight: 1, color: 'var(--text-primary)',
+            ...(namePlate || {}),
           }}>{displayName}</h1>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, flexWrap: 'wrap', marginTop: 6 }}>
             {stats.reduce((acc, el, i) => {

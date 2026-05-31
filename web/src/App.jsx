@@ -58,6 +58,8 @@ function ProReplaysGuard() {
   return <ProReplayBrowser />;
 }
 const Players = lazy(() => import('./pages/Players'));
+const Lootbox = lazy(() => import('./pages/Lootbox'));
+const Collection = lazy(() => import('./pages/Collection'));
 const OverallStats = lazy(() => import('./pages/OverallStats'));
 const PositionStats = lazy(() => import('./pages/PositionStats'));
 const Synergy = lazy(() => import('./pages/Synergy'));
@@ -832,6 +834,10 @@ function Nav() {
               anonymous viewers can't apply anything yet. The /pro CTA in the
               nav bar covers their upgrade path. */}
           {accountId && <DropdownItem to="/shop">Cosmetics Shop</DropdownItem>}
+          {/* Task #664 — coin-purchased lootboxes + collection locker
+              (full edition only; signed-in players only). */}
+          {accountId && <DropdownItem to="/lootbox">Lootboxes</DropdownItem>}
+          {accountId && <DropdownItem to="/collection">My Collection</DropdownItem>}
         </DropdownMenu>
         <NavHelpMenu />
         <Link
@@ -1380,6 +1386,8 @@ function AppRoutes() {
                 <Route path="/games" element={<Games />} />
                 <Route path="/games/:game" element={<GamePlay />} />
                 <Route path="/players" element={<Players />} />
+                <Route path="/lootbox" element={<Lootbox />} />
+                <Route path="/collection" element={<Collection />} />
                 <Route path="/stats" element={<OverallStats />} />
                 <Route path="/positions" element={<PositionStats />} />
                 <Route path="/synergy" element={<Synergy />} />

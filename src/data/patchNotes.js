@@ -1,5 +1,20 @@
 module.exports = [
   {
+    "version": "8.88",
+    "title": "Lootboxes & a collection locker — unlock profile cosmetics with coins",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Open boxes, win cosmetics.** A new **Lootboxes** page (Community menu) lets you spend coins on three crate tiers — Common Crate, Rare Cache and Legendary Vault — plus one **free box every week** drawn from a weaker pool. Drops are a whole new family of profile cosmetics: avatar rings, profile banners, nameplate effects and recap/scoreboard skins, some of them box-exclusive.",
+      "**The odds you see are the odds you get.** Every box lists its published rarity odds and full drop pool, served straight from the same catalog the server rolls against — the UI can't advertise numbers that differ from reality.",
+      "**No wasted boxes.** Duplicate common/rare/epic cosmetics refund coins; duplicate legendaries mint a **wildcard token** you can redeem for any cosmetic you don't own yet. The rarest Legendary pull is a chase drop of bonus **Pro membership time** (7 or 30 days).",
+      "**Collect and equip.** A new **My Collection** locker shows your X-of-Y completion per cosmetic type, previews everything you own, and lets you equip rings, banners and nameplate effects — which now render on your profile header. Opening a box pops a rarity-tiered reveal animation, and every open is recorded as a coin transaction so it shows in your coin history.",
+      "**Seasonal sets.** An OCE Cup 2026 tournament set can be retired by admins — once retired its items stop dropping (and leave the published odds), but anything already owned stays yours.",
+      "**Scope.** Full edition only — community edition is untouched and stays paywall-free. Coins-only, no real-money path touches a box. Keyboard + screen-reader accessible via the shared dialog primitive; a11y gate green."
+    ],
+    "author": "System",
+    "major": true
+  },
+  {
     "version": "8.87",
     "title": "Bulk prize-receipt resend now pops a toast when it finishes",
     "published_at": "2026-05-31",
