@@ -145,7 +145,7 @@ function CommandPalette({ open, onClose }) {
       .slice(0, 6)
       .map(h => ({
         id: `h-${h.id}`, label: h.name, sub: '',
-        img: getHeroImageUrl(h.id, h.name), icon: '🦸', kind: 'Hero', path: '/heroes',
+        img: getHeroImageUrl(h.id, h.name), icon: '🦸', kind: 'Hero', path: `/heroes/${h.id}`,
       }));
     if (heroItems.length) out.push({ key: 'heroes', title: 'Heroes', items: heroItems });
 

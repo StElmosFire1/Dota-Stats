@@ -30,6 +30,7 @@ const MatchDetail = lazy(() => import('./pages/MatchDetail'));
 const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const PlayerProfile = lazy(() => import('./pages/PlayerProfile'));
 const Heroes = lazy(() => import('./pages/Heroes'));
+const HeroDetail = lazy(() => import('./pages/HeroDetail'));
 const Draft = lazy(() => import('./pages/Draft'));
 const DraftAssistant = lazy(() => import('./pages/DraftAssistant'));
 const DraftTrainer = lazy(() => import('./pages/DraftTrainer'));
@@ -1270,6 +1271,7 @@ function AppRoutes() {
                 <Route path="/draft" element={<Draft />} />
                 <Route path="/draft-assistant" element={<DraftAssistant />} />
                 <Route path="/heroes/draft-trainer" element={<DraftTrainer />} />
+                <Route path="/heroes/:heroId" element={<HeroDetail />} />
                 <Route path="/pro-replays" element={<ProReplaysGuard />} />
                 <Route path="/draft-stats" element={<Draft />} />
                 <Route path="/hero-breakdown" element={<Heroes defaultTab="breakdown" />} />

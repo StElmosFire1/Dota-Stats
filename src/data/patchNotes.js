@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.52",
+    "title": "Jump straight to a hero from search",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** Searching for a hero in the new ⌘K command palette dropped you on the shared Heroes list — you still had to find the hero yourself.",
+      "**What.** Each hero now has its own page (e.g. /heroes/14 for Pudge), and hero search results link straight to it.",
+      "**On the page.** Picks, win rate, pick/ban rates, average K/D/A, GPM and hero damage, plus a table of everyone who's played the hero with their own win rates.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.51",
     "title": "Search the whole site from one box (⌘K)",
     "published_at": "2026-05-31",
