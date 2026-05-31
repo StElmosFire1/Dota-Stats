@@ -967,7 +967,30 @@ export default function Inhouse() {
               <DiscordJoinGate steamUser={steamUser} refreshMe={refreshMe} />
             </>
           ) : (
-            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Sign in with Steam to join.</p>
+            <div style={{ maxWidth: 460, margin: '0 auto' }}>
+              <p style={{ color: 'var(--pb-muted)', marginBottom: 16 }}>
+                Sign in with Steam to queue for an inhouse, register your roles, and get drafted
+                into a balanced 5v5 on a dedicated server.
+              </p>
+              <a
+                href="/auth/steam"
+                style={{
+                  background: '#1b2838', color: '#d6ff7a',
+                  border: '1px solid #66c0f4',
+                  padding: '10px 20px', fontSize: 15, fontWeight: 700, letterSpacing: 0.4,
+                  borderRadius: 4,
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  textDecoration: 'none',
+                }}
+              >
+                <img src="https://store.steampowered.com/favicon.ico" alt="" style={{ width: 16, height: 16 }} />
+                Sign in with Steam to play
+                <span aria-hidden="true">🔒</span>
+              </a>
+              <p style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)' }}>
+                You sign in directly with Valve · <WhyIsThisSafeLink />
+              </p>
+            </div>
           )}
           {isAdmin && (
             <details style={{ marginTop: 24, textAlign: 'left', maxWidth: 420, marginLeft: 'auto', marginRight: 'auto', padding: '10px 14px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6 }}>

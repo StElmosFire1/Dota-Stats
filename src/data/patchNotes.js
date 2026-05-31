@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.55",
+    "title": "A proper sign-in prompt on the Play page",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** Visiting the Inhouse / Play page while signed out showed a near-blank screen with only a faint line of text — no clear way to get started.",
+      "**What.** Logged-out visitors now see a clear \"Sign in with Steam to play\" button and a short explainer of what the inhouse queue does.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.54",
     "title": "Hall of Fame loads for everyone again",
     "published_at": "2026-05-31",
