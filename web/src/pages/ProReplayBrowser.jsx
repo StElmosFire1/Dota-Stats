@@ -15,13 +15,16 @@ import SortableTh from '../components/SortableTh';
 function HeroIcons({ picks }) {
   if (!Array.isArray(picks) || picks.length === 0) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
   return (
-    <span style={{ display: 'inline-flex', gap: 2, flexWrap: 'wrap' }}>
+    <span style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
       {picks.map((p, i) => {
         const id = p?.hero_id;
         const img = id ? getHeroImageUrl(id) : null;
         const name = id ? (getHeroName(id) || `Hero ${id}`) : '?';
+        // Dota hero portraits are ~256×144 (16:9). Size by height and let the
+        // width follow the natural aspect ratio so they don't get squished
+        // into a square; object-fit:contain keeps them crisp.
         return img
-          ? <img key={`${id}-${i}`} src={img} alt={name} title={name} style={{ width: 24, height: 24, borderRadius: 3 }} />
+          ? <img key={`${id}-${i}`} src={img} alt={name} title={name} style={{ height: 24, width: 'auto', objectFit: 'contain', borderRadius: 3, display: 'block' }} />
           : <span key={i} style={{ fontSize: 11, color: 'var(--text-muted)' }}>{name}</span>;
       })}
     </span>

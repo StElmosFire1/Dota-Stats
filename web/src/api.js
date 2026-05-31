@@ -2430,6 +2430,10 @@ export const getPlayerPerfGrowth = (accountId) =>
   _getJson(`/player/${encodeURIComponent(accountId)}/perf-growth`);
 export const getMyPerks = () => _getJson('/me/perks');
 
+// Task #650 — currently-live inhouse game(s) still inside the pickable
+// window (not started, or under 5 minutes of in-game time) for the Pickem
+// "Live now" section.
+export const getPickableLiveGames = () => _getJson('/inhouse/pickable-live');
 export const getActivePickemSeason = () => _getJson('/pickem/active-season');
 export const getPickemLeaderboard = (seasonId) =>
   _getJson('/pickem/leaderboard' + (seasonId ? `?season_id=${seasonId}` : ''));

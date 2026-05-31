@@ -13,6 +13,7 @@ import { MmrBadge } from '../components/RankBadge';
 import HomeBanner from '../components/HomeBanner';
 import SponsorshipBanner from '../components/SponsorshipBanner';
 import { PlayerOfTheWeek, HotHeroes, FeaturedPlayer, WatchLiveBadge } from '../components/HomeWidgets';
+import LiveQueueWidget from '../components/LiveQueueWidget';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -433,11 +434,9 @@ function PersonalisedDashboard({ steamUser }) {
           <h1 className="pb-page-title" style={{ margin: 0, fontSize: 38 }}>
             {displayName}
           </h1>
-          {!loading && homeData && (
+          {!loading && homeData && homeData.mmr !== null && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
-              {homeData.mmr !== null && (
-                <MmrBadge mmr={homeData.mmr} size="lg" isLeader={isLeader} />
-              )}
+              <MmrBadge mmr={homeData.mmr} size="lg" isLeader={isLeader} />
               {homeData.games_played > 0 && (
                 <span style={{ fontSize: 13, color: 'var(--pb-muted)' }}>
                   {homeData.wins}W – {homeData.losses}L
@@ -445,6 +444,18 @@ function PersonalisedDashboard({ steamUser }) {
               )}
               {homeData.streak !== 0 && <StreakBadge streak={homeData.streak} />}
             </div>
+          )}
+          {/* Task #650 — brand-new players have no rating/stats yet, so the
+              badge row above is empty. Give them a warm welcome line instead of
+              dead space, framed in the Court & Pitch editorial voice. */}
+          {!loading && homeData && homeData.mmr === null && (
+            <p className="pb-serif" style={{
+              margin: '14px 0 0', fontSize: 16, lineHeight: 1.5,
+              color: 'var(--pb-muted)', maxWidth: 460,
+            }}>
+              Your locker's ready. Drop into an inhouse lobby to play your
+              placements and claim a spot on the ladder.
+            </p>
           )}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 18 }}>
             {accountId && (
@@ -508,6 +519,44 @@ function PersonalisedDashboard({ steamUser }) {
               <span>Games: <strong className="pb-num" style={{ color: 'var(--pb-text)' }}>{homeData.games_played || 0}</strong></span>
               <span>W/L: <strong className="pb-num" style={{ color: 'var(--pb-text)' }}>{homeData.wins || 0}–{homeData.losses || 0}</strong></span>
             </div>
+          </div>
+        )}
+
+        {/* Task #650 — Get Started panel. For brand-new players the "Your
+            Status" card above is hidden (no rating yet), leaving the right of
+            the welcome strip empty. Fill it with a concise onboarding card so
+            the strip never reads as dead space. */}
+        {!loading && homeData && homeData.mmr === null && (
+          <div className="pb-card" style={{
+            padding: '22px 26px', minWidth: 280, flex: '0 1 320px',
+            background: 'linear-gradient(180deg, var(--pb-surface-2) 0%, var(--pb-bg-2) 100%)',
+          }}>
+            <span className="pb-eyebrow">Get Started</span>
+            <p style={{ fontSize: 13, color: 'var(--pb-muted)', margin: '10px 0 16px', lineHeight: 1.5 }}>
+              A few first steps to get you into the action and onto the ladder.
+            </p>
+            <nav aria-label="Getting started" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[
+                { to: '/inhouse', emoji: '🎮', label: 'Join an inhouse lobby', primary: true },
+                { to: '/how-it-works', emoji: '📖', label: 'How it works' },
+                { to: '/leaderboard', emoji: '🏆', label: 'Browse the leaderboard' },
+                { to: '/pickem', emoji: '🎯', label: 'Try your hand at Pick’em' },
+              ].map(item => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={item.primary ? 'btn btn-primary' : 'btn'}
+                  style={{
+                    fontSize: 13, display: 'flex', alignItems: 'center', gap: 8,
+                    justifyContent: 'flex-start', textAlign: 'left',
+                  }}
+                >
+                  <span aria-hidden="true">{item.emoji}</span>
+                  <span>{item.label}</span>
+                  <span aria-hidden="true" style={{ marginLeft: 'auto' }}>→</span>
+                </Link>
+              ))}
+            </nav>
           </div>
         )}
       </div>
@@ -960,6 +1009,10 @@ export default function Home() {
         {tournamentBanner}
         <ActiveLobbyCard accountId={steamUser?.accountId} />
         <WatchLiveBadge />
+        {/* Task #650 — surface live inhouse activity on the signed-in home,
+            matching what signed-out visitors get. emptyMode="recent" falls
+            back to the last few matches when the queue is quiet. */}
+        <LiveQueueWidget emptyMode="recent" />
         <FeaturedPlayer />
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,

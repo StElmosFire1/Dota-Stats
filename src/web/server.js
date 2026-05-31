@@ -9228,6 +9228,39 @@ function createApiRouter(startupStatus = {}, _app = null) {
     res.json({ matchId: null });
   });
 
+  // Task #650 — pickable-live probe for the Pickem page. Surfaces the
+  // currently-active inhouse game (from the lobbyManager) together with its
+  // match ref, state and in-game time so the Pickem UI can offer a one-click
+  // pick while the match is still inside the pickable window — i.e. not yet
+  // started, or under 5 minutes of game time. Past that, the game is shown as
+  // locked. Public read — same trust as /inhouse/live-spectate.
+  router.get('/inhouse/pickable-live', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const PICK_WINDOW_SECONDS = 300;
+    try {
+      const { getLobbyManager } = require('../lobby/lobbyManager');
+      const lm = getLobbyManager && getLobbyManager();
+      const cl = lm && lm.currentLobby;
+      if (cl && cl.matchId) {
+        const gameTime = typeof cl.gameTime === 'number' ? cl.gameTime : null;
+        const started = gameTime != null && gameTime > 0;
+        const pickable = !started || gameTime < PICK_WINDOW_SECONDS;
+        return res.json({
+          pickWindowSeconds: PICK_WINDOW_SECONDS,
+          games: [{
+            matchRef: String(cl.matchId),
+            lobbyName: cl.name || null,
+            state: (lm && lm.state) || cl.state || null,
+            gameTime,
+            started,
+            pickable,
+          }],
+        });
+      }
+    } catch (_) {}
+    res.json({ pickWindowSeconds: PICK_WINDOW_SECONDS, games: [] });
+  });
+
   router.get('/available-stats', (req, res) => {
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Content-Disposition', 'attachment; filename="available_replay_stats.txt"');

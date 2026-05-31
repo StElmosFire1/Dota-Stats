@@ -1,8 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   getActivePickemSeason, getPickemLeaderboard, getMyPickemPicks, submitPickemPick,
-  placeMatchWager, getMatchWagers,
+  placeMatchWager, getMatchWagers, getPickableLiveGames,
 } from '../api';
+
+function fmtGameTime(sec) {
+  if (sec == null) return null;
+  const n = Math.max(parseInt(sec, 10) || 0, 0);
+  const m = Math.floor(n / 60);
+  const s = n % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 export default function Pickem() {
   const [season, setSeason] = useState(null);
@@ -30,6 +38,11 @@ export default function Pickem() {
   const [wagerBusy, setWagerBusy] = useState(false);
   const [wagerFlash, setWagerFlash] = useState(null);
 
+  // Task #650 — live/forming inhouse games that are still inside the pickable
+  // window (not started, or under 5 minutes of game time).
+  const [liveGames, setLiveGames] = useState([]);
+  const matchRefInput = useRef(null);
+
   useEffect(() => {
     getActivePickemSeason().then(d => setSeason(d.season || d)).catch(() => {});
     getPickemLeaderboard()
@@ -39,6 +52,31 @@ export default function Pickem() {
       .then(d => setMyPicks(d.picks || []))
       .catch(err => { if (err.status !== 401) setError(err.message); });
   }, []);
+
+  // Poll the pickable-live probe so the "Live now" section stays current as a
+  // game forms, starts, and crosses the 5-minute lock threshold.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => getPickableLiveGames()
+      .then(d => { if (!cancelled) setLiveGames(Array.isArray(d.games) ? d.games : []); })
+      .catch(() => { if (!cancelled) setLiveGames([]); });
+    load();
+    const id = setInterval(load, 15000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  // One-click pre-fill: drop the live game's match ref into the submit form,
+  // default the winner to Radiant, and focus the winner choice so the player
+  // just confirms and submits.
+  function pickThisMatch(ref) {
+    setMatchRef(ref);
+    setWinner('radiant');
+    setError(null);
+    if (matchRefInput.current) {
+      matchRefInput.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      matchRefInput.current.focus();
+    }
+  }
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -103,10 +141,72 @@ export default function Pickem() {
         correct winner picks grant 10 🪙, side bets are worth +5 pts each.
       </p>
 
+      {/* Task #650 — Live now: surface currently-live inhouse games still
+          inside the pickable window so players don't have to hunt for a match
+          ref. One click pre-fills the form below. */}
+      {liveGames.length > 0 && (
+        <section
+          aria-label="Live games you can pick"
+          style={{
+            border: '1px solid var(--border)', borderRadius: 10,
+            padding: 12, marginBottom: 24,
+            background: 'var(--bg-secondary, transparent)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span aria-hidden="true" style={{
+              width: 8, height: 8, borderRadius: 4, background: '#ef4444',
+              display: 'inline-block', boxShadow: '0 0 0 3px rgba(239,68,68,.25)',
+            }} />
+            <strong style={{ fontFamily: 'var(--font-condensed)' }}>Live now</strong>
+            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+              Pick before the match locks (under 5 min of game time)
+            </span>
+          </div>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+            {liveGames.map(g => {
+              const gt = fmtGameTime(g.gameTime);
+              const statusLabel = !g.started ? 'Forming / pre-game'
+                : (gt ? `Live · ${gt}` : 'Live');
+              return (
+                <li key={g.matchRef} style={{
+                  border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px',
+                  display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                }}>
+                  <span style={{ fontWeight: 600 }}>
+                    {g.lobbyName || `Match ${g.matchRef}`}
+                  </span>
+                  <span style={{
+                    fontSize: 12, padding: '2px 8px', borderRadius: 999,
+                    background: g.pickable ? 'rgba(34,197,94,.15)' : 'rgba(148,163,184,.18)',
+                    color: g.pickable ? '#86efac' : 'var(--text-muted)',
+                    border: `1px solid ${g.pickable ? '#16a34a55' : 'var(--border)'}`,
+                  }}>
+                    {statusLabel}
+                  </span>
+                  <span style={{ marginLeft: 'auto' }}>
+                    {g.pickable ? (
+                      <button type="button" onClick={() => pickThisMatch(g.matchRef)}>
+                        Pick this match
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }} title="Past the 5-minute pickable window">
+                        🔒 Locked
+                      </span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       <h3>Submit a pick</h3>
       <form onSubmit={onSubmit} style={{ display: 'grid', gap: 8, marginBottom: 24 }}>
         <div style={{ display: 'flex', gap: 8 }}>
           <input
+            ref={matchRefInput}
             value={matchRef} onChange={e => setMatchRef(e.target.value)}
             placeholder="Match ref (e.g. lobby-id)" required
             style={{ flex: 1, padding: 6 }}

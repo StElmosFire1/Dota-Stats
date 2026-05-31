@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.83",
+    "title": "Home, Pick’em & Pro Replay polish — live games you can pick, a livelier welcome, and tidy hero icons",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Pick’em — Live now.** The Pick’em page used to need you to type a match ref by hand. There's now a **Live now** section that surfaces the current inhouse game while it's still pickable — before it starts, or under 5 minutes of game time — with a one-click **Pick this match** that pre-fills the form so you just confirm a winner and submit. Games past the 5-minute window show as **Locked**, and the list refreshes itself as a game forms, starts and crosses the threshold.",
+      "**A warmer signed-in home.** The 'Welcome back' strip no longer reads as empty for brand-new players. If you don't have a rating yet, you get a friendly welcome line plus a **Get Started** card (join an inhouse lobby, how it works, the leaderboard, Pick’em) where the stats panel would otherwise be — so the banner always feels full.",
+      "**Live lobby on the home dashboard.** Signed-in players now see the same live inhouse queue widget that logged-out visitors get, right on the home page — with a graceful 'recent matches' fallback when the queue is quiet.",
+      "**Pro Replay hero icons.** Radiant/Dire pick icons in the Pro Replay Browser were being squished into squares; they now render at their true 16:9 aspect ratio, so the grids look clean and aligned.",
+      "**Scope.** Full edition only — community edition untouched. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.82",
     "title": "Notification center: a bell in the top bar for everything you've missed",
     "published_at": "2026-05-31",
