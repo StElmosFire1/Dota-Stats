@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.54",
+    "title": "Hall of Fame loads for everyone again",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** Logged-out visitors hit \"Failed to load Hall of Fame data\" — a career-stats database query used a rounding form Postgres rejected, which broke the whole page.",
+      "**What.** Fixed the query so career rankings compute correctly, and made the page degrade gracefully: if any single section can't load, the rest still shows instead of a hard error.",
+      "**Scope.** Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.53",
     "title": "Sharper, ranked command-palette results",
     "published_at": "2026-05-31",

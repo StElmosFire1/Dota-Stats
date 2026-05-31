@@ -26689,8 +26689,8 @@ async function getHallOfFameCareerStats(seasonId = null) {
       COUNT(DISTINCT ps.match_id) AS games,
       SUM(CASE WHEN (ps.team = 'radiant' AND m.radiant_win) OR (ps.team = 'dire' AND NOT m.radiant_win) THEN 1 ELSE 0 END) AS wins,
       SUM(CASE WHEN (ps.team = 'radiant' AND NOT m.radiant_win) OR (ps.team = 'dire' AND m.radiant_win) THEN 1 ELSE 0 END) AS losses,
-      ROUND(AVG(CASE WHEN ps.deaths > 0 THEN (ps.kills + ps.assists)::float / ps.deaths ELSE (ps.kills + ps.assists)::float END), 2) AS avg_kda,
-      ROUND(AVG(ps.gpm)) AS avg_gpm,
+      ROUND(AVG(CASE WHEN ps.deaths > 0 THEN (ps.kills + ps.assists)::float / ps.deaths ELSE (ps.kills + ps.assists)::float END)::numeric, 2) AS avg_kda,
+      ROUND(AVG(ps.gpm)::numeric) AS avg_gpm,
       SUM(ps.kills) AS total_kills,
       (SELECT COUNT(*) FROM achievements a WHERE a.player_id = ps.account_id) AS achievement_count
     FROM player_stats ps

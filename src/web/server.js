@@ -9816,10 +9816,22 @@ NOTES
   router.get('/hall-of-fame', async (req, res) => {
     try {
       const seasonId = req.query.season || null;
+      // Hall of Fame is a public showcase page — degrade gracefully if any one
+      // sub-query fails so anonymous visitors still see whatever data is
+      // available instead of a hard "Failed to load" error.
       const [records, career, impactMap, achievementHunters] = await Promise.all([
-        db.getPersonalRecords(seasonId),
-        db.getHallOfFameCareerStats(seasonId),
-        db.getImpactScores(seasonId),
+        db.getPersonalRecords(seasonId).catch((e) => {
+          console.error('[API] hall-of-fame records error:', e.message);
+          return {};
+        }),
+        db.getHallOfFameCareerStats(seasonId).catch((e) => {
+          console.error('[API] hall-of-fame career error:', e.message);
+          return [];
+        }),
+        db.getImpactScores(seasonId).catch((e) => {
+          console.error('[API] hall-of-fame impact error:', e.message);
+          return {};
+        }),
         db.getAchievementLeaderboard(10).catch(() => []),
       ]);
       for (const p of career) {
