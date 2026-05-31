@@ -20,6 +20,21 @@ if [ -f scripts/build-parser.sh ]; then
   bash scripts/build-parser.sh --check
 fi
 
+echo "[post-merge] Auto-deduping any colliding patch-note versions..."
+# Self-heal: isolated task agents add patch notes in parallel and routinely
+# pick the same `version` number, which used to fail the hard gate below and
+# silently block this GitHub push. Auto-bump the later duplicate(s) to the next
+# free version, then COMMIT the fix so the pushed HEAD (not just the working
+# tree) is clean — the gate below reads the working tree, so without the commit
+# we'd push a still-duplicated commit and break prod's own deploy gate.
+node scripts/dedupe-patch-notes.js
+if ! git diff --quiet -- src/data/patchNotes.js; then
+  echo "[post-merge] patch-note versions were auto-deduped; committing the fix."
+  git add src/data/patchNotes.js
+  git -c user.email=automation@oceinhouse.gg -c user.name="oi-postmerge" \
+    commit -m "chore: auto-dedupe colliding patch-note versions"
+fi
+
 echo "[post-merge] Verifying patch notes have unique versions (Task #418)..."
 # Hard gate: refuse to push if src/data/patchNotes.js contains two entries
 # with the same `version` string. Duplicates were previously only a runtime
