@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { getMySponsorshipInbox, getMySponsorshipOrders, acceptSponsorship, declineSponsorship } from '../api';
 import SponsorshipTrendChart, { trendRowsFor } from '../components/SponsorshipTrendChart';
+import { useSteamAuth } from '../context/SteamAuthContext';
+import SignInPrompt from '../components/SignInPrompt';
 
 export default function SponsorshipInbox() {
+  const { steamUser, loading: authLoading } = useSteamAuth() || {};
   const [items, setItems] = useState([]);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -31,6 +34,9 @@ export default function SponsorshipInbox() {
     catch (err) { setError(err.message); }
     finally { setBusy(false); }
   }
+
+  if (authLoading) return <div style={{ padding: 16 }}>Loading…</div>;
+  if (!steamUser?.accountId) return <SignInPrompt title="Sponsorship Inbox" message="Sign in with Steam to view sponsorships paid for your profile." />;
 
   return (
     <div style={{ padding: 16, maxWidth: 720, margin: '0 auto' }}>

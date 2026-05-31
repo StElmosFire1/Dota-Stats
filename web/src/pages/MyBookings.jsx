@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Dialog from '../components/Dialog';
+import { useSteamAuth } from '../context/SteamAuthContext';
+import SignInPrompt from '../components/SignInPrompt';
 
 const BASE = '/api';
 
@@ -16,6 +18,7 @@ function StatusPill({ s }) {
 }
 
 export default function MyBookings() {
+  const { steamUser, loading: authLoading } = useSteamAuth() || {};
   const [data, setData] = useState({ as_student: [], as_coach: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -68,6 +71,8 @@ export default function MyBookings() {
     load();
   };
 
+  if (authLoading) return <div style={{ padding: 24 }}>Loading…</div>;
+  if (!steamUser?.accountId) return <SignInPrompt title="My bookings" message="Sign in with Steam to view and manage your coaching bookings." />;
   if (error) return <div style={{ padding: 24 }}><h1>My bookings</h1><p style={{ color: 'var(--text-muted)' }}>{error}</p></div>;
   if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
 

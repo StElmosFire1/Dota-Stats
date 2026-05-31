@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import * as api from '../api';
+import { useSteamAuth } from '../context/SteamAuthContext';
+import SignInPrompt from '../components/SignInPrompt';
 
 function fmtPrice(c, cur = 'aud') {
   return `$${(c / 100).toFixed(2)} ${String(cur).toUpperCase()}`;
@@ -26,6 +28,7 @@ function fmtSigned(c, cur = 'aud') {
 }
 
 export default function CoachEarnings() {
+  const { steamUser, loading: authLoading } = useSteamAuth() || {};
   const [ym, setYm] = useState(currentYM());
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -47,6 +50,9 @@ export default function CoachEarnings() {
     const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
     months.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
   }
+
+  if (authLoading) return <div style={{ padding: 24 }}>Loading…</div>;
+  if (!steamUser?.accountId) return <SignInPrompt title="Coach earnings" message="Sign in with Steam to view your coaching earnings." />;
 
   return (
     <div style={{ maxWidth: 1000, margin: '24px auto', padding: 16 }}>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, Link } from 'react-router-dom';
 import { useSteamAuth } from '../context/SteamAuthContext';
+import SignInPrompt from '../components/SignInPrompt';
 
 function SectionLink({ to, label, icon, end = false }) {
   return (
@@ -42,12 +43,7 @@ export default function Settings() {
 
   if (loading) return <div className="loading" style={{ padding: 32 }}>Loading\u2026</div>;
   if (!steamUser?.accountId) {
-    return (
-      <div className="container" style={{ maxWidth: 720, padding: '24px 16px' }}>
-        <h1>Settings</h1>
-        <p>Sign in with Steam to manage your account settings.</p>
-      </div>
-    );
+    return <SignInPrompt title="Settings" message="Sign in with Steam to manage your account settings, notifications, and billing." />;
   }
 
   const isIndex = location.pathname === '/settings' || location.pathname === '/settings/';

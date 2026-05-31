@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
+import SignInPrompt from '../components/SignInPrompt';
 import { getMyPresenceVisibility, setMyPresenceVisibility } from '../api';
 
 // v5.90 — added the missing labels (match_ready + the three coaching
@@ -230,12 +231,7 @@ export default function SettingsNotifications() {
   }
 
   if (!steamUser?.accountId) {
-    return (
-      <div className="container" style={{ maxWidth: 720, padding: '24px 16px' }}>
-        <h1>Notifications</h1>
-        <p>Sign in with Steam to manage your notification preferences.</p>
-      </div>
-    );
+    return <SignInPrompt title="Notifications" message="Sign in with Steam to manage your notification preferences." />;
   }
 
   return (

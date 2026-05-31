@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../api';
+import { useSteamAuth } from '../context/SteamAuthContext';
+import SignInPrompt from '../components/SignInPrompt';
 
 const BASE = '/api';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -49,6 +51,7 @@ function PremiumLift({ lift }) {
 }
 
 export default function CoachEdit() {
+  const { steamUser, loading: authLoading } = useSteamAuth() || {};
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [coach, setCoach] = useState(null);
@@ -150,6 +153,8 @@ export default function CoachEdit() {
   const updSlot = (i, k, v) => setAvailability(a => a.map((s, idx) => idx === i ? { ...s, [k]: v } : s));
   const rmSlot = (i) => setAvailability(a => a.filter((_, idx) => idx !== i));
 
+  if (authLoading) return <div style={{ padding: 24 }}>Loading…</div>;
+  if (!steamUser?.accountId) return <SignInPrompt title="Coach editor" message="Sign in with Steam to manage your coach profile and availability." />;
   if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
   if (error) return <div style={{ padding: 24 }}>
     <h1>Coach editor</h1>

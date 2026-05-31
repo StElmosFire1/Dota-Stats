@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { useSteamAuth } from '../context/SteamAuthContext';
+import SignInPrompt from '../components/SignInPrompt';
 
 const EVENT_DESCRIPTIONS = {
   'match.ended': 'A match was recorded and parsed (legacy event, kept for back-compat).',
@@ -53,6 +55,7 @@ function copyToClipboard(value) {
 }
 
 export default function SettingsApi() {
+  const { steamUser, loading: authLoading } = useSteamAuth() || {};
   const [keysData, setKeysData] = useState(null);
   const [webhooksData, setWebhooksData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -216,6 +219,8 @@ export default function SettingsApi() {
     load();
   };
 
+  if (authLoading) return <div className="loading" style={{ padding: 32 }}>Loading…</div>;
+  if (!steamUser?.accountId) return <SignInPrompt title="API access" message="Sign in with Steam to manage your API keys and webhooks." />;
   if (loading) return <div className="loading" style={{ padding: 32 }}>Loading…</div>;
   if (error) return <div style={{ padding: 16, color: 'var(--rose)' }}>Error: {error}</div>;
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useSteamAuth } from '../context/SteamAuthContext';
+import SignInPrompt from '../components/SignInPrompt';
 
 // Task #407 — Notification preference centre v2. One row per catalogued
 // event, two toggles each: Discord DM + Web Push. Reads /api/me/notification-events
@@ -66,12 +67,7 @@ export default function MeNotifications() {
   };
 
   if (!steamUser?.accountId) {
-    return (
-      <div className="container" style={{ maxWidth: 760, padding: '24px 16px' }}>
-        <h1>Notifications</h1>
-        <p>Sign in with Steam to manage your notification preferences.</p>
-      </div>
-    );
+    return <SignInPrompt title="Notifications" message="Sign in with Steam to manage your notification preferences." />;
   }
 
   return (

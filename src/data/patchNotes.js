@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "8.66",
+    "title": "Logged-out account pages now show a clear Sign in with Steam prompt",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** A handful of account-only pages — your bookings, group sessions, VOD reviews, coach editor, coach earnings, API access, notifications, profile customisation, sponsorship inbox and settings — rendered a blank screen or a bare error string when you weren't signed in. There was nothing telling you what to do.",
+      "**What.** Each of these pages now shows the same centred 'Sign in with Steam' prompt used by the inhouse lobby: a short explainer of what signing in unlocks, the official Steam button, and the 'Why is this safe?' trust note.",
+      "**Scope.** Full edition only — community edition untouched. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.65",
     "title": "Search results now highlight the matching text",
     "published_at": "2026-05-31",

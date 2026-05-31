@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import * as api from '../api';
+import { useSteamAuth } from '../context/SteamAuthContext';
+import SignInPrompt from '../components/SignInPrompt';
 
 function fmtPrice(c, cur = 'aud') { return `$${(c / 100).toFixed(0)} ${String(cur).toUpperCase()}`; }
 
 export default function CoachGroupSessionsManage() {
+  const { steamUser, loading: authLoading } = useSteamAuth() || {};
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -45,6 +48,8 @@ export default function CoachGroupSessionsManage() {
     try { await fn(id); load(); } catch (e) { alert(e.message); }
   };
 
+  if (authLoading) return <div style={{ padding: 24 }}>Loading…</div>;
+  if (!steamUser?.accountId) return <SignInPrompt title="Group sessions" message="Sign in with Steam to manage your coaching group sessions." />;
   if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
   if (error) return <div style={{ padding: 24, color: 'var(--dire-color)' }}>{error}</div>;
 

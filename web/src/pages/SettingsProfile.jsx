@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useSteamAuth } from '../context/SteamAuthContext';
+import SignInPrompt from '../components/SignInPrompt';
 import OnboardingWizard from '../components/OnboardingWizard';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { ALL_HEROES, getHeroName, getHeroImageUrl } from '../heroNames';
@@ -1014,12 +1015,7 @@ export default function SettingsProfile() {
     );
   }
   if (!accountId) {
-    return (
-      <div className="container" style={{ maxWidth: 760, padding: '24px 16px' }}>
-        <h1>Profile Customization</h1>
-        <p>Sign in with Steam to customize your profile.</p>
-      </div>
-    );
+    return <SignInPrompt title="Profile Customization" message="Sign in with Steam to customize your profile bio, title, theme, and frame." />;
   }
 
   // v6.18 — Build the same shape /api/player/:id/profile-card returns so the

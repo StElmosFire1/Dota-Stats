@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import * as api from '../api';
+import { useSteamAuth } from '../context/SteamAuthContext';
+import SignInPrompt from '../components/SignInPrompt';
 
 function fmtPrice(c, cur = 'aud') { return `$${(c / 100).toFixed(2)} ${String(cur).toUpperCase()}`; }
 function fmtWhen(iso) { return new Date(iso).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }
@@ -10,6 +12,7 @@ const STATUS_COLOR = {
 };
 
 export default function MyGroupSessions() {
+  const { steamUser, loading: authLoading } = useSteamAuth() || {};
   const [seats, setSeats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -21,6 +24,8 @@ export default function MyGroupSessions() {
       .finally(() => setLoading(false));
   }, []);
 
+  if (authLoading) return <div style={{ padding: 24 }}>Loading…</div>;
+  if (!steamUser?.accountId) return <SignInPrompt title="My group sessions" message="Sign in with Steam to view the group sessions you've joined." />;
   if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
   if (error) return <div style={{ padding: 24, color: 'var(--dire-color)' }}>{error}</div>;
 
