@@ -1,6 +1,6 @@
 module.exports = [
   {
-    "version": "8.75",
+    "version": "8.76",
     "title": "Stay signed in — no more being logged out after an update",
     "published_at": "2026-05-31",
     "notes": [
