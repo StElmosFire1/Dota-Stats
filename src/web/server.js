@@ -856,6 +856,51 @@ setInterval(() => {
 // route writes a new value, so the middleware never adds a per-request
 // DB hit.
 const lockdownState = { enabled: false, since: null, actor: null };
+
+// Task #616 — Steam avatar cache for command-palette search results. Avatars
+// are not persisted in our DB; the only source is OpenDota's player profile,
+// whose client is globally rate-limited (~1.1s/req). To keep the debounced
+// /search endpoint snappy we cache resolved avatar URLs (24h) at module scope
+// and never block search on a cold fetch: cached ids resolve instantly, misses
+// warm in the background so a repeat search shows the portrait. A null cache
+// entry means "looked up, no avatar" and still suppresses re-fetching.
+const _searchAvatarCache = new Map(); // accountId(str) -> { t, url|null }
+const _searchAvatarInflight = new Set();
+const SEARCH_AVATAR_TTL_MS = 24 * 60 * 60 * 1000;
+function _peekSearchAvatar(accountId) {
+  const hit = _searchAvatarCache.get(String(accountId));
+  if (hit && Date.now() - hit.t < SEARCH_AVATAR_TTL_MS) return hit.url || null;
+  return undefined; // not cached / stale
+}
+async function _resolveSearchAvatar(accountId) {
+  const id = Number(accountId) || 0;
+  if (!id) return null;
+  const key = String(id);
+  const fresh = _peekSearchAvatar(id);
+  if (fresh !== undefined) return fresh;
+  if (_searchAvatarInflight.has(key)) return null;
+  _searchAvatarInflight.add(key);
+  let url = null;
+  try {
+    const opendota = require('../api/opendota');
+    const fetcher = opendota?.opendotaApi || opendota?.default || opendota;
+    if (fetcher && typeof fetcher.getPlayerProfile === 'function') {
+      const p = await fetcher.getPlayerProfile(id);
+      url = p?.avatarFull || p?.avatarMedium || null;
+    }
+  } catch (_) {
+    url = null;
+  } finally {
+    _searchAvatarInflight.delete(key);
+  }
+  if (_searchAvatarCache.size >= 2000) {
+    const k = _searchAvatarCache.keys().next().value;
+    if (k) _searchAvatarCache.delete(k);
+  }
+  _searchAvatarCache.set(key, { t: Date.now(), url });
+  return url;
+}
+
 async function refreshLockdownStateFromDb() {
   try {
     const dbMod = require('../db');
@@ -11464,6 +11509,23 @@ NOTES
         db.searchTeams(q, 6).catch(() => []),
         db.searchTournaments(q, 6).catch(() => []),
       ]);
+      // Task #616 — attach Steam avatars for players + coaches. Avatars live in
+      // OpenDota (rate-limited), so we resolve from a 24h module cache and give
+      // cold misses a small shared time budget before falling back to null (the
+      // palette then renders its emoji). Misses keep warming in the background.
+      const avatarIds = [...new Set(
+        [...players, ...coaches]
+          .map(r => Number(r.account_id) || 0)
+          .filter(Boolean)
+      )];
+      if (avatarIds.length) {
+        await Promise.race([
+          Promise.allSettled(avatarIds.map(id => _resolveSearchAvatar(id))),
+          new Promise(r => setTimeout(r, 1200)),
+        ]);
+      }
+      for (const p of players) p.avatar = _peekSearchAvatar(p.account_id) || null;
+      for (const c of coaches) c.avatar = _peekSearchAvatar(c.account_id) || null;
       res.json({ query: q, players, coaches, teams, tournaments });
     } catch (err) {
       res.status(500).json({ error: 'Search failed' });

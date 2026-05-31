@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "8.62",
+    "title": "Global search now shows player and coach avatars",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** The ⌘K command-palette search showed real portraits for heroes but only a generic emoji for players and coaches, making results slower to scan.",
+      "**What.** Player and coach results now render the person's Steam avatar, falling back to the original 👤 / 🎓 emoji when no avatar is available.",
+      "**How.** The `/api/search` response carries an avatar URL for each player and coach. Avatars aren't stored in our database, so they're resolved from OpenDota and cached in-memory for 24h — search never blocks on a cold lookup (it returns the emoji and warms the avatar in the background so a repeat search shows it).",
+      "**Scope.** Full edition only. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.61",
     "title": "Winners can flag a prize that never actually arrived",
     "published_at": "2026-05-31",

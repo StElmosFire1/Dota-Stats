@@ -179,7 +179,7 @@ function CommandPalette({ open, onClose }) {
       const sub = p.persona_name && p.persona_name !== p.name
         ? p.persona_name
         : (p.games_played ? `${p.games_played} game${p.games_played === 1 ? '' : 's'}` : '');
-      const item = { id: `p-${p.player_key || p.account_id || p.name}`, label: p.name, sub, icon: '👤', kind: 'Player', path };
+      const item = { id: `p-${p.player_key || p.account_id || p.name}`, label: p.name, sub, img: p.avatar || undefined, icon: '👤', kind: 'Player', path };
       return { item, score: scoreItem(q, p.name, p.persona_name) };
     }));
     if (playerItems.length) out.push({ key: 'players', title: 'Players', items: playerItems });
@@ -189,7 +189,7 @@ function CommandPalette({ open, onClose }) {
       const item = {
         id: `c-${c.id}`, label: c.name,
         sub: formatRate(c.hourly_rate_cents, c.currency) || (c.taught_roles || ''),
-        icon: '🎓', kind: 'Coach', path: `/coaches/${c.id}`,
+        img: c.avatar || undefined, icon: '🎓', kind: 'Coach', path: `/coaches/${c.id}`,
       };
       return { item, score: scoreItem(q, c.name) };
     }));
