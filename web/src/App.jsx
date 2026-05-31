@@ -29,6 +29,7 @@ const MatchList = lazy(() => import('./pages/MatchList'));
 const MatchDetail = lazy(() => import('./pages/MatchDetail'));
 const Leaderboard = lazy(() => import('./pages/Leaderboard'));
 const PlayerProfile = lazy(() => import('./pages/PlayerProfile'));
+const PlayerGrowth = lazy(() => import('./pages/PlayerGrowth'));
 const Heroes = lazy(() => import('./pages/Heroes'));
 const HeroDetail = lazy(() => import('./pages/HeroDetail'));
 const Draft = lazy(() => import('./pages/Draft'));
@@ -1248,6 +1249,7 @@ function AppRoutes() {
                 <Route path="/match/:matchId" element={<MatchDetail />} />
                 <Route path="/match/:matchId/edit" element={<StatsEditor />} />
                 <Route path="/player/:accountId" element={<PlayerProfile />} />
+                <Route path="/player/:accountId/growth" element={<PlayerGrowth />} />
                 <Route path="/wrapped/me/latest" element={<WrappedSlideshow resolveLatest />} />
                 <Route path="/wrapped/:seasonId/:accountId" element={<WrappedSlideshow />} />
                 <Route path="/wrapped/:accountId" element={<WrappedSlideshow />} />

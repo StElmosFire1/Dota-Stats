@@ -9694,6 +9694,32 @@ NOTES
     }
   });
 
+  // Task #628 — PERF Growth Coach. Signed-in, own-profile-or-superuser read of
+  // the player's PERF trend, weakest per-position dimensions vs bracket peers,
+  // concrete "what good looks like" targets, and the recent matches where each
+  // weak dimension was worst. NOT Pro-gated — the coach hand-off on the page
+  // reuses the existing Pro-gated coach-recommendations tile, which renders its
+  // own paywall, so the self-improvement read itself is free for any signed-in
+  // player viewing their own profile.
+  router.get('/player/:id/perf-growth', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const target = String(req.params.id);
+      if (String(accountId) !== target && !_isSu(req)) {
+        return res.status(403).json({ error: 'You can only view your own growth report.' });
+      }
+      const { buildPerfGrowth } = require('../perf/growthInsights');
+      let mergedIds = [target];
+      try { mergedIds = await db.getMergedAccountIds(target); } catch {}
+      const growth = await buildPerfGrowth(db.getPool(), { accountId: target, mergedIds });
+      res.json(growth);
+    } catch (err) {
+      console.error('[API] perf-growth error:', err.message);
+      res.status(500).json({ error: 'Failed to build growth report' });
+    }
+  });
+
   router.get('/impact-scores', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;

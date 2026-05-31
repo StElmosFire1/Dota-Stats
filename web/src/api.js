@@ -2365,6 +2365,9 @@ export const spendCoinsOnSku = (sku) => _postJson('/coins/spend', { sku });
 export const getReplayQuota = () => _getJson('/me/replay-quota');
 export const getWeeklyReport = () => _getJson('/me/weekly-report');
 export const getCoachRecommendations = () => _getJson('/me/coach-recommendations');
+// Task #628 — PERF Growth Coach (own-profile-or-superuser).
+export const getPlayerPerfGrowth = (accountId) =>
+  _getJson(`/player/${encodeURIComponent(accountId)}/perf-growth`);
 export const getMyPerks = () => _getJson('/me/perks');
 
 export const getActivePickemSeason = () => _getJson('/pickem/active-season');

@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.70",
+    "title": "Growth Coach — a personal PERF improvement plan on your profile",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**Why.** Your PERF score told you where you stand, but not how you're trending or what to actually work on. There was no signed-in, player-facing read that turned your stats into a plan.",
+      "**What.** A new **Growth Coach** page (linked from your own profile) charts your PERF over time — every match plus a 5-game rolling average with an up/down/steady trend call — then calls out the 2–3 dimensions where you trail your role's peers in plain English (\"Hero damage / min is 18% below Pos 2 peers\"), gives a concrete \"what good looks like\" target for each, and links 1–3 of your own recent matches where that dimension was weakest so you can review the game.",
+      "**Coach hand-off.** When you're viewing your own report, the existing Pro coach-recommendations tile and a \"Book a coach\" link into the marketplace sit at the bottom — the self-improvement read itself is free for any signed-in player.",
+      "**Under the hood.** The weakest-dimension computation is now shared between the coach recommender and the Growth view, so they stay in lockstep. Degrades gracefully: a friendly \"play a few more games\" state under 5 rated games, and a sign-in prompt when logged out.",
+      "**Scope.** Full edition only — community edition untouched. No change to how PERF is computed. A11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.69",
     "title": "Leaderboard rank emblems: centred numbers, no more clipping",
     "published_at": "2026-05-31",

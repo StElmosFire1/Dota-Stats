@@ -6,6 +6,8 @@
  * weakest stat dimensions.
  */
 
+const { computeWeakestDimensions } = require('../../perf/growthInsights');
+
 function scoreCoachMatch(student, coach) {
   // Both are plain objects already loaded by the caller. Returns 0..100.
   let score = 50;
@@ -92,70 +94,13 @@ function mountRoutes({ router, deps, requireAuth }) {
   // `matches.duration / 60.0`, joined to `matches` for the time window,
   // and PERF (the persisted position-aware score) is included as the
   // primary dimension since the task spec calls it out specifically.
+  // Delegates to the shared growth-insight computation (src/perf/growthInsights.js)
+  // so the coach recommender and the PERF Growth view stay in lockstep. The
+  // shared fn returns all dimensions enriched with own/peer values; we keep the
+  // historical contract here (three weakest dims, {stat,label,delta_pct}).
   async function _weakestDimensions(accountId, primaryPosition) {
-    if (!primaryPosition) return [];
-    const pool = db.getPool();
-    // Each row: [sql_expr, label, lowerBetter]
-    // Per-minute metrics are computed inline against the actual schema.
-    const STAT_DIMS = [
-      ['ps.perf',                                              'PERF score',           false],
-      ['ps.kills    / NULLIF(m.duration/60.0, 0)',             'Kills / min',          false],
-      ['ps.deaths   / NULLIF(m.duration/60.0, 0)',             'Deaths / min',         true],
-      ['ps.assists  / NULLIF(m.duration/60.0, 0)',             'Assists / min',        false],
-      ['ps.gpm::float',                                        'Gold / min',           false],
-      ['ps.xpm::float',                                        'XP / min',             false],
-      ['ps.last_hits   / NULLIF(m.duration/60.0, 0)',          'Last hits / min',      false],
-      ['ps.hero_damage / NULLIF(m.duration/60.0, 0)',          'Hero damage / min',    false],
-    ];
-    const cols = STAT_DIMS.map(([expr], i) =>
-      `AVG(CASE WHEN ps.account_id = $1 THEN ${expr} END)::float AS own_${i}, ` +
-      `AVG(CASE WHEN ps.account_id <> $1 THEN ${expr} END)::float AS peer_${i}`
-    ).join(', ');
-    let r;
-    try {
-      r = await pool.query(
-        `SELECT ${cols}
-           FROM player_stats ps
-           JOIN matches m ON m.match_id = ps.match_id
-          WHERE ps.position = $2
-            AND m.date > NOW() - INTERVAL '90 days'
-            AND m.duration > 0`,
-        [accountId, primaryPosition]
-      );
-    } catch (e) {
-      // Defensive: if a deployment lacks `ps.perf` or `m.date`, retry
-      // without the PERF dimension and using created_at instead. Worst
-      // case we still return raw per-minute metrics rather than [].
-      try {
-        const altCols = STAT_DIMS.slice(1).map(([expr], i) =>
-          `AVG(CASE WHEN ps.account_id = $1 THEN ${expr} END)::float AS own_${i + 1}, ` +
-          `AVG(CASE WHEN ps.account_id <> $1 THEN ${expr} END)::float AS peer_${i + 1}`
-        ).join(', ');
-        r = await pool.query(
-          `SELECT ${altCols}
-             FROM player_stats ps
-             JOIN matches m ON m.match_id = ps.match_id
-            WHERE ps.position = $2
-              AND m.duration > 0`,
-          [accountId, primaryPosition]
-        );
-      } catch {
-        return [];
-      }
-    }
-    const row = r.rows[0] || {};
-    const dims = [];
-    STAT_DIMS.forEach(([_expr, label, lowerBetter], i) => {
-      const own = row[`own_${i}`];
-      const peer = row[`peer_${i}`];
-      if (own == null || peer == null || peer === 0) return;
-      const rawDelta = (own - peer) / Math.abs(peer);
-      const normalised = lowerBetter ? -rawDelta : rawDelta;
-      dims.push({ stat: label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
-                  label, delta_pct: Math.round(normalised * 100) });
-    });
-    dims.sort((a, b) => a.delta_pct - b.delta_pct);
-    return dims.slice(0, 3);
+    const dims = await computeWeakestDimensions(db.getPool(), [accountId], primaryPosition);
+    return dims.slice(0, 3).map(d => ({ stat: d.stat, label: d.label, delta_pct: d.delta_pct }));
   }
 
   async function _buildCoachRecommendations(accountId) {

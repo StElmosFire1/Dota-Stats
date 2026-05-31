@@ -1622,6 +1622,25 @@ export default function PlayerProfile() {
       <div style={{ marginTop: 12 }}>
         <SponsorChip accountId={accountId} />
       </div>
+      {isOwnProfile && (
+        <Link
+          to={`/player/${accountId}/growth`}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+            background: 'var(--ink-navy, #0d1424)', color: 'var(--parchment, #f5efe2)',
+            border: '1px solid var(--brass, #c5a975)', borderRadius: 8,
+            padding: '12px 16px', marginBottom: 12, textDecoration: 'none',
+          }}
+        >
+          <span>
+            <strong style={{ color: 'var(--brass, #c5a975)' }}>📈 Growth Coach</strong>
+            <span style={{ display: 'block', fontSize: 12, opacity: .75, marginTop: 2 }}>
+              Your PERF trend, weak spots vs your role's peers, and what to aim for.
+            </span>
+          </span>
+          <span style={{ color: 'var(--amber, #f59e0b)', fontWeight: 700 }} aria-hidden="true">→</span>
+        </Link>
+      )}
       {isOwnProfile && <QuestTracker />}
       {isOwnProfile && <WeeklyReportTile />}
       {isOwnProfile && <CoachRecommendationsTile />}
