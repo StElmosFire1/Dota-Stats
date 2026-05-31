@@ -629,7 +629,7 @@ export default function Leaderboard() {
       <div className="pb-card" style={{
         display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20,
         padding: '12px 16px',
-        alignItems: 'center',
+        alignItems: 'center', justifyContent: 'center',
       }}>
         <span style={{ fontSize: 11, color: 'var(--pb-faint)', marginRight: 4, whiteSpace: 'nowrap' }}>worst →</span>
         {[...MMR_TIERS].reverse().map((t) => (

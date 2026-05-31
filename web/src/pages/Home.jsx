@@ -12,7 +12,7 @@ import RivalCard from '../components/RivalCard';
 import { MmrBadge } from '../components/RankBadge';
 import HomeBanner from '../components/HomeBanner';
 import SponsorshipBanner from '../components/SponsorshipBanner';
-import { LiveInhousePulse, PlayerOfTheWeek, HotHeroes, FeaturedPlayer, WatchLiveBadge } from '../components/HomeWidgets';
+import { PlayerOfTheWeek, HotHeroes, FeaturedPlayer, WatchLiveBadge } from '../components/HomeWidgets';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -902,7 +902,6 @@ export default function Home() {
         {tournamentBanner}
         <ActiveLobbyCard accountId={steamUser?.accountId} />
         <WatchLiveBadge />
-        <LiveInhousePulse />
         <FeaturedPlayer />
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
@@ -949,7 +948,6 @@ export default function Home() {
 
       <ActiveLobbyCard />
       <WatchLiveBadge />
-      <LiveInhousePulse />
       <FeaturedPlayer />
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
@@ -1042,71 +1040,56 @@ function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {
           </div>
           <div className="oa-rule-double" style={{ marginBottom: 14 }} />
 
-          <div className="oa-card pb-card" style={{ overflow: 'hidden' }}>
-            {recentMatches.length === 0 ? (
-              <div style={{ padding: '24px 18px', color: 'var(--text-muted)', fontSize: 13 }}>
-                No matches recorded yet.
-              </div>
-            ) : (
-              <>
-                <div className="uppercase-wide" style={{
-                  display: 'grid', gridTemplateColumns: '110px 1fr 80px 110px 80px',
-                  alignItems: 'center', gap: 10,
-                  padding: '10px 16px', borderBottom: '1px solid var(--border)',
-                  background: 'var(--bg-primary, var(--bg-base))',
-                  fontSize: 11, color: 'var(--text-muted)',
-                  fontFamily: 'var(--font-condensed, inherit)',
-                  textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 600,
-                }}>
-                  <span>Winner</span>
-                  <span>Score</span>
-                  <span style={{ textAlign: 'center' }}>Duration</span>
-                  <span style={{ textAlign: 'center' }}>MVP</span>
-                  <span style={{ textAlign: 'right' }}>Time</span>
-                </div>
-                {recentMatches.slice(0, 5).map((m, i, arr) => {
-                  const radWin = m.radiant_win;
-                  const score = (m.radiant_score != null && m.dire_score != null)
-                    ? `${m.radiant_score} - ${m.dire_score}` : '—';
-                  return (
-                    <Link
-                      key={m.match_id}
-                      to={`/match/${m.match_id}`}
-                      style={{
-                        display: 'grid', gridTemplateColumns: '110px 1fr 80px 110px 80px',
-                        alignItems: 'center', gap: 10,
-                        padding: '14px 16px', textDecoration: 'none',
-                        borderBottom: i === arr.length - 1 ? 'none' : '1px solid var(--border)',
-                      }}
-                    >
-                      <span>
-                        <span className={`oa-tag ${radWin ? 'oa-tag-radiant' : 'oa-tag-dire'}`}>
-                          {radWin ? 'Radiant' : 'Dire'}
-                        </span>
+          {recentMatches.length === 0 ? (
+            <div className="oa-card pb-card" style={{ padding: '24px 18px', color: 'var(--text-muted)', fontSize: 13 }}>
+              No matches recorded yet.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {recentMatches.slice(0, 5).map((m) => {
+                const radWin = m.radiant_win;
+                const score = (m.radiant_score != null && m.dire_score != null)
+                  ? `${m.radiant_score} - ${m.dire_score}` : '—';
+                return (
+                  <Link key={m.match_id} to={`/match/${m.match_id}`} className="pb-card pb-match-row">
+                    <div className="pb-match-left">
+                      <span className={`pb-match-icon ${radWin ? 'is-win' : 'is-loss'}`} aria-hidden="true">
+                        <SwordGlyph size={18} />
                       </span>
-                      <span className="pb-num" style={{
-                        fontSize: 18, fontWeight: 700, color: 'var(--text-primary)',
-                        fontFamily: 'var(--font-condensed, inherit)', letterSpacing: '0.02em',
-                      }}>{score}</span>
-                      <span style={{
-                        textAlign: 'center', fontSize: 13, color: 'var(--text-muted)',
-                        fontFamily: 'var(--font-condensed, inherit)',
-                      }}>{fmtDurMmSs(m.duration)}</span>
-                      <span className="font-serif" style={{
-                        textAlign: 'center', fontStyle: 'italic', fontWeight: 700,
-                        color: 'var(--brass, var(--accent))',
-                        fontFamily: 'var(--font-serif, serif)',
-                      }}>{m.top_killer || '—'}</span>
-                      <span style={{
-                        textAlign: 'right', fontSize: 12, color: 'var(--text-muted)',
-                        fontFamily: 'var(--font-condensed, inherit)',
-                      }}>{fmtAgo(m.date)}</span>
-                    </Link>
-                  );
-                })}
-              </>
-            )}
-          </div>
+                      <div className="pb-match-meta">
+                        <div className="pb-match-heroline">
+                          <span className="pb-match-hero">{radWin ? 'Radiant' : 'Dire'}</span>
+                          <span className="pb-match-tag">Victory</span>
+                        </div>
+                        <div className="pb-match-sub">
+                          <span>Match #{m.match_id}</span>
+                          <span aria-hidden="true" className="pb-match-dotsep" />
+                          <span>{fmtAgo(m.date)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="pb-match-right">
+                      <div className="pb-match-stat pb-match-hide-sm">
+                        <div className="pb-match-stat-val pb-num">{score}</div>
+                        <div className="pb-match-stat-cap">Score</div>
+                      </div>
+                      <div className="pb-match-stat pb-match-hide-sm">
+                        <div className="pb-match-stat-val pb-num">{fmtDurMmSs(m.duration)}</div>
+                        <div className="pb-match-stat-cap">Duration</div>
+                      </div>
+                      <div className="pb-match-stat">
+                        <div className="pb-match-stat-val" style={{ fontFamily: 'var(--font-serif, serif)', fontStyle: 'italic', fontWeight: 700, color: 'var(--brass, var(--accent))' }}>
+                          {m.top_killer || '—'}
+                        </div>
+                        <div className="pb-match-stat-cap">MVP</div>
+                      </div>
+                      <span className="pb-match-chev" aria-hidden="true"><ChevronRightGlyph size={20} /></span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Top 5 Players sidebar */}
