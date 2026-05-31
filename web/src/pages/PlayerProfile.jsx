@@ -124,16 +124,25 @@ function RatingChart({ history }) {
   const deltaColor = delta >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
 
   return (
-    <section>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
-        <h2 className="section-title" style={{ margin: 0 }}>MMR History</h2>
-        <span style={{ fontSize: 13, color: deltaColor, fontWeight: 600 }}>
-          {delta >= 0 ? '+' : ''}{delta} MMR over {history.length} games
-        </span>
-        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>(all time — chart is not season-filtered)</span>
+    <section className="pb-chart-panel">
+      <div className="pb-chart-head">
+        <div className="pb-chart-head-title">
+          <span className="pb-chart-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 17 9 11 13 15 21 7" />
+              <polyline points="14 7 21 7 21 14" />
+            </svg>
+          </span>
+          <h2 className="section-title">Rating Trajectory</h2>
+        </div>
+        <div className="pb-chart-controls">
+          <span className="pb-chart-meta" style={{ color: deltaColor }}>
+            <span className="pb-num">{delta >= 0 ? '+' : ''}{delta}</span> MMR · {history.length} games
+          </span>
+          <span className="pb-chart-meta">All-time · not season-filtered</span>
+        </div>
       </div>
-      <div className="stat-card" style={{ padding: '1rem 0.5rem' }}>
-        <ResponsiveContainer width="100%" height={200}>
+      <ResponsiveContainer width="100%" height={200}>
           <LineChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis
@@ -165,7 +174,6 @@ function RatingChart({ history }) {
             />
           </LineChart>
         </ResponsiveContainer>
-      </div>
     </section>
   );
 }
@@ -196,23 +204,31 @@ function ModifierHistoryChart({ history }) {
   };
 
   return (
-    <section style={{ marginBottom: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
-        <h2 className="section-title" style={{ margin: 0 }}>⚖️ V3 Performance Modifier</h2>
-        <span style={{ fontSize: 13, color: lastColor, fontWeight: 600 }}>
-          last ×{last.toFixed(2)}
-        </span>
-        <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>
-          avg ×{avg.toFixed(2)} over {data.length} games
-        </span>
+    <section className="pb-chart-panel">
+      <div className="pb-chart-head">
+        <div className="pb-chart-head-title">
+          <span className="pb-chart-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 12 7 12 10 4 14 20 17 12 21 12" />
+            </svg>
+          </span>
+          <h2 className="section-title">Perf Modifier</h2>
+        </div>
+        <div className="pb-chart-controls">
+          <span className="pb-chart-meta" style={{ color: lastColor }}>
+            last <span className="pb-num">×{last.toFixed(2)}</span>
+          </span>
+          <span className="pb-chart-meta">
+            avg <span className="pb-num">×{avg.toFixed(2)}</span> · {data.length} games
+          </span>
+        </div>
       </div>
-      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+      <p className="pb-chart-note">
         Per-match scaling factor (0.80×–1.20×) applied to this player's MMR change under V3.
         Above 1.00 = strong game vs the lobby; below 1.00 = weak game.
         {lobbyOnlyCount > 0 ? ` ${lobbyOnlyCount} lobby-only match${lobbyOnlyCount === 1 ? '' : 'es'} (no replay) shown as ×1.00 — hollow grey dots.` : ''}
       </p>
-      <div className="stat-card" style={{ padding: '1rem 0.5rem' }}>
-        <ResponsiveContainer width="100%" height={180}>
+      <ResponsiveContainer width="100%" height={180}>
           <LineChart data={data} margin={{ top: 5, right: 16, left: -10, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis dataKey="idx" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} label={{ value: 'Game #', position: 'insideBottomRight', offset: 0, fontSize: 11, fill: 'var(--text-muted)' }} />
@@ -245,7 +261,6 @@ function ModifierHistoryChart({ history }) {
             />
           </LineChart>
         </ResponsiveContainer>
-      </div>
     </section>
   );
 }
@@ -476,18 +491,24 @@ function ProfileChartV2({ history }) {
     };
   });
   return (
-    <section style={{ marginBottom: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-        <h2 className="section-title" style={{ margin: 0 }}>📊 Performance Trend</h2>
-        <span style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: 0.4,
-          color: '#a855f7', background: 'rgba(168,85,247,0.12)',
-          border: '1px solid rgba(168,85,247,0.4)', borderRadius: 6,
-          padding: '2px 8px',
-        }}>NEW · v2</span>
-        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>only visible to you</span>
+    <section className="pb-chart-panel">
+      <div className="pb-chart-head">
+        <div className="pb-chart-head-title">
+          <span className="pb-chart-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 12 7 12 10 4 14 20 17 12 21 12" />
+            </svg>
+          </span>
+          <h2 className="section-title">Rolling Form — Last {history.length}</h2>
+          <span className="pb-chart-tag">New · v2</span>
+        </div>
+        <div className="pb-chart-controls">
+          <span className="pb-chart-meta"><span aria-hidden="true" style={{ width: 16, height: 2, borderRadius: 2, background: '#a855f7', display: 'inline-block' }} /> KDA</span>
+          <span className="pb-chart-meta"><span aria-hidden="true" style={{ width: 16, height: 2, borderRadius: 2, background: '#22d3ee', display: 'inline-block' }} /> GPM</span>
+          <span className="pb-chart-meta">Only visible to you</span>
+        </div>
       </div>
-      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+      <p className="pb-chart-note">
         5-game rolling K/D/A and GPM over your last {history.length} matches.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 12 }}>
@@ -1860,13 +1881,16 @@ export default function PlayerProfile() {
         </div>
       )}
 
-      {/* AUDIT (v5.91 parity pass): PUBLIC — MMR / rating history line chart.
-          /players/:id/rating-history is open; renders the same for any visitor. */}
-      <RatingChart history={ratingHistory} />
-
-      {/* AUDIT (v5.91 parity pass): PUBLIC — V3 PERF modifier history chart.
-          /players/:id/v3-modifier-history is open; renders the same for any visitor. */}
-      <ModifierHistoryChart history={modifierHistory} />
+      {/* Two-up chart row mirroring the mockup's RATING TRAJECTORY (wider)
+          beside the PERF MODIFIER panel. Both components self-hide when they
+          lack enough history, so the row collapses gracefully.
+          AUDIT (v5.91 parity pass): PUBLIC — MMR / rating history + V3 PERF
+          modifier line charts. /players/:id/rating-history and
+          /players/:id/v3-modifier-history are open; render for any visitor. */}
+      <div className="pb-chart-duo">
+        <RatingChart history={ratingHistory} />
+        <ModifierHistoryChart history={modifierHistory} />
+      </div>
 
       {/* AUDIT (v5.91 parity pass): PRO-PAYWALLED — V2 Performance Trend chart (rolling
           KDA / GPM / hero damage). /player/:id/match-stats-history is gated by
@@ -1902,7 +1926,7 @@ export default function PlayerProfile() {
               <span style={{ fontFamily: 'var(--font-condensed, var(--font))', textTransform: 'uppercase', letterSpacing: 1, fontSize: 11, color: 'var(--text-muted)' }}>
                 Captain Auto-Pick Rate
               </span>
-              <strong style={{ fontFamily: 'var(--font-serif)', fontSize: 18, color: tone }}>
+              <strong className="pb-num" style={{ fontSize: 18, color: tone }}>
                 {ratioPct.toFixed(0)}%
               </strong>
               <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
@@ -2037,7 +2061,7 @@ export default function PlayerProfile() {
                   background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
                   padding: '14px 20px', minWidth: 110, textAlign: 'center',
                 }}>
-                  <div style={{ fontSize: 24, fontWeight: 800, color }}>{value}</div>
+                  <div className="pb-num" style={{ fontSize: 24, fontWeight: 800, color }}>{value}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{label}</div>
                 </div>
               );
@@ -2067,7 +2091,7 @@ export default function PlayerProfile() {
                   background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
                   padding: '14px 20px', minWidth: 110, textAlign: 'center',
                 }}>
-                  <div style={{ fontSize: 24, fontWeight: 800, color }}>{value}</div>
+                  <div className="pb-num" style={{ fontSize: 24, fontWeight: 800, color }}>{value}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{label}</div>
                 </div>
               );
@@ -2112,7 +2136,7 @@ export default function PlayerProfile() {
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
                     {n.killer_name || `Player ${n.killer_account_id}`}
                   </div>
-                  <div style={{ fontSize: 13, color: 'var(--accent-red)', fontWeight: 600 }}>
+                  <div className="pb-num" style={{ fontSize: 13, color: 'var(--accent-red)', fontWeight: 600 }}>
                     {n.total_kills} kills
                   </div>
                   {n.last_hero && (
@@ -2201,7 +2225,7 @@ export default function PlayerProfile() {
           </p>
           <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'baseline' }}>
             <div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: trainerAccuracy.accuracy == null ? 'var(--text-muted)' : trainerAccuracy.accuracy >= 0.6 ? '#4ade80' : trainerAccuracy.accuracy >= 0.45 ? 'var(--text-primary)' : '#f87171' }}>
+              <div className="pb-num" style={{ fontSize: 28, fontWeight: 700, color: trainerAccuracy.accuracy == null ? 'var(--text-muted)' : trainerAccuracy.accuracy >= 0.6 ? '#4ade80' : trainerAccuracy.accuracy >= 0.45 ? 'var(--text-primary)' : '#f87171' }}>
                 {trainerAccuracy.accuracy == null ? '—' : `${(trainerAccuracy.accuracy * 100).toFixed(0)}%`}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>rolling accuracy</div>
@@ -2515,7 +2539,7 @@ export default function PlayerProfile() {
                   padding: '1rem 1.25rem', minWidth: 140, textAlign: 'center',
                 }}>
                   <div style={{ color: '#64748b', fontSize: '0.75rem', marginBottom: 4 }}>{row.bracket}</div>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: barColor }}>{wr}%</div>
+                  <div className="pb-num" style={{ fontSize: '1.5rem', fontWeight: 700, color: barColor }}>{wr}%</div>
                   <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginTop: 2 }}>{row.games} games</div>
                   <div style={{ color: '#64748b', fontSize: '0.72rem', marginTop: 4 }}>
                     Avg {row.avg_kills}K · {row.avg_gpm} GPM

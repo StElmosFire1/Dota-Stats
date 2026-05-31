@@ -37,11 +37,14 @@
   border-bottom: none;
 }
 
-/* MMR value rendered as a Playfair serif brass-bright figure. */
+/* MMR value rendered as a brass-bright Newsreader figure (tabular nums).
+   Numbers use the --font-num display face per the Press Box font split. */
 .pb-leaderboard .scoreboard td.mmr {
-  font-family: var(--font-serif);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   color: var(--pb-brass-bright);
 }
 
@@ -55,7 +58,8 @@
   border-radius: 50%;
   border: 1px solid var(--pb-line);
   background: var(--pb-elevated);
-  font-family: var(--font-serif);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums lining-nums;
   font-weight: 700;
   font-size: 14px;
   line-height: 1;

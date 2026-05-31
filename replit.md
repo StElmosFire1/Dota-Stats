@@ -45,7 +45,7 @@ pm2 save
 `odota-parser/target/stats-0.1.0.jar` is rebuilt automatically on deploy/start by `scripts/build-parser.sh` (invoked from `npm prestart`, the Replit `[deployment].run` command, and the post-merge hook). Only re-runs `mvn install -DskipTests` when stale. Force a rebuild: `npm run build:parser`.
 
 ## Branding
-**OCE Inhouse** under the OA logo (`web/public/oa-logo.png` + `favicon.png`). Palette: **Hybrid · Court & Pitch** — ink-navy `#0d1424`, brass `#c5a975`, amber `#f59e0b`, parchment `#f5efe2`. CSS tokens in `web/src/styles.css`: `--bg-primary`, `--accent`, `--gold`, `--brass`, `--amber`, `--parchment`, `--ink-navy`. Fonts: Inter (`--font`), Oswald (`--font-condensed`), Playfair Display (`--font-serif`).
+**OCE Inhouse** under the OA logo (`web/public/oa-logo.png` + `favicon.png`). Palette: **Hybrid · Court & Pitch** — ink-navy `#0d1424`, brass `#c5a975`, amber `#f59e0b`, parchment `#f5efe2`. CSS tokens in `web/src/styles.css`: `--bg-primary`, `--accent`, `--gold`, `--brass`, `--amber`, `--parchment`, `--ink-navy`. Fonts: Inter (`--font`, body), Oswald (`--font-condensed`, eyebrows), **Playfair Display (`--font-serif`, headlines/editorial text)**, **Newsreader (`--font-num`, numeric stats — apply via the `.pb-num` helper for tabular lining figures)**. Type rule of thumb: text → Playfair, numbers → Newsreader.
 
 ## Architecture (high level)
 - **Data recording:** local OpenDota Java parser + real-time Dota 2 GC lobby monitoring + friend-lobby auto-detection + OpenDota fallback for practice lobbies.

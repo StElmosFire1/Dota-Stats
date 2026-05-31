@@ -34,7 +34,7 @@ const CP = {
   radiant: '#22c55e',
   dire: '#ef4444',
 };
-const FONT_DISPLAY = '"Newsreader", Georgia, serif';
+const FONT_DISPLAY = '"Playfair Display", Georgia, serif';
 const FONT_CONDENSED = '"Oswald", "Inter", sans-serif';
 
 const POS_COLOR = {

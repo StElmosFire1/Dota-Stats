@@ -20,7 +20,8 @@
   --parchment: #f5efe2;
   --border: #2a3b5c;
   --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
-  --font-serif: 'Newsreader', Georgia, serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-num: 'Newsreader', Georgia, serif;
   --font-condensed: 'Oswald', 'Inter', sans-serif;
   --accent-green: #34d399;
   --accent-red: #f87171;
@@ -115,6 +116,8 @@ body.light-theme {
 
 .pb-serif { font-family: var(--font-serif); }
 .pb-cond { font-family: var(--font-condensed); }
+/* Numeric display: Playfair for text, Newsreader for the figures (user preference). */
+.pb-num { font-family: var(--font-num); font-variant-numeric: tabular-nums lining-nums; font-feature-settings: "tnum" 1, "lnum" 1; }
 
 .pb-card {
   background: linear-gradient(180deg, var(--pb-surface) 0%, var(--pb-bg-2) 100%);

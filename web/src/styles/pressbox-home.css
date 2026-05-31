@@ -38,6 +38,48 @@
   max-width: 720px;
 }
 
+/* ---- Full-bleed arena background (mirrors the mockup's object-cover
+   opacity-30 + vertical gradient fade to --pb-bg). Used by both the
+   signed-out hero and the signed-in welcome strip. ------------------- */
+.pb-home-hero-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.30;
+  mix-blend-mode: overlay;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.pb-home-hero-fade {
+  position: absolute;
+  inset: 0;
+  display: block;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 16, 30, 0.20) 0%,
+    rgba(10, 16, 30, 0.80) 62%,
+    var(--pb-bg) 100%
+  );
+}
+
+/* Signed-in welcome strip needs its own stacking context so the arena
+   image sits behind the welcome copy + Your Status card. */
+.pb-home-welcome {
+  position: relative;
+  overflow: hidden;
+}
+.pb-home-welcome > div {
+  position: relative;
+  z-index: 1;
+}
+
 .pb-eyebrow-rule {
   display: inline-flex;
   align-items: center;
@@ -289,10 +331,221 @@
   .pb-home-notice .oa-home-hero-cta { margin-left: 0; width: 100%; }
 }
 
+/* ---- Ladder rows (mirrors HomeSignedOut.tsx LadderRow) --------------
+   Replaces the disliked oversized-italic Top-5 numeral list with the
+   mockup's tier emblem + rank + name beside win-rate + rating. */
+.pb-ladder-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  text-decoration: none;
+  transition: border-color 0.15s;
+}
+.pb-ladder-row:hover { border-color: rgba(197, 169, 117, 0.5); }
+
+.pb-ladder-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pb-ladder-emblem {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.pb-ladder-rank {
+  width: 26px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--pb-muted);
+}
+.pb-ladder-rank.is-top {
+  color: var(--pb-brass-bright);
+  text-shadow: 0 0 14px rgba(245, 158, 11, 0.35);
+}
+
+.pb-ladder-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pb-text);
+  line-height: 1.1;
+  margin-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pb-ladder-tier {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  color: var(--pb-faint);
+}
+
+.pb-ladder-right {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.pb-ladder-stat-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pb-text);
+  line-height: 1.1;
+  margin-bottom: 2px;
+}
+
+.pb-ladder-cap {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  color: var(--pb-faint);
+}
+
+/* ---- How It Works step cards (mirrors HomeSignedOut.tsx StepCard) ---- */
+.pb-step-card {
+  display: flex;
+  gap: 16px;
+  padding: 18px 20px;
+  transition: border-color 0.15s;
+}
+.pb-step-card:hover { border-color: rgba(197, 169, 117, 0.4); }
+
+.pb-step-num {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: rgba(197, 169, 117, 0.45);
+  flex-shrink: 0;
+}
+
+.pb-step-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pb-text);
+  margin-bottom: 6px;
+}
+
+.pb-step-body {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--pb-muted);
+  margin: 0;
+}
+
+/* ---- Why Play Here feature cards (mirrors HomeSignedOut.tsx FeatureCard) */
+.pb-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.pb-feature-card {
+  padding: 24px;
+  transition: border-color 0.15s;
+}
+.pb-feature-card:hover { border-color: rgba(197, 169, 117, 0.4); }
+
+.pb-feature-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--pb-line);
+  background: var(--pb-elevated);
+  color: var(--pb-brass);
+  font-size: 18px;
+  margin-bottom: 16px;
+}
+
+.pb-feature-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--pb-text);
+  margin-bottom: 8px;
+}
+
+.pb-feature-body {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--pb-muted);
+  margin: 0;
+}
+
+/* ---- Closing sign-in banner (mirrors HomeSignedOut.tsx bottom CTA) --- */
+.pb-close-banner {
+  position: relative;
+  overflow: hidden;
+  padding: 44px 32px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.pb-close-banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(60% 80% at 50% 0%, rgba(197, 169, 117, 0.10), transparent 70%);
+  pointer-events: none;
+}
+.pb-close-banner > * { position: relative; z-index: 1; }
+
+.pb-eyebrow-centered {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.pb-eyebrow-centered::before,
+.pb-eyebrow-centered::after {
+  content: "";
+  width: 32px;
+  height: 1px;
+  background: var(--pb-brass);
+  display: inline-block;
+}
+
+.pb-close-title {
+  font-size: clamp(26px, 4vw, 36px);
+  font-weight: 700;
+  color: var(--pb-text);
+  margin: 0 0 12px;
+}
+
+.pb-close-sub {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--pb-muted);
+  max-width: 460px;
+  margin: 0 0 28px;
+}
+
 /* ---- Responsive ------------------------------------------------------ */
 @media (max-width: 760px) {
   .pb-home-hero { padding: 40px 24px 36px; }
   .pb-pulse-bar { grid-template-columns: repeat(2, 1fr); }
   .oa-home-twocol { grid-template-columns: 1fr !important; }
   .oa-home-pulse-row { grid-template-columns: 1fr !important; }
+  .pb-feature-grid { grid-template-columns: 1fr; }
+  .pb-ladder-right { gap: 16px; }
 }

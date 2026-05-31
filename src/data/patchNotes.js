@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "8.47",
+    "title": "Press Box rebuild — Playfair headlines, Newsreader figures, magazine layouts",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**New type pairing.** Headlines and editorial text now use Playfair Display, while every stat figure (ratings, MMR, win %, K/D/A, counts) uses Newsreader with tabular figures — so numbers line up cleanly and titles read like a sports magazine.",
+      "**Home rebuilt.** A full-bleed arena hero with the \"Premier Oceanic Pro League\" headline, a live league-pulse stat bar, a refined \"Top of the Ladder\" row treatment (replacing the oversized rank numerals), plus \"How It Works\" and \"Why Play Here\" sections. Signed-in players get the same hero with a personal status card, recent-match feed and rating-trend chart.",
+      "**Leaderboard rebuilt.** Spotlight cards (Most Improved, Best & Fairest) above a framed Global Standings table with tier emblems beside each name — every real column (Dota rank, IH rank, MMR, W-L, games, win %, impact, avg perf, streak, form), search and the season selector are unchanged.",
+      "**Player profile rebuilt.** A magazine-cover header with a framed portrait and headline stat row, and the rating/perf charts paired side-by-side in editorial panels. All ~30 data modules, charts, achievements, head-to-head and paywalls are intact.",
+      "**Look only.** Every stat, chart, table, admin tool, paywall and link is unchanged — the pages were rearranged to match the design mockups, never stripped down.",
+      "**Scope.** Full edition only; these three pages first, with the rest of the site to follow."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.46",
     "title": "Press Box polish — new headline type, rank emblems and a calmer home",
     "published_at": "2026-05-31",

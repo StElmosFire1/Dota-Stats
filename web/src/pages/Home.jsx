@@ -37,6 +37,8 @@ function SteamGlyph({ size = 15 }) {
 function SignedOutHero({ signIn }) {
   return (
     <section className="pb-home-hero" aria-labelledby="pb-home-hero-title">
+      <img src="/pressbox-hero.png" alt="" aria-hidden="true" className="pb-home-hero-bg" />
+      <span aria-hidden="true" className="pb-home-hero-fade" />
       <div className="pb-home-hero-inner">
         <div className="pb-eyebrow pb-eyebrow-rule">Oceanic Dota 2 · Est. 2021</div>
         <h1 id="pb-home-hero-title" className="pb-home-title">
@@ -94,7 +96,7 @@ function StatCard({ label, value, sub, icon }) {
       textAlign: 'center', gap: 6, flex: 1, minWidth: 140,
     }}>
       {icon && <span style={{ fontSize: 22 }}>{icon}</span>}
-      <span className="pb-serif" style={{ fontSize: 30, fontWeight: 700, color: 'var(--pb-brass-bright)', lineHeight: 1.1 }}>{value ?? '—'}</span>
+      <span className="pb-serif pb-num" style={{ fontSize: 30, fontWeight: 700, color: 'var(--pb-brass-bright)', lineHeight: 1.1 }}>{value ?? '—'}</span>
       <span className="pb-eyebrow">{label}</span>
       {sub && <span style={{ fontSize: 11, color: 'var(--pb-muted)', marginTop: 2 }}>{sub}</span>}
     </div>
@@ -230,7 +232,7 @@ function MiniMmrChart({ accountId }) {
             last {data.length} games
           </span>
         </div>
-        <span className="pb-serif" style={{ fontSize: 16, fontWeight: 700, color: deltaColor }}>
+        <span className="pb-serif pb-num" style={{ fontSize: 16, fontWeight: 700, color: deltaColor }}>
           {delta >= 0 ? '+' : ''}{delta} MMR
         </span>
       </div>
@@ -300,11 +302,13 @@ function PersonalisedDashboard({ steamUser }) {
     <>
       {/* Personal hero banner — left: welcome + nav; right: "Your Status" card
           (mirrors upscale-2026/Home.tsx Personal Welcome Strip). */}
-      <div className="pb-card" style={{
+      <div className="pb-card pb-home-welcome" style={{
         padding: '28px 32px', marginBottom: 24,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexWrap: 'wrap', gap: 28,
       }}>
+        <img src="/pressbox-hero.png" alt="" aria-hidden="true" className="pb-home-hero-bg" />
+        <span aria-hidden="true" className="pb-home-hero-fade" />
         <div style={{ flex: '1 1 320px', minWidth: 280 }}>
           <div className="pb-eyebrow pb-eyebrow-rule">
             Welcome back
@@ -360,14 +364,14 @@ function PersonalisedDashboard({ steamUser }) {
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 32, marginBottom: 18 }}>
               <div>
                 <div className="pb-pulse-label" style={{ marginBottom: 4 }}>Rating</div>
-                <div className="pb-serif" style={{ fontSize: 40, fontWeight: 700, color: 'var(--pb-brass-bright)', lineHeight: 1 }}>
+                <div className="pb-serif pb-num" style={{ fontSize: 40, fontWeight: 700, color: 'var(--pb-brass-bright)', lineHeight: 1 }}>
                   {Math.round(homeData.mmr)}
                 </div>
               </div>
               {homeData.games_played > 0 && (
                 <div>
                   <div className="pb-pulse-label" style={{ marginBottom: 4 }}>Win Rate</div>
-                  <div className="pb-serif" style={{ fontSize: 26, fontWeight: 700, color: 'var(--pb-text)', lineHeight: 1 }}>
+                  <div className="pb-serif pb-num" style={{ fontSize: 26, fontWeight: 700, color: 'var(--pb-text)', lineHeight: 1 }}>
                     {Math.round((homeData.wins / homeData.games_played) * 100)}%
                   </div>
                 </div>
@@ -375,8 +379,8 @@ function PersonalisedDashboard({ steamUser }) {
             </div>
             <div style={{ height: 1, background: 'var(--pb-line)', marginBottom: 12 }} />
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--pb-muted)' }}>
-              <span>Games: <strong style={{ color: 'var(--pb-text)' }}>{homeData.games_played || 0}</strong></span>
-              <span>W/L: <strong style={{ color: 'var(--pb-text)' }}>{homeData.wins || 0}–{homeData.losses || 0}</strong></span>
+              <span>Games: <strong className="pb-num" style={{ color: 'var(--pb-text)' }}>{homeData.games_played || 0}</strong></span>
+              <span>W/L: <strong className="pb-num" style={{ color: 'var(--pb-text)' }}>{homeData.wins || 0}–{homeData.losses || 0}</strong></span>
             </div>
           </div>
         )}
@@ -537,6 +541,141 @@ function PersonalisedDashboard({ steamUser }) {
         </div>
       ) : null}
     </>
+  );
+}
+
+// Medieval tier ladder (mirrors web/src/pages/Leaderboard.jsx MMR_TIERS so the
+// home ladder rows show the same heraldic emblem the leaderboard does).
+const HOME_TIERS = [
+  { min: 7000, name: 'Warlord', badge: '/badges/tier-7-warlord.png' },
+  { min: 6500, name: 'Paladin', badge: '/badges/tier-6-paladin.png' },
+  { min: 6200, name: 'Templar', badge: '/badges/tier-5-templar.png' },
+  { min: 5900, name: 'Knight', badge: '/badges/tier-4-knight.png' },
+  { min: 5600, name: 'Footman', badge: '/badges/tier-3-footman.png' },
+  { min: 5300, name: 'Squire', badge: '/badges/tier-2-squire.png' },
+  { min: 5000, name: 'Apprentice', badge: '/badges/tier-1-apprentice.png' },
+  { min: 4500, name: 'Outlaw', badge: '/badges/tier-sub-1-outlaw.png' },
+  { min: 4000, name: 'Vagabond', badge: '/badges/tier-sub-2-vagabond.png' },
+  { min: 0, name: 'Peasant', badge: '/badges/tier-sub-3-peasant.png' },
+];
+
+function tierForMmr(mmr, isLeader) {
+  if (isLeader) return { name: 'King', badge: '/badges/tier-8-king.png' };
+  const v = Number(mmr) || 0;
+  for (const t of HOME_TIERS) if (v >= t.min) return t;
+  return HOME_TIERS[HOME_TIERS.length - 1];
+}
+
+// Press Box ladder row (mirrors upscale-2026/HomeSignedOut.tsx LadderRow):
+// tier emblem + rank numeral + name/tier beside win-rate + rating, wired to
+// the REAL top players already fetched. Replaces the disliked oversized-italic
+// Top-5 numeral list.
+function LadderRow({ rank, accountId, name, mmr, wins, losses, isLeader }) {
+  const tier = tierForMmr(mmr, isLeader);
+  const games = (Number(wins) || 0) + (Number(losses) || 0);
+  const wr = games > 0 ? Math.round(((Number(wins) || 0) / games) * 100) : null;
+  return (
+    <Link to={`/player/${accountId}`} className="pb-card pb-ladder-row">
+      <div className="pb-ladder-left">
+        <img
+          src={tier.badge}
+          alt={`${tier.name} tier`}
+          title={tier.name}
+          width={40}
+          height={40}
+          className="pb-ladder-emblem"
+          onError={e => { e.currentTarget.style.visibility = 'hidden'; }}
+        />
+        <div className={`pb-ladder-rank pb-serif pb-num${rank === 1 ? ' is-top' : ''}`}>{rank}</div>
+        <div style={{ minWidth: 0 }}>
+          <div className="pb-ladder-name pb-serif">{name}</div>
+          <div className="pb-ladder-tier">{tier.name}</div>
+        </div>
+      </div>
+      <div className="pb-ladder-right">
+        <div className="pb-ladder-stat pb-ladder-wr">
+          <div className="pb-ladder-stat-val pb-num">{wr != null ? `${wr}%` : '—'}</div>
+          <div className="pb-ladder-cap">Win Rate</div>
+        </div>
+        <div className="pb-ladder-stat">
+          <div className="pb-ladder-stat-val pb-serif pb-num" style={{ color: 'var(--pb-brass-bright)' }}>{Math.round(Number(mmr) || 0)}</div>
+          <div className="pb-ladder-cap">Rating</div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// "How It Works" — 3 static step cards (mirrors HomeSignedOut.tsx StepCard).
+// Evergreen copy describing how the league genuinely works.
+function HowItWorks() {
+  const steps = [
+    { n: '01', icon: <SteamGlyph size={15} />, title: 'Sign in with Steam', body: 'One click. We link your Dota account — no password shared.' },
+    { n: '02', icon: null, title: 'Queue & get drafted', body: 'Register a role, accept the pop, captains draft the teams.' },
+    { n: '03', icon: null, title: 'Climb the ranks', body: 'Every game adjusts your TrueSkill rating across 8 tiers.' },
+  ];
+  return (
+    <div>
+      <h2 className="pb-section-head-title" style={{ marginBottom: 18 }}>How It Works</h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {steps.map(s => (
+          <div key={s.n} className="pb-card pb-step-card">
+            <div className="pb-step-num pb-serif pb-num">{s.n}</div>
+            <div>
+              <div className="pb-step-title">
+                {s.icon && <span style={{ color: 'var(--pb-brass)', display: 'inline-flex' }}>{s.icon}</span>}
+                <span className="pb-serif">{s.title}</span>
+              </div>
+              <p className="pb-step-body">{s.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// "Why Play Here" — 3 static feature cards (mirrors HomeSignedOut.tsx FeatureCard).
+function WhyPlayHere() {
+  const features = [
+    { title: 'Dedicated Servers', body: 'Auto-provisioned OCE servers on the 10th pick — no host-shopping, low ping.' },
+    { title: 'Deep Stats', body: 'Replay-parsed performance scores, hero meta, draft assistant and match history.' },
+    { title: 'Prize Tournaments', body: 'Seasonal prize pools, buy-in cups, and a coaching marketplace to level up.' },
+  ];
+  return (
+    <div style={{ marginTop: 36 }}>
+      <h2 className="pb-section-head-title" style={{ marginBottom: 18 }}>Why Play Here</h2>
+      <div className="pb-feature-grid">
+        {features.map(f => (
+          <div key={f.title} className="pb-card pb-feature-card">
+            <span aria-hidden="true" className="pb-feature-mark">◈</span>
+            <div className="pb-serif pb-feature-title">{f.title}</div>
+            <p className="pb-feature-body">{f.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Closing sign-in banner (mirrors HomeSignedOut.tsx bottom CTA).
+function ClosingSignInBanner({ signIn }) {
+  return (
+    <div className="pb-card pb-close-banner" style={{ marginTop: 36 }}>
+      <div className="pb-eyebrow pb-eyebrow-centered">Ready when you are</div>
+      <h2 className="pb-serif pb-close-title">Claim your rating tonight.</h2>
+      <p className="pb-close-sub">
+        Join the Oceanic inhouse community. Your first inhouse is one Steam click away.
+      </p>
+      <button
+        type="button"
+        className="pb-btn-amber"
+        onClick={() => { if (signIn) signIn(); else window.location.href = '/auth/steam'; }}
+      >
+        <SteamGlyph />
+        Sign in with Steam
+      </button>
+    </div>
   );
 }
 
@@ -710,6 +849,12 @@ export default function Home() {
         top5={top5}
       />
 
+      <HowItWorks />
+
+      <WhyPlayHere />
+
+      <ClosingSignInBanner signIn={signIn} />
+
     </div>
   );
 }
@@ -745,7 +890,7 @@ function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {
       <div className="pb-card pb-pulse-bar">
         {stats.map((s, i) => (
           <div key={i} className="pb-pulse-cell">
-            <div className="pb-pulse-value">{loading ? '—' : s.value}</div>
+            <div className="pb-pulse-value pb-num">{loading ? '—' : s.value}</div>
             <div className="pb-pulse-label">{s.label}</div>
           </div>
         ))}
@@ -820,7 +965,7 @@ function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {
                           {radWin ? 'Radiant' : 'Dire'}
                         </span>
                       </span>
-                      <span style={{
+                      <span className="pb-num" style={{
                         fontSize: 18, fontWeight: 700, color: 'var(--text-primary)',
                         fontFamily: 'var(--font-condensed, inherit)', letterSpacing: '0.02em',
                       }}>{score}</span>
@@ -852,7 +997,7 @@ function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {
               <h2 className="font-serif" style={{
                 margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)',
                 fontFamily: 'var(--font-serif, serif)',
-              }}>Top 5 Players</h2>
+              }}>Top of the Ladder</h2>
               <p className="font-serif" style={{
                 margin: '2px 0 0', fontSize: 13, fontStyle: 'italic',
                 color: 'var(--text-muted)', fontFamily: 'var(--font-serif, serif)',
@@ -868,7 +1013,7 @@ function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {
           <div className="oa-rule-double" style={{ marginBottom: 14 }} />
 
           {top5.length === 0 ? (
-            <div className="oa-card" style={{ padding: '20px 16px', color: 'var(--text-muted)', fontSize: 13 }}>
+            <div className="oa-card pb-card" style={{ padding: '20px 16px', color: 'var(--text-muted)', fontSize: 13 }}>
               No leaderboard data yet.
             </div>
           ) : (
@@ -883,46 +1028,16 @@ function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {
                 const accountId = p.player_id || p.account_id;
                 const name = p.nickname || p.display_name || `Player ${accountId}`;
                 return (
-                  <Link
+                  <LadderRow
                     key={accountId}
-                    to={`/player/${accountId}`}
-                    className="oa-card oa-card-rule"
-                    style={{
-                      display: 'flex', alignItems: 'center',
-                      padding: '12px 14px 12px 18px',
-                      textDecoration: 'none',
-                    }}
-                  >
-                    <div className={`oa-rank-numeral ${rank <= 3 ? 'is-top' : ''}`} style={{
-                      width: 38, textAlign: 'center', marginRight: 14, flexShrink: 0,
-                    }}>{rank}</div>
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', minWidth: 0 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div className="font-serif" style={{
-                          fontSize: 16, fontWeight: 700, color: 'var(--text-primary)',
-                          lineHeight: 1.1, marginBottom: 3,
-                          fontFamily: 'var(--font-serif, serif)',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>{name}</div>
-                        <div className="uppercase-wide" style={{
-                          fontSize: 10, color: 'var(--text-muted)',
-                          fontFamily: 'var(--font-condensed, inherit)',
-                          textTransform: 'uppercase', letterSpacing: '0.14em',
-                        }}>{p.wins || 0}W – {p.losses || 0}L</div>
-                      </div>
-                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 10 }}>
-                        <div className="pb-serif" style={{
-                          fontSize: 20, fontWeight: 700, color: 'var(--pb-brass-bright)',
-                          lineHeight: 1.1, marginBottom: 2,
-                        }}>{Math.round(p.mmr || 0)}</div>
-                        <div style={{
-                          fontSize: 10, color: 'var(--text-muted)',
-                          fontFamily: 'var(--font-condensed, inherit)',
-                          letterSpacing: '0.06em',
-                        }}>MMR</div>
-                      </div>
-                    </div>
-                  </Link>
+                    rank={rank}
+                    accountId={accountId}
+                    name={name}
+                    mmr={p.mmr}
+                    wins={p.wins}
+                    losses={p.losses}
+                    isLeader={rank === 1}
+                  />
                 );
               })}
             </div>

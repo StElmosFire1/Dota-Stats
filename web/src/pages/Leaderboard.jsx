@@ -128,6 +128,32 @@ export function TierBadge({ mmr, dbTiers = null, isLeader = false }) {
   );
 }
 
+// Small heraldic tier emblem (image only) for the Global Standings player cell —
+// mirrors the mockup's TierEmblem rendered beside the player name. Falls back to
+// the tier emoji glyph if the badge art fails to load.
+function TierEmblemImg({ mmr, isLeader = false }) {
+  const t = getTier(mmr, { isLeader });
+  if (!t) return null;
+  return t.badge ? (
+    <img
+      src={t.badge}
+      alt=""
+      aria-hidden="true"
+      title={t.name}
+      loading="lazy"
+      style={{ width: 26, height: 26, objectFit: 'contain', flexShrink: 0, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.45))' }}
+      onError={(e) => {
+        const span = document.createElement('span');
+        span.style.cssText = 'font-size:15px;line-height:1';
+        span.textContent = t.emoji || '🛡️';
+        e.target.replaceWith(span);
+      }}
+    />
+  ) : (
+    <span aria-hidden="true" style={{ fontSize: 15, lineHeight: 1 }}>{t.emoji}</span>
+  );
+}
+
 const RANK_COLORS = {
   1: '#b0b0b0', 2: '#6fad40', 3: '#6fad40', 4: '#5ea3c8',
   5: '#4fa8a8', 6: '#c5a028', 7: '#a970ff', 8: '#e97d2e',
@@ -188,7 +214,7 @@ function StreakBadge({ streak }) {
         marginLeft: 4, verticalAlign: 'middle',
       }}
     >
-      {isWin ? '🔥' : '💀'}{Math.abs(streak)}
+      {isWin ? '🔥' : '💀'}<span className="pb-num">{Math.abs(streak)}</span>
     </span>
   );
 }
@@ -278,7 +304,7 @@ function MostImprovedWidget({ data, loading, seasonLabel }) {
             {proMembers.has(String(top.account_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(top.account_id) ? 'founder' : 'pro'} />}
           </Link>
           <div className="pb-spotlight-statline">
-            <span className="pb-spotlight-stat" style={{ color: Number(top.mmr_delta) > 0 ? 'var(--pb-radiant)' : 'var(--pb-faint)' }}>
+            <span className="pb-spotlight-stat pb-num" style={{ color: Number(top.mmr_delta) > 0 ? 'var(--pb-radiant)' : 'var(--pb-faint)' }}>
               {Number(top.mmr_delta) > 0 ? '+' : ''}{top.mmr_delta} MMR
             </span>
             <span className="pb-spotlight-sub">
@@ -306,7 +332,7 @@ function MostImprovedWidget({ data, loading, seasonLabel }) {
                   </span>
                 )}
               </div>
-              <span className="pb-spotlight-rowval" style={{ color: Number(p.mmr_delta) > 0 ? 'var(--pb-radiant)' : 'var(--pb-faint)' }}>
+              <span className="pb-spotlight-rowval pb-num" style={{ color: Number(p.mmr_delta) > 0 ? 'var(--pb-radiant)' : 'var(--pb-faint)' }}>
                 {Number(p.mmr_delta) > 0 ? '+' : ''}{p.mmr_delta}
               </span>
             </div>
@@ -369,7 +395,7 @@ function BestAndFairestWidget({ data, loading, seasonLabel }) {
             {proMembers.has(String(top.account_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(top.account_id) ? 'founder' : 'pro'} />}
           </Link>
           <div className="pb-spotlight-statline">
-            <span className="pb-spotlight-stat" style={{ color: attitudeColor(top.avg_attitude) }}>
+            <span className="pb-spotlight-stat pb-num" style={{ color: attitudeColor(top.avg_attitude) }}>
               {parseFloat(top.avg_attitude).toFixed(1)}<span style={{ fontSize: 13, fontWeight: 400, color: 'var(--pb-faint)', fontFamily: 'var(--font)' }}>/10</span>
             </span>
             <span className="pb-spotlight-sub">
@@ -393,7 +419,7 @@ function BestAndFairestWidget({ data, loading, seasonLabel }) {
                   {p.total_ratings} rating{p.total_ratings !== '1' ? 's' : ''}
                 </span>
               </div>
-              <span className="pb-spotlight-rowval" style={{ color: attitudeColor(p.avg_attitude) }}>
+              <span className="pb-spotlight-rowval pb-num" style={{ color: attitudeColor(p.avg_attitude) }}>
                 {parseFloat(p.avg_attitude).toFixed(1)}
               </span>
             </div>
@@ -577,7 +603,7 @@ export default function Leaderboard() {
           {endsInText && (
             <div className="pb-lb-meta-block">
               <span className="pb-lb-meta-eyebrow">Ends In</span>
-              <span className="pb-lb-meta-value">{endsInText}</span>
+              <span className="pb-lb-meta-value pb-num">{endsInText}</span>
             </div>
           )}
           {endsInText && <span className="pb-lb-meta-divider" aria-hidden="true" />}
@@ -735,30 +761,33 @@ export default function Leaderboard() {
                       )}
                     </td>
                     <td className="col-player">
-                      {(() => {
-                        const frameMeta = p.profile_frame ? FRAME_META[p.profile_frame] : null;
-                        const frameStyle = frameMeta?.style || {};
-                        return (
-                          <Link
-                            to={`/player/${p.player_id}`}
-                            className="player-link"
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 4,
-                              borderRadius: frameMeta ? 6 : 0,
-                              padding: frameMeta ? '1px 6px 1px 4px' : 0,
-                              ...frameStyle,
-                            }}
-                          >
-                            {p.nickname || p.display_name || p.player_id}
-                            {proMembers.has(String(p.player_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(p.player_id) ? 'founder' : 'pro'} />}
-                            {/* Round-8: propagate verified-badge to public
-                                surfaces. Inline lazy-mount — VerifiedBadge
-                                returns null when the player has none, so
-                                this is a no-op for unverified players. */}
-                            <VerifiedBadge accountId={p.player_id} size={12} />
-                          </Link>
-                        );
-                      })()}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <TierEmblemImg mmr={p.mmr} isLeader={rank === 1} />
+                        {(() => {
+                          const frameMeta = p.profile_frame ? FRAME_META[p.profile_frame] : null;
+                          const frameStyle = frameMeta?.style || {};
+                          return (
+                            <Link
+                              to={`/player/${p.player_id}`}
+                              className="player-link"
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                borderRadius: frameMeta ? 6 : 0,
+                                padding: frameMeta ? '1px 6px 1px 4px' : 0,
+                                ...frameStyle,
+                              }}
+                            >
+                              {p.nickname || p.display_name || p.player_id}
+                              {proMembers.has(String(p.player_id)) && <ProBadge size="sm" variant={proMembers.isFounder?.(p.player_id) ? 'founder' : 'pro'} />}
+                              {/* Round-8: propagate verified-badge to public
+                                  surfaces. Inline lazy-mount — VerifiedBadge
+                                  returns null when the player has none, so
+                                  this is a no-op for unverified players. */}
+                              <VerifiedBadge accountId={p.player_id} size={12} />
+                            </Link>
+                          );
+                        })()}
+                      </span>
                     </td>
                     <td className="col-stat">
                       <DotaRankText
@@ -767,15 +796,15 @@ export default function Leaderboard() {
                       />
                     </td>
                     <td className="col-stat"><TierBadge mmr={p.mmr} dbTiers={dbTiers} isLeader={rank === 1} /></td>
-                    <td className="col-stat mmr">{p.mmr}</td>
-                    <td className="col-stat col-wl-hide wins">{p.wins}</td>
-                    <td className="col-stat col-wl-hide losses">{p.losses}</td>
-                    <td className="col-stat">{p.games_played}</td>
-                    <td className="col-stat">{winRate}%</td>
+                    <td className="col-stat mmr pb-num">{p.mmr}</td>
+                    <td className="col-stat col-wl-hide wins pb-num">{p.wins}</td>
+                    <td className="col-stat col-wl-hide losses pb-num">{p.losses}</td>
+                    <td className="col-stat pb-num">{p.games_played}</td>
+                    <td className="col-stat pb-num">{winRate}%</td>
                     <td className="col-stat"><ImpactBadge score={p.impact_score} /></td>
                     <td className="col-stat" title={p.avg_perf != null ? `Avg PERF ${Number(p.avg_perf).toFixed(1)}/10 across ${p.perf_games || 0} rated games` : 'No PERF data yet'}>
                       {p.avg_perf != null ? (
-                        <span style={{
+                        <span className="pb-num" style={{
                           fontWeight: 700,
                           color: Number(p.avg_perf) >= 9.0 ? '#fbbf24'
                                : Number(p.avg_perf) >= 8.0 ? '#4ade80'
