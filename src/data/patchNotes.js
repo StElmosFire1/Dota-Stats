@@ -4094,6 +4094,22 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "8.97",
+    "title": "Admin panel: sticky nav fix + full backend tool coverage",
+    "published_at": "2026-06-01",
+    "notes": [
+      "**Sticky sidebar fixed.** The admin panel sidebar now correctly accounts for the fixed navbar height (`--nav-h`) when computing its `top` offset and `max-height`, so it stays pinned during long page scrolls.",
+      "**Feature Flags editor.** New card in the Config tab exposes all runtime feature flags with three-state pill toggles (On / Preview / Off) and a create-new-flag form — no DB shell needed.",
+      "**Live Ops Log Buffer.** New card in the Config tab surfaces the in-memory ops log ring buffer with source filtering and on-demand refresh.",
+      "**Ops History sparklines.** New card in the Config tab shows persisted 1-minute telemetry samples grouped by source with a sparkline bar chart and 1h / 6h / 24h / 7d window selector.",
+      "**Lootbox Set Management.** New card in the Marketplace tab lists every seasonal lootbox set and lets superusers retire or un-retire them without a DB query.",
+      "**V3 Modifier History debug view.** New card in the Seasons tab exposes per-match TrueSkill V3 µ/σ modifier history for any player by account ID — makes rating anomaly debugging possible without a DB shell.",
+      "**Search index updated.** All five new tools are discoverable via the admin search bar.",
+      "**Scope.** Full edition only — community edition untouched. A11y gate green, build clean."
+    ],
+    "author": "System"
+  },
+  {
     "version": "8.77",
     "title": "Opponent hero portraits in the per-hero matchup tables",
     "published_at": "2026-05-31",

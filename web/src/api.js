@@ -352,6 +352,27 @@ export async function setFeatureFlag({ key, state, description }, superuserKey) 
   return data;
 }
 
+// Ops log buffer — filtered live snapshot of the in-memory ring buffer (superuser).
+export async function getAdminOpsLogs(superuserKey, source) {
+  const qs = source ? `?source=${encodeURIComponent(source)}` : '';
+  return superuserJson(`/admin/ops/logs${qs}`, { superuserKey });
+}
+
+// Ops history — persisted 1-minute samples for sparklines (superuser).
+export async function getAdminOpsHistory(superuserKey, hours = 24) {
+  return superuserJson(`/admin/ops/history?hours=${encodeURIComponent(hours)}`, { superuserKey });
+}
+
+// Lootbox seasonal-set management (superuser).
+export async function getLootboxAdminSets(superuserKey) {
+  return superuserJson('/admin/lootbox/sets', { superuserKey });
+}
+export async function retireLootboxSet(superuserKey, setId, retired) {
+  return superuserJson('/admin/lootbox/sets/retire', {
+    method: 'POST', superuserKey, body: { setId, retired: !!retired },
+  });
+}
+
 // Task #446 — Discord Rich Presence
 export async function getMeDiscordRpc() {
   const res = await fetch(BASE + '/me/discord-rpc', { credentials: 'include' });

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, getPlayerV3ModifierHistory } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import { useTour } from '../components/SpotlightTour';
@@ -4932,6 +4932,631 @@ function CommunityChallengesPanel({ superuserKey }) {
   );
 }
 
+// ── Feature Flags Editor ──────────────────────────────────────────────────
+// Generic editor for all feature flags in the DB. Shows every flag returned
+// by GET /api/admin/feature-flags with a three-state toggle (on/preview/off)
+// and lets the operator change any of them without a DB shell.
+function FeatureFlagsEditorCard({ superuserKey }) {
+  const [flags, setFlags] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [saving, setSaving] = React.useState(null);
+  const [msg, setMsg] = React.useState('');
+  const [newKey, setNewKey] = React.useState('');
+  const [newDesc, setNewDesc] = React.useState('');
+  const [newState, setNewState] = React.useState('off');
+  const [creating, setCreating] = React.useState(false);
+
+  const load = React.useCallback(() => {
+    if (!superuserKey) return;
+    setLoading(true); setMsg('');
+    getAdminFeatureFlags(superuserKey)
+      .then(d => setFlags(d.flags || []))
+      .catch(e => setMsg('Load failed: ' + e.message))
+      .finally(() => setLoading(false));
+  }, [superuserKey]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  async function handleSet(key, state) {
+    setSaving(key); setMsg('');
+    try {
+      await setFeatureFlag({ key, state }, superuserKey);
+      setMsg(`✓ ${key} → ${state}`);
+      load();
+    } catch (e) {
+      setMsg('Save failed: ' + e.message);
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleCreate() {
+    if (!newKey.trim()) return;
+    setCreating(true); setMsg('');
+    try {
+      await setFeatureFlag({ key: newKey.trim(), state: newState, description: newDesc.trim() || undefined }, superuserKey);
+      setMsg(`✓ Created ${newKey.trim()} (${newState})`);
+      setNewKey(''); setNewDesc(''); setNewState('off');
+      load();
+    } catch (e) {
+      setMsg('Create failed: ' + e.message);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  const STATES = [
+    { value: 'on', label: 'On', color: '#22c55e' },
+    { value: 'preview', label: 'Preview', color: '#f59e0b' },
+    { value: 'off', label: 'Off', color: '#6b7280' },
+  ];
+
+  const inp = {
+    padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)',
+    background: 'var(--bg-input, var(--bg-card))', color: 'var(--text-primary)',
+    fontSize: 13,
+  };
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }} aria-labelledby="ap-anchor-feature-flags">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        <h2 id="ap-anchor-feature-flags" className="section-title" style={{ margin: 0 }}>
+          🚦 Feature Flags
+        </h2>
+        <button type="button" className="btn" style={{ fontSize: 12, padding: '3px 10px' }}
+          onClick={load} disabled={loading} aria-label="Refresh feature flags">
+          {loading ? '…' : '↻'}
+        </button>
+      </div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        All runtime feature flags. <strong>On</strong> = everyone; <strong>Preview</strong> = superusers only;
+        <strong> Off</strong> = hidden + routes 404. Changes take effect immediately, no restart needed.
+      </p>
+      {msg && <div role="status" style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>{msg}</div>}
+
+      {flags && flags.length > 0 && (
+        <div style={{ overflowX: 'auto', marginBottom: 20 }}>
+          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                <th align="left" style={{ padding: '6px 10px' }}>Key</th>
+                <th align="left" style={{ padding: '6px 10px' }}>Description</th>
+                <th align="center" style={{ padding: '6px 10px' }}>State</th>
+                <th align="left" style={{ padding: '6px 10px' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {flags.map(f => (
+                <tr key={f.key} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: 12 }}>{f.key}</td>
+                  <td style={{ padding: '8px 10px', color: 'var(--text-muted)', fontSize: 12 }}>{f.description || '—'}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                    <span style={{
+                      display: 'inline-block', padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+                      background: f.state === 'on' ? 'rgba(34,197,94,0.15)' : f.state === 'preview' ? 'rgba(245,158,11,0.15)' : 'rgba(107,114,128,0.15)',
+                      color: f.state === 'on' ? '#22c55e' : f.state === 'preview' ? '#f59e0b' : '#9ca3af',
+                    }}>{f.state || 'off'}</span>
+                  </td>
+                  <td style={{ padding: '8px 10px' }}>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {STATES.map(s => (
+                        <button
+                          key={s.value}
+                          type="button"
+                          disabled={saving === f.key || f.state === s.value}
+                          onClick={() => handleSet(f.key, s.value)}
+                          aria-label={`Set ${f.key} to ${s.label}`}
+                          style={{
+                            padding: '3px 10px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
+                            border: `1px solid ${f.state === s.value ? s.color : 'var(--border)'}`,
+                            background: f.state === s.value ? `${s.color}22` : 'transparent',
+                            color: f.state === s.value ? s.color : 'var(--text-muted)',
+                            opacity: saving === f.key ? 0.5 : 1,
+                            fontWeight: f.state === s.value ? 700 : 400,
+                          }}
+                        >
+                          {saving === f.key && f.state !== s.value ? '…' : s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {flags && flags.length === 0 && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No flags in DB yet. Create one below.</p>
+      )}
+
+      <details style={{ marginTop: 4 }}>
+        <summary style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-muted)', userSelect: 'none' }}>
+          + Create new flag
+        </summary>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label htmlFor="ap-ff-key" style={{ fontSize: 11, color: 'var(--text-muted)' }}>Key</label>
+            <input id="ap-ff-key" type="text" value={newKey} onChange={e => setNewKey(e.target.value)}
+              placeholder="my_feature_key" aria-label="New feature flag key" style={{ ...inp, width: 200 }} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label htmlFor="ap-ff-desc" style={{ fontSize: 11, color: 'var(--text-muted)' }}>Description</label>
+            <input id="ap-ff-desc" type="text" value={newDesc} onChange={e => setNewDesc(e.target.value)}
+              placeholder="What this flag gates" aria-label="New feature flag description" style={{ ...inp, width: 240 }} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label htmlFor="ap-ff-state" style={{ fontSize: 11, color: 'var(--text-muted)' }}>Initial state</label>
+            <select id="ap-ff-state" value={newState} onChange={e => setNewState(e.target.value)} style={inp}>
+              <option value="off">Off</option>
+              <option value="preview">Preview</option>
+              <option value="on">On</option>
+            </select>
+          </div>
+          <button type="button" className="btn" disabled={!newKey.trim() || creating}
+            onClick={handleCreate} style={{ alignSelf: 'flex-end' }}>
+            {creating ? 'Creating…' : 'Create'}
+          </button>
+        </div>
+      </details>
+    </section>
+  );
+}
+
+// ── Live Ops Log Viewer ───────────────────────────────────────────────────
+// Surfaces the in-memory ops log ring buffer from GET /api/admin/ops/logs.
+// Lets the operator filter by source and refresh on demand.
+function OpsLogsCard({ superuserKey }) {
+  const [logs, setLogs] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [source, setSource] = React.useState('');
+  const [error, setError] = React.useState('');
+
+  const load = React.useCallback(() => {
+    if (!superuserKey) return;
+    setLoading(true); setError('');
+    getAdminOpsLogs(superuserKey, source.trim() || undefined)
+      .then(d => setLogs(d.logs || []))
+      .catch(e => setError(e.message || 'Failed to load'))
+      .finally(() => setLoading(false));
+  }, [superuserKey, source]);
+
+  function fmtTs(ts) {
+    if (!ts) return '—';
+    try { return new Date(ts).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }); } catch { return ts; }
+  }
+
+  const levelColor = (l) => {
+    if (!l) return 'var(--text-muted)';
+    const s = l.toLowerCase();
+    if (s === 'error') return '#ef4444';
+    if (s === 'warn') return '#f59e0b';
+    if (s === 'info') return '#3b82f6';
+    return 'var(--text-muted)';
+  };
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }} aria-labelledby="ap-anchor-ops-logs">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <h2 id="ap-anchor-ops-logs" className="section-title" style={{ margin: 0 }}>
+          📋 Live Ops Log Buffer
+        </h2>
+        <input
+          type="text"
+          value={source}
+          onChange={e => setSource(e.target.value)}
+          placeholder="Filter by source…"
+          aria-label="Filter ops logs by source"
+          style={{
+            padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)',
+            background: 'var(--bg-input, var(--bg-card))', color: 'var(--text-primary)',
+            fontSize: 12, width: 180,
+          }}
+        />
+        <button type="button" className="btn" style={{ fontSize: 12, padding: '4px 12px' }}
+          onClick={load} disabled={loading}>
+          {loading ? 'Loading…' : logs === null ? 'Load' : 'Refresh'}
+        </button>
+      </div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 10 }}>
+        In-memory ring buffer (5 000-entry cap). Most-recent entries shown last. Filter by <code>source</code>
+        to narrow to a specific subsystem (e.g. <code>parser</code>, <code>stripe</code>, <code>push</code>).
+      </p>
+      {error && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{error}</div>}
+      {logs !== null && (
+        logs.length === 0
+          ? <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No logs in buffer{source ? ` matching source "${source}"` : ''}.</p>
+          : (
+            <div style={{
+              maxHeight: 360, overflowY: 'auto', overflowX: 'auto',
+              background: 'rgba(0,0,0,0.25)', borderRadius: 8, border: '1px solid var(--border)',
+              padding: '8px 0', fontFamily: 'monospace', fontSize: 11, lineHeight: 1.6,
+            }}>
+              {logs.slice(-200).map((l, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, padding: '1px 10px', borderBottom: i < logs.slice(-200).length - 1 ? '1px solid rgba(255,255,255,0.03)' : 0 }}>
+                  <span style={{ color: 'var(--text-muted)', flexShrink: 0, minWidth: 70 }}>{fmtTs(l.ts)}</span>
+                  <span style={{ color: levelColor(l.level), flexShrink: 0, minWidth: 40 }}>{(l.level || '').toUpperCase()}</span>
+                  {l.source && <span style={{ color: '#a78bfa', flexShrink: 0 }}>[{l.source}]</span>}
+                  <span style={{ color: 'var(--text-primary)' }}>{l.msg || l.message || JSON.stringify(l)}</span>
+                </div>
+              ))}
+            </div>
+          )
+      )}
+      {logs !== null && logs.length > 200 && (
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+          Showing last 200 of {logs.length} entries. Filter by source to narrow the view.
+        </p>
+      )}
+    </section>
+  );
+}
+
+// ── Ops History (1-min persisted samples) ────────────────────────────────
+// Shows the persisted 1-minute telemetry samples from GET /api/admin/ops/history.
+// Renders a simple tabular view grouped by source with a sparkline-style bar
+// representation of the counts over time. No external charting library needed.
+function OpsHistoryCard({ superuserKey }) {
+  const [rows, setRows] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [hours, setHours] = React.useState(24);
+  const [error, setError] = React.useState('');
+
+  const load = React.useCallback(() => {
+    if (!superuserKey) return;
+    setLoading(true); setError('');
+    getAdminOpsHistory(superuserKey, hours)
+      .then(d => setRows(d.rows || d.samples || d.history || []))
+      .catch(e => setError(e.message || 'Failed to load'))
+      .finally(() => setLoading(false));
+  }, [superuserKey, hours]);
+
+  function fmtBucket(ts) {
+    if (!ts) return '—';
+    try { return new Date(ts).toLocaleString('en-AU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ts; }
+  }
+
+  // Group rows by source so each source gets its own mini table block.
+  const grouped = React.useMemo(() => {
+    if (!rows || rows.length === 0) return {};
+    const g = {};
+    rows.forEach(r => {
+      const src = r.source || r.src || '(global)';
+      if (!g[src]) g[src] = [];
+      g[src].push(r);
+    });
+    return g;
+  }, [rows]);
+
+  const HOUR_OPTIONS = [1, 6, 24, 168];
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }} aria-labelledby="ap-anchor-ops-history">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <h2 id="ap-anchor-ops-history" className="section-title" style={{ margin: 0 }}>
+          📈 Ops History
+        </h2>
+        <div role="group" aria-label="Time window for ops history" style={{ display: 'flex', gap: 4 }}>
+          {HOUR_OPTIONS.map(h => (
+            <button
+              key={h}
+              type="button"
+              onClick={() => setHours(h)}
+              aria-pressed={hours === h}
+              style={{
+                padding: '3px 10px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
+                border: `1px solid ${hours === h ? 'var(--accent)' : 'var(--border)'}`,
+                background: hours === h ? 'rgba(197,169,117,0.15)' : 'transparent',
+                color: hours === h ? 'var(--accent)' : 'var(--text-muted)',
+                fontWeight: hours === h ? 700 : 400,
+              }}
+            >
+              {h < 24 ? `${h}h` : h === 24 ? '24h' : '7d'}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="btn" style={{ fontSize: 12, padding: '4px 12px' }}
+          onClick={load} disabled={loading}>
+          {loading ? 'Loading…' : rows === null ? 'Load' : 'Refresh'}
+        </button>
+      </div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 10 }}>
+        Persisted 1-minute telemetry samples, grouped by source. Use this to spot sustained error
+        spikes or throughput drops across the selected time window.
+      </p>
+      {error && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{error}</div>}
+      {rows !== null && rows.length === 0 && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No history samples in the selected window.</p>
+      )}
+      {rows !== null && rows.length > 0 && (
+        Object.entries(grouped).map(([src, entries]) => {
+          const maxCount = Math.max(...entries.map(e => e.count ?? e.value ?? 1), 1);
+          return (
+            <div key={src} style={{ marginBottom: 24 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, color: 'var(--accent)' }}>
+                {src}
+                <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
+                  {entries.length} sample{entries.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div style={{
+                overflowX: 'auto', display: 'flex', gap: 2, alignItems: 'flex-end',
+                background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 10px 4px',
+                minHeight: 56,
+              }}
+                role="img"
+                aria-label={`Ops history sparkline for ${src}`}
+              >
+                {entries.slice(-120).map((e, i) => {
+                  const val = e.count ?? e.value ?? 0;
+                  const pct = maxCount > 0 ? Math.max(4, Math.round((val / maxCount) * 44)) : 4;
+                  const hasErr = (e.error_count ?? 0) > 0;
+                  return (
+                    <div key={i} title={`${fmtBucket(e.bucket || e.ts)}: ${val}${hasErr ? ` (${e.error_count} errors)` : ''}`}
+                      style={{
+                        width: 6, minWidth: 6, height: pct,
+                        background: hasErr ? '#ef4444' : '#22c55e',
+                        borderRadius: 2, flexShrink: 0,
+                        opacity: 0.75,
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+                <span>{fmtBucket(entries[0]?.bucket || entries[0]?.ts)}</span>
+                <span>max {maxCount.toLocaleString()}</span>
+                <span>{fmtBucket(entries[entries.length - 1]?.bucket || entries[entries.length - 1]?.ts)}</span>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </section>
+  );
+}
+
+// ── V3 Modifier History Debug ─────────────────────────────────────────────
+// Lets a superuser look up any player's per-match V3 PERF modifier history
+// for debugging rating anomalies. Uses the existing public (unauthenticated)
+// endpoint — wrapped here in an admin UI to make it easy to reach without a
+// DB shell or manual curl.
+function V3ModifierDebugCard() {
+  const [accountId, setAccountId] = React.useState('');
+  const [history, setHistory] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  async function handleLookup() {
+    const id = accountId.trim();
+    if (!id) return;
+    setLoading(true); setError(''); setHistory(null);
+    try {
+      const d = await getPlayerV3ModifierHistory(id);
+      setHistory(d.history || []);
+    } catch (e) {
+      setError(e.message || 'Lookup failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function fmtDate(ts) {
+    if (!ts) return '—';
+    try { return new Date(ts).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return ts; }
+  }
+
+  const signColor = v => (v > 0 ? '#22c55e' : v < 0 ? '#ef4444' : 'var(--text-muted)');
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }} aria-labelledby="ap-anchor-v3-debug">
+      <h2 id="ap-anchor-v3-debug" className="section-title" style={{ marginBottom: 8 }}>
+        🔬 V3 Modifier History (Rating Debug)
+      </h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Per-match TrueSkill V3 PERF modifier history for any player. Enter a Steam account ID to inspect
+        the raw modifier values used to update that player&rsquo;s µ/σ each game — useful for diagnosing
+        unexpected rating swings or calibration outliers.
+      </p>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label htmlFor="ap-v3-account-id" style={{ fontSize: 11, color: 'var(--text-muted)' }}>Steam account ID</label>
+          <input
+            id="ap-v3-account-id"
+            type="text"
+            value={accountId}
+            onChange={e => setAccountId(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleLookup()}
+            placeholder="e.g. 123456789"
+            aria-label="Steam account ID for V3 modifier history lookup"
+            style={{
+              padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)',
+              background: 'var(--bg-input, var(--bg-card))', color: 'var(--text-primary)',
+              fontSize: 13, width: 200,
+            }}
+          />
+        </div>
+        <button type="button" className="btn" disabled={!accountId.trim() || loading} onClick={handleLookup}>
+          {loading ? 'Loading…' : 'Look up'}
+        </button>
+      </div>
+      {error && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{error}</div>}
+      {history !== null && history.length === 0 && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No V3 modifier records found for account {accountId}.</p>
+      )}
+      {history !== null && history.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                <th align="left" style={{ padding: '6px 8px' }}>Match</th>
+                <th align="left" style={{ padding: '6px 8px' }}>Date</th>
+                <th align="right" style={{ padding: '6px 8px' }}>Modifier</th>
+                <th align="right" style={{ padding: '6px 8px' }}>µ before</th>
+                <th align="right" style={{ padding: '6px 8px' }}>µ after</th>
+                <th align="right" style={{ padding: '6px 8px' }}>σ before</th>
+                <th align="right" style={{ padding: '6px 8px' }}>σ after</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.slice(0, 100).map((h, i) => {
+                const mod = h.modifier ?? h.perf_modifier ?? null;
+                return (
+                  <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>
+                      <a href={`/match/${h.match_id}`} target="_blank" rel="noopener noreferrer"
+                        style={{ color: 'var(--accent)' }}>{h.match_id}</a>
+                    </td>
+                    <td style={{ padding: '6px 8px', color: 'var(--text-muted)' }}>{fmtDate(h.created_at || h.match_date)}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700, color: mod != null ? signColor(mod) : 'var(--text-muted)' }}>
+                      {mod != null ? (mod > 0 ? `+${Number(mod).toFixed(3)}` : Number(mod).toFixed(3)) : '—'}
+                    </td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>{h.mu_before != null ? Number(h.mu_before).toFixed(2) : '—'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>{h.mu_after != null ? Number(h.mu_after).toFixed(2) : '—'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>{h.sigma_before != null ? Number(h.sigma_before).toFixed(2) : '—'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: 'monospace' }}>{h.sigma_after != null ? Number(h.sigma_after).toFixed(2) : '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {history.length > 100 && (
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+              Showing first 100 of {history.length} records.
+            </p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ── Lootbox Seasonal-Set Management ──────────────────────────────────────
+// Lists all lootbox sets and lets the operator retire or un-retire each one.
+// Retired sets stop appearing in drop pools and the published odds; anything
+// already owned by players stays in their collection.
+function LootboxSetsCard({ superuserKey }) {
+  const [sets, setSets] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [busy, setBusy] = React.useState(null);
+  const [msg, setMsg] = React.useState('');
+  const [error, setError] = React.useState('');
+
+  const load = React.useCallback(() => {
+    if (!superuserKey) return;
+    setLoading(true); setError(''); setMsg('');
+    getLootboxAdminSets(superuserKey)
+      .then(d => setSets(d.sets || []))
+      .catch(e => setError(e.message || 'Failed to load sets'))
+      .finally(() => setLoading(false));
+  }, [superuserKey]);
+
+  async function handleRetire(setId, retire) {
+    const label = retire ? 'retire' : 'un-retire';
+    if (!window.confirm(`${retire ? 'Retire' : 'Un-retire'} set "${setId}"?\n\n${retire ? 'Retired sets stop dropping. Owned items are unaffected.' : 'This set will resume dropping from boxes.'}`)) return;
+    setBusy(setId); setMsg(''); setError('');
+    try {
+      const d = await retireLootboxSet(superuserKey, setId, retire);
+      setMsg(`✓ ${label}d "${setId}".`);
+      setSets(d.sets || sets);
+    } catch (e) {
+      setError(`${label} failed: ${e.message}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const fmtDate = s => { try { return new Date(s).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return s; } };
+
+  return (
+    <section style={{ marginBottom: 36 }} aria-labelledby="ap-anchor-lootbox-sets">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+        <h2 id="ap-anchor-lootbox-sets" style={{ margin: 0 }}>📦 Lootbox Sets</h2>
+        <button type="button" className="btn" style={{ fontSize: 12, padding: '3px 10px' }}
+          onClick={load} disabled={loading} aria-label="Refresh lootbox sets">
+          {loading ? 'Loading…' : sets === null ? 'Load' : 'Refresh'}
+        </button>
+      </div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+        Manage seasonal lootbox sets. Retiring a set removes it from all active drop pools immediately;
+        the published odds on the Lootboxes page update automatically. Items already owned by players
+        are never removed from their collections.
+      </p>
+      {error && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{error}</div>}
+      {msg && <div role="status" style={{ color: '#22c55e', fontSize: 13, marginBottom: 8 }}>{msg}</div>}
+      {sets && sets.length === 0 && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No lootbox sets found.</p>
+      )}
+      {sets && sets.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                <th align="left" style={{ padding: '6px 10px' }}>Set ID</th>
+                <th align="left" style={{ padding: '6px 10px' }}>Name</th>
+                <th align="center" style={{ padding: '6px 10px' }}>Items</th>
+                <th align="center" style={{ padding: '6px 10px' }}>Status</th>
+                <th align="left" style={{ padding: '6px 10px' }}>Retired at</th>
+                <th style={{ padding: '6px 10px' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sets.map(s => (
+                <tr key={s.set_id || s.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: 11 }}>{s.set_id || s.id}</td>
+                  <td style={{ padding: '8px 10px', fontWeight: 600 }}>{s.name || '—'}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'center' }}>{s.item_count ?? '—'}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                    <span style={{
+                      display: 'inline-block', padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700,
+                      background: s.retired ? 'rgba(107,114,128,0.15)' : 'rgba(34,197,94,0.15)',
+                      color: s.retired ? '#9ca3af' : '#22c55e',
+                    }}>{s.retired ? 'Retired' : 'Active'}</span>
+                  </td>
+                  <td style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text-muted)' }}>
+                    {s.retired_at ? fmtDate(s.retired_at) : '—'}
+                  </td>
+                  <td style={{ padding: '8px 10px' }}>
+                    {s.retired ? (
+                      <button
+                        type="button"
+                        disabled={busy === (s.set_id || s.id)}
+                        onClick={() => handleRetire(s.set_id || s.id, false)}
+                        aria-label={`Un-retire lootbox set ${s.name || s.set_id || s.id}`}
+                        style={{
+                          padding: '4px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                          background: 'rgba(34,197,94,0.1)', border: '1px solid #22c55e', color: '#22c55e',
+                          opacity: busy === (s.set_id || s.id) ? 0.5 : 1,
+                        }}
+                      >
+                        {busy === (s.set_id || s.id) ? '…' : '↩ Un-retire'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busy === (s.set_id || s.id)}
+                        onClick={() => handleRetire(s.set_id || s.id, true)}
+                        aria-label={`Retire lootbox set ${s.name || s.set_id || s.id}`}
+                        style={{
+                          padding: '4px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                          background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444',
+                          opacity: busy === (s.set_id || s.id) ? 0.5 : 1,
+                        }}
+                      >
+                        {busy === (s.set_id || s.id) ? '…' : 'Retire set'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function WelcomeModalPanel({ superuserKey }) {
   const [cfg, setCfg] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -5724,6 +6349,11 @@ export default function AdminPanel() {
     { label: 'Tournament Brackets', tab: 'marketplace', anchor: 'ap-anchor-tournaments', icon: '🏆', kw: 'tournament prize pool buy-in' },
     { label: 'Community Challenges', tab: 'challenges', icon: '🎯', kw: 'challenge leaderboard scoring quest community event' },
     { label: 'Weekly Rivals', tab: 'rivals', icon: '⚔️', kw: 'rival weekly pairing h2h head to head opponent matchup auto pair' },
+    { label: 'V3 Modifier History', tab: 'seasons', anchor: 'ap-anchor-v3-debug', icon: '🔬', kw: 'v3 trueskill modifier mu sigma perf rating debug history player lookup' },
+    { label: 'Feature Flags', tab: 'config', anchor: 'ap-anchor-feature-flags', icon: '🚦', kw: 'flags toggle on off preview kill switch rollout feature enable disable runtime' },
+    { label: 'Live Ops Logs', tab: 'config', anchor: 'ap-anchor-ops-logs', icon: '📋', kw: 'ops logs live server buffer source filter errors stream ring' },
+    { label: 'Ops History', tab: 'config', anchor: 'ap-anchor-ops-history', icon: '📈', kw: 'ops history sparkline telemetry samples 1min samples error spike throughput' },
+    { label: 'Lootbox Sets', tab: 'marketplace', anchor: 'ap-anchor-lootbox-sets', icon: '📦', kw: 'lootbox sets seasonal retire cosmetics boxes drops collection active' },
   ];
 
   const q = searchQuery.trim().toLowerCase();
@@ -6031,6 +6661,8 @@ export default function AdminPanel() {
 
       {/* Tournament Brackets — active tournaments and bracket management */}
       <TournamentBracketPanel />
+      {/* Lootbox seasonal set management (retire / un-retire sets) */}
+      <LootboxSetsCard superuserKey={superuserKey} />
       </>)}
 
       {activeTab === 'seasons' && (<>
@@ -6053,6 +6685,8 @@ export default function AdminPanel() {
           </span>
         </div>
       </section>
+      {/* ── V3 Modifier History debug lookup ─────────────────────────── */}
+      <V3ModifierDebugCard />
 
       </>)}
 
@@ -6078,6 +6712,12 @@ export default function AdminPanel() {
       {/* ── Discord Rich Presence (Task #446) ────────────────────────── */}
       <DiscordRichPresenceCard superuserKey={superuserKey} />
       <TestCoachPanel superuserKey={superuserKey} />
+      {/* ── Feature Flags full editor ─────────────────────────────────── */}
+      <FeatureFlagsEditorCard superuserKey={superuserKey} />
+      {/* ── Live Ops Log Buffer ───────────────────────────────────────── */}
+      <OpsLogsCard superuserKey={superuserKey} />
+      {/* ── Ops History sparklines ────────────────────────────────────── */}
+      <OpsHistoryCard superuserKey={superuserKey} />
       {/* ── Engagement Settings ──────────────────────────────────────── */}
       <EngagementSettingsPanel superuserKey={superuserKey} siteSettings={siteSettings} onSaved={loadSiteSettings} />
       <WelcomeModalPanel superuserKey={superuserKey} />
