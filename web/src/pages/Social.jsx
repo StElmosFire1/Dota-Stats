@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import SortableTh from '../components/SortableTh';
 import { Link } from 'react-router-dom';
+import { resolvePlayerDisplayName } from '../utils/displayName';
 import { getSocialGraph, getPlayerConnections, getAllPlayers } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import PaywallCard from '../components/PaywallCard';
@@ -221,7 +222,7 @@ function PlayerConnectionsTab() {
         >
           <option value="">— Select a player —</option>
           {filteredPlayers.map(p => (
-            <option key={p.account_id} value={p.account_id}>{p.nickname || p.persona_name || p.account_id}</option>
+            <option key={p.account_id} value={p.account_id}>{resolvePlayerDisplayName(p)}</option>
           ))}
         </select>
       </div>

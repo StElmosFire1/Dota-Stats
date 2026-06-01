@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
+import { resolvePlayerDisplayName } from '../utils/displayName';
 import { superuserFetch } from '../api';
 import { useSeason } from '../context/SeasonContext';
 
@@ -26,7 +27,7 @@ function PlayerRow({ player, idx, allPlayers, heroes, onChange }) {
           <option value="">— Select player —</option>
           {allPlayers.map(p => (
             <option key={p.account_id} value={String(p.account_id)}>
-              {p.nickname || p.persona_name || p.account_id}
+              {resolvePlayerDisplayName(p)}
             </option>
           ))}
         </select>

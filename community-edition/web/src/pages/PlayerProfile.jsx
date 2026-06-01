@@ -8,6 +8,7 @@ import { useSteamAuth } from '../context/SteamAuthContext';
 import { useSeason } from '../context/SeasonContext';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
+import { resolveDisplayName, resolvePlayerDisplayName } from '../utils/displayName';
 import HeroIcon from '../components/HeroIcon';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -405,7 +406,7 @@ export default function PlayerProfile() {
     const wins = slice.filter(r => parseInt(r.won) === 1).length;
     return { match_num: idx + 1, win_rate: Math.round((wins / slice.length) * 100) };
   });
-  const displayName = nickname || rating?.display_name || `Player ${accountId}`;
+  const displayName = resolveDisplayName(accountId, { nickname, persona_name: rating?.persona_name, display_name: rating?.display_name });
 
   const totalMatches = averages ? parseInt(averages.total_matches) : 0;
   const totalKDA = averages && totalMatches > 0
@@ -654,7 +655,7 @@ export default function PlayerProfile() {
                 }}>
                   <div style={{ fontSize: 20, marginBottom: 6 }}>{medals[i] || '⚔️'}</div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-                    {n.killer_name || `Player ${n.killer_account_id}`}
+                    {resolveDisplayName(n.killer_account_id, { nickname: n.killer_nickname, persona_name: n.killer_persona_name, display_name: n.killer_name })}
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--accent-red)', fontWeight: 600 }}>
                     {n.total_kills} kills
@@ -689,7 +690,7 @@ export default function PlayerProfile() {
                 }}>
                   <div style={{ fontSize: 20, marginBottom: 6 }}>🤝</div>
                   <Link to={`/player/${a.account_id}`} style={{ fontSize: 15, fontWeight: 700, color: 'var(--accent)' }}>
-                    {a.display_name || `Player ${a.account_id}`}
+                    {resolvePlayerDisplayName(a)}
                   </Link>
                   <div style={{ fontSize: 13, marginTop: 6 }}>
                     <span style={{ color: wr >= 60 ? 'var(--radiant-color)' : wr >= 45 ? 'var(--text-primary)' : 'var(--dire-color)', fontWeight: 700 }}>

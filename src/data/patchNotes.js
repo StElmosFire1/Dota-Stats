@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "8.93",
+    "title": "Richer match cards — real names, kill score, team MMR & MVP",
+    "published_at": "2026-05-31",
+    "notes": [
+      "**No more \"Player 305389832\".** Every player reference on the Match History cards now resolves nickname → Steam persona → (only as an absolute last resort) a number, routed through the shared display-name helper. The same helper now backs other spots that used to leak raw account ids (player comparison pickers, season winner pickers, Social graph, Record Match, the weekly recap).",
+      "**Kill score per side.** Each card shows the side totals at a glance (e.g. Radiant 31 – 24 Dire) without opening the match.",
+      "**Team average MMR + skill bracket.** Each side now shows its average *current* MMR rendered with the heraldic rank badge. Note: this reflects players' live ratings, not a per-match snapshot.",
+      "**Match MVP.** A new MVP line surfaces the standout player (highest PERF) with their hero, so the best game stands out from the list.",
+      "**Community parity.** The community edition gets the same nickname → Steam-name resolution on its shared player-name spots (its match list has no players strip, so the three new at-a-glance extras are full-edition only). Keyboard + screen-reader accessible; a11y gate green."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "8.92",
     "title": "Browser-smoke now watches the How It Works guide",
     "published_at": "2026-05-31",

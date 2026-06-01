@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { resolvePlayerDisplayName } from '../utils/displayName';
 import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerAnniversary, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence, getPlayerRivals, getPlayerItemBenchmarks, getDraftTrainerAccuracy, getPlayerBettingStats } from '../api';
 import Dialog from '../components/Dialog';
 import { FRAME_META, DEFAULT_FRAME } from '../profileCosmetics';
@@ -82,7 +83,7 @@ function H2HComparePicker({ thisAccountId, isOwnProfile, viewerAccountId }) {
             .filter(p => p.account_id && String(p.account_id) !== String(thisAccountId))
             .map(p => (
               <option key={p.account_id} value={p.account_id}>
-                {p.nickname || p.persona_name || `Player ${p.account_id}`}
+                {resolvePlayerDisplayName(p)}
               </option>
             ))}
         </select>
@@ -2794,7 +2795,7 @@ export default function PlayerProfile() {
               <option value="">— Choose a player —</option>
               {compareList.map(p => (
                 <option key={p.account_id} value={p.account_id}>
-                  {p.nickname || p.persona_name || `Player ${p.account_id}`}
+                  {resolvePlayerDisplayName(p)}
                 </option>
               ))}
             </select>

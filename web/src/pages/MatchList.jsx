@@ -4,6 +4,9 @@ import { getMatches, updateMatchMeta } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { useSuperuser } from '../context/SuperuserContext';
 import HeroIcon from '../components/HeroIcon';
+import { MmrBadge } from '../components/RankBadge';
+import { resolvePlayerDisplayName } from '../utils/displayName';
+import { getHeroName } from '../heroNames';
 
 function formatDuration(seconds) {
   if (!seconds) return '--';
@@ -28,19 +31,48 @@ function formatDate(dateStr) {
 // Defensive against the data shape: if `players` is missing (older
 // rows where the JOIN returned null, or a match with zero parsed
 // players) we render nothing — the rest of the card stays valid.
+// Average of a side's *current* stored MMR (joined from `ratings` server-side).
+// Players with no rating row (mmr null/0) are skipped so a couple of unranked
+// smurfs don't drag the average to zero. Returns null when nobody is ranked.
+function avgSideMmr(side) {
+  const vals = side
+    .map(p => Number(p.mmr))
+    .filter(v => Number.isFinite(v) && v > 0);
+  if (vals.length === 0) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
 function MatchPlayersStrip({ players, radiantWin }) {
   if (!Array.isArray(players) || players.length === 0) return null;
   const radiant = players.filter(p => p.team === 'radiant' || p.team === 0 || p.team === '0');
   const dire    = players.filter(p => p.team === 'dire'    || p.team === 1 || p.team === '1');
   if (radiant.length === 0 && dire.length === 0) return null;
 
-  const renderSide = (side, label, isWinner) => {
+  // Kill score per side (e.g. "Radiant 31 – 24 Dire").
+  const sumKills = (side) => side.reduce((s, p) => s + (Number(p.kills) || 0), 0);
+  const radiantKills = sumKills(radiant);
+  const direKills = sumKills(dire);
+
+  const radiantMmr = avgSideMmr(radiant);
+  const direMmr = avgSideMmr(dire);
+
+  // Match MVP — highest PERF score across both sides (PERF is 1.0–10.0,
+  // position-aware + duration-normalised, so it's the fairest single "best
+  // player" signal we already store). Ties resolve to the first encountered.
+  let mvp = null;
+  let mvpPerf = -Infinity;
+  for (const p of players) {
+    const perf = Number(p.perf);
+    if (Number.isFinite(perf) && perf > mvpPerf) { mvpPerf = perf; mvp = p; }
+  }
+
+  const renderSide = (side, label, isWinner, sideKills, sideMmr) => {
     if (side.length === 0) return null;
     const top = side[0]; // already sorted kills DESC server-side
-    const topName = top?.nickname || (top?.account_id ? `Player ${top.account_id}` : null);
+    const topName = top ? resolvePlayerDisplayName(top) : null;
     const sideColor = label === 'Radiant' ? 'var(--radiant-color)' : 'var(--dire-color)';
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
         <span style={{
           color: sideColor, fontSize: '0.72rem', fontWeight: 700,
           letterSpacing: 0.4, width: 52, flexShrink: 0,
@@ -53,6 +85,14 @@ function MatchPlayersStrip({ players, radiantWin }) {
             <HeroIcon key={`${p.account_id || 'a'}-${i}`} heroId={p.hero_id} heroName={p.hero} size="sm" />
           ))}
         </div>
+        {sideMmr != null && (
+          <span
+            title="Average of these players' current MMR (live rating, not a per-match snapshot)"
+            style={{ flexShrink: 0 }}
+          >
+            <MmrBadge mmr={sideMmr} size="sm" />
+          </span>
+        )}
         {topName && (
           <span style={{
             fontSize: '0.78rem', color: 'var(--text-muted)',
@@ -74,8 +114,43 @@ function MatchPlayersStrip({ players, radiantWin }) {
       display: 'flex', flexDirection: 'column', gap: 4,
       marginTop: '0.6rem',
     }}>
-      {renderSide(radiant, 'Radiant', radiantWin)}
-      {renderSide(dire,    'Dire',    !radiantWin)}
+      {/* Kill score per side */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        fontFamily: 'var(--font-num)', fontSize: '0.82rem', fontWeight: 700,
+        letterSpacing: 0.2,
+      }}>
+        <span style={{ color: 'var(--radiant-color)' }}>Radiant</span>
+        <span className="pb-num" style={{ color: 'var(--text-primary)' }}>{radiantKills}</span>
+        <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>–</span>
+        <span className="pb-num" style={{ color: 'var(--text-primary)' }}>{direKills}</span>
+        <span style={{ color: 'var(--dire-color)' }}>Dire</span>
+      </div>
+      {renderSide(radiant, 'Radiant', radiantWin, radiantKills, radiantMmr)}
+      {renderSide(dire,    'Dire',    !radiantWin, direKills, direMmr)}
+      {/* Match MVP — best PERF + their hero */}
+      {mvp && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6, minWidth: 0,
+          fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 1,
+        }}>
+          <span aria-hidden="true">🏆</span>
+          <span style={{ color: 'var(--gold)', fontWeight: 700, letterSpacing: 0.3 }}>MVP</span>
+          <HeroIcon heroId={mvp.hero_id} heroName={mvp.hero} size="sm" />
+          <span style={{
+            color: 'var(--text-secondary)', fontWeight: 600,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
+          }}>
+            {resolvePlayerDisplayName(mvp)}
+          </span>
+          <span style={{ color: 'var(--text-muted)' }}>· {getHeroName(mvp.hero_id, mvp.hero)}</span>
+          {Number.isFinite(Number(mvp.perf)) && (
+            <span className="pb-num" style={{ color: 'var(--text-muted)', opacity: 0.85 }}>
+              · {Number(mvp.perf).toFixed(1)} PERF
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

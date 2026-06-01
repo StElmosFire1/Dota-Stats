@@ -4,6 +4,7 @@ import { getLeaderboard, getMostImproved, getPlayerForm, getBestAndFairest } fro
 import { useSeason } from '../context/SeasonContext';
 import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
+import { resolvePlayerDisplayName } from '../utils/displayName';
 
 export const MMR_TIERS = [
   { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 4100, color: '#FFD700',   bg: 'rgba(255,215,0,0.12)',   border: 'rgba(255,215,0,0.45)'    },
@@ -251,7 +252,7 @@ function BestAndFairestWidget({ data, loading, seasonLabel }) {
                 textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 display: 'inline-flex', alignItems: 'center', gap: 4,
               }}>
-                {p.display_name || `Player ${p.account_id}`}
+                {resolvePlayerDisplayName(p)}
               </Link>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

@@ -5162,19 +5162,26 @@ async function getMatches(limit = 50, offset = 0, seasonId = null, { tenantId } 
   const seasonClause = _sc(seasonId, params, 'm');
   const tenantClause = _tc(tenantId, params, 'm');
   // `players` is a JSON array of {team, hero, kills, deaths, assists,
-  // account_id, nickname} ordered Radiant→Dire then kills DESC. Used by the
-  // Match History list to render hero icons + a "top fragger per side" line
-  // without firing N+1 follow-up queries (Task #259-followup, May 2026).
+  // account_id, nickname, persona_name, perf, mmr} ordered Radiant→Dire then
+  // kills DESC. Used by the Match History list to render hero icons, a
+  // "top fragger per side" line, kill score, team-average MMR badges and the
+  // match MVP — all without firing N+1 follow-up queries (Task #259-followup,
+  // May 2026; extended Task #672). `persona_name` is the Steam persona so the
+  // card can fall back nickname → persona before ever showing a raw id; `perf`
+  // drives the MVP pick; `mmr` is each player's *current* stored rating (joined
+  // from `ratings`, not a per-match snapshot) for the team-average badge.
   const result = await p.query(
     `SELECT m.*,
        (SELECT COUNT(*) FROM player_stats ps WHERE ps.match_id = m.match_id) as player_count,
        (SELECT json_agg(row_to_json(p2) ORDER BY p2.team, p2.kills DESC NULLS LAST)
         FROM (
           SELECT ps.team, ps.hero_id, ps.hero_name AS hero, ps.kills, ps.deaths, ps.assists,
-                 ps.account_id, n.nickname
+                 ps.account_id, ps.persona_name, ps.perf, n.nickname, r.mmr
           FROM player_stats ps
           LEFT JOIN nicknames n
             ON n.account_id = ps.account_id AND ps.account_id != 0
+          LEFT JOIN ratings r
+            ON r.player_id = ps.account_id AND ps.account_id != 0
           WHERE ps.match_id = m.match_id
         ) p2
        ) as players
@@ -5184,6 +5191,16 @@ async function getMatches(limit = 50, offset = 0, seasonId = null, { tenantId } 
      LIMIT $1 OFFSET $2`,
     params
   );
+  // Steam personas are stored as protobuf byte-string JSON ({"bytes":[...]}) on
+  // some rows; decode them here (the single-match query does the same per-row)
+  // so the frontend never renders a raw blob when falling back to the persona.
+  for (const row of result.rows) {
+    if (Array.isArray(row.players)) {
+      for (const pl of row.players) {
+        if (pl && pl.persona_name) pl.persona_name = decodeByteString(pl.persona_name);
+      }
+    }
+  }
   return result.rows;
 }
 

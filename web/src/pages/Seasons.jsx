@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSeason } from '../context/SeasonContext';
+import { resolvePlayerDisplayName } from '../utils/displayName';
 import { useAdmin } from '../context/AdminContext';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useSteamAuth } from '../context/SteamAuthContext';
@@ -118,7 +119,7 @@ function BuyinModal({ season, players, onClose }) {
                 <option value="">— Enter name manually below —</option>
                 {players.map(p => (
                   <option key={p.account_id} value={p.account_id}>
-                    {p.nickname || p.persona_name || String(p.account_id)}
+                    {resolvePlayerDisplayName(p)}
                   </option>
                 ))}
               </select>
@@ -443,7 +444,7 @@ function PayoutsModal({ season, players, adminKey, onClose }) {
                           <option value="">— Select player —</option>
                           {players.map(pl => (
                             <option key={pl.account_id} value={pl.account_id}>
-                              {pl.nickname || pl.persona_name || String(pl.account_id)}
+                              {resolvePlayerDisplayName(pl)}
                             </option>
                           ))}
                         </select>
