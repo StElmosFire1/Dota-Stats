@@ -413,3 +413,15 @@ id = "9PpjMsB6vdqSiZrKrFG2m"
 uri = "file://attached_assets/tutorial/vo_outro.mp3"
 type = "audio"
 title = "tutorial vo outro"
+
+[[outputs]]
+id = "FrxC7NsPgbmTPUYdMEkgl"
+uri = "file://trailer-handoff.tar.gz"
+type = "unspecified"
+title = "OCE Inhouse Trailer — Build Handoff Kit (.tar.gz)"
+
+[[outputs]]
+id = "SJnYeAukyxLLXJd6EmwZD"
+uri = "file://trailer-handoff/BRIEF.md"
+type = "text"
+title = "Trailer Brief, Storyboard & Brand Kit (readable)"
