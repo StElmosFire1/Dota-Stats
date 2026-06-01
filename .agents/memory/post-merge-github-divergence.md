@@ -1,33 +1,50 @@
 ---
 name: Post-merge GitHub divergence handling
-description: Why post-merge.sh treats genuine origin/main divergence as non-fatal, and who can actually reconcile it.
+description: How post-merge.sh auto-reconciles platform re-commit forks, and the only remaining case that defers.
 ---
 
 # Post-merge GitHub mirror divergence
 
 `scripts/post-merge.sh` pushes the merged commit to GitHub `origin/main` as a mirror.
-When local and remote have **genuinely forked** — `origin/main` carries a unique
-commit local lacks (remote is NOT an ancestor of HEAD) AND the trees differ in real
-source files (outside `artifacts/mockup-sandbox/src/.generated/` + `attached_assets/`)
-— the self-heal **refuses to force-push** and now exits **0 (non-fatal)** instead of
-failing setup.
+The platform routinely re-commits each merge under a *different* SHA on `origin`, so
+`origin/main` diverging from local is the **normal mode of operation**, not an error.
 
-**Why:** A force-with-lease in that state could clobber real remote work. Reconciling
-losslessly needs a merge commit + conflict resolution (e.g. `src/data/patchNotes.js`,
-which both sides routinely edit), which a non-interactive hook must never attempt. But
-failing the hook makes EVERY subsequent merge report `SETUP_FAILED`, even though the
-hook's real job (deps install, migrations, frontend builds) already succeeded. So the
-divergence is downgraded to a warning; only the GitHub mirror sync is deferred.
+The self-heal force-with-lease pushes local HEAD **whenever it can prove no real remote
+work would be lost**, handling four cases in order:
+1. remote is an ancestor of HEAD (strictly ahead) → safe.
+2. `diff(remote..HEAD)` touches only allowed paths
+   (`artifacts/mockup-sandbox/src/.generated/`, `attached_assets/`) → safe.
+3. **remote tip is a re-commit of a recent local ancestor** → safe. This is the case
+   that used to require a manual reconciliation task on every queued batch of merges.
+4. anything else (genuine remote-only work) → **defer** (warn + `exit 0`, non-fatal).
 
-**Who reconciles it:** The main agent CANNOT — `git commit`/`merge`/`rebase`/`reset`/
-force-push are all hard-blocked in its bash sandbox. The divergence resolution (merge
-both sides, then fast-forward push) is owned by the dedicated "push outstanding commits
-to GitHub" background task, which runs with the privileges to do it.
+**The case-3 trap (was the recurring manual-push pain):** when local has advanced many
+commits past the point the platform re-committed, remote is no longer an ancestor AND
+`diff(remote..HEAD)` shows ALL your newer work — so a naive "do trees differ in real
+source?" check wrongly concludes genuine divergence and defers. The correct question is
+"does `remote_sha`'s tree match ANY recent local ancestor's tree (modulo allowed paths)?"
+If yes, every byte on remote is already contained in local history → lossless force-push.
+The hook walks `git rev-list --max-count=120 HEAD` and compares each ancestor's tree to
+`remote_sha` via the `only_allowed_paths` helper.
 
-**How to apply:** If you see a post-merge `SETUP_FAILED` whose only failing step is the
-GitHub push with "refusing — local and remote trees differ ... AND remote is not an
-ancestor", that is the expected non-fatal path now — don't try to force-push from the
-main agent. Investigate divergence read-only (`git log --oneline <merge-base>..<remote>`
-and `..HEAD`) to confirm local is the authoritative superset, then leave the actual push
-to the reconciliation task. Do NOT broaden the script's force-push allow-list to cover
-source divergence — that gate exists specifically to prevent clobbering remote commits.
+**Why case 4 still defers:** a force-with-lease there could clobber real remote work, and
+lossless reconciliation needs a merge commit + conflict resolution (e.g.
+`src/data/patchNotes.js`, which both sides edit) that a non-interactive hook must not
+attempt. Failing the hook would make every subsequent merge report `SETUP_FAILED` even
+though deps/migrations/builds succeeded, so it's downgraded to a deferred warning.
+
+**Who reconciles case 4:** the main agent CANNOT — `git commit`/`merge`/`rebase`/`reset`/
+`fetch`/force-push are hard-blocked in its bash sandbox (even fetch-by-SHA trips the
+maintenance.lock interceptor). It's owned by the dedicated "push outstanding commits to
+GitHub" background task, which runs with git privileges.
+
+**Two distinct push-blocking causes (don't conflate):** (a) patch-note `version`
+collisions — fixed separately by `scripts/dedupe-patch-notes.js` auto-bumping + committing
+in post-merge; (b) this fork divergence. Fixing one does not fix the other.
+
+**How to apply:** A post-merge GitHub push that "defers" is only expected now when
+`remote_sha` is genuinely NOT a re-commit of any recent local ancestor. If you see it
+deferring for a normal queued-merge batch, suspect the ancestor-match window
+(`--max-count=120`) is too small or the allowed-paths list drifted. Do NOT broaden the
+allow-list to cover arbitrary source divergence — case 4's refusal is the guardrail
+against clobbering real remote commits.

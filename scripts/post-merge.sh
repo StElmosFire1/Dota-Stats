@@ -144,52 +144,76 @@ else
   local_tree="$(git --no-optional-locks rev-parse HEAD^{tree})"
   remote_tree="$(git --no-optional-locks rev-parse "${remote_sha}^{tree}")"
   if [ "$local_tree" != "$remote_tree" ]; then
-    # Trees differ. Three classes of divergence we accept; anything else
-    # aborts so a real conflict surfaces instead of being silently clobbered.
+    # Trees differ. We force-with-lease ONLY when we can prove no real remote
+    # work would be lost; otherwise we defer so a real conflict surfaces instead
+    # of being silently clobbered. The platform re-commits each merge under a new
+    # SHA on origin, so divergence is the normal mode of operation, not an error.
+    # Four cases handled below, in order:
+    #   1. remote is an ancestor of HEAD            -> strictly ahead, safe
+    #   2. remote/HEAD differ only in allowed paths -> safe to overwrite
+    #   3. remote tip is a re-commit of a local
+    #      ancestor (no unique remote content)      -> safe to push
+    #   4. anything else (genuine remote-only work) -> defer to reconciliation
     #
-    # Task #361 — the original gate only allowed mockup auto-regen +
-    # attached_assets, which caused legitimate post-merge pushes to fail
-    # whenever the platform got ahead of us by a few earlier merges
-    # (which is the normal mode of operation: every merge produces a
-    # platform-recommitted SHA, and a few queued merges with non-trivial
-    # diffs are routine). The "remote is an ancestor of HEAD" case is the
-    # textbook safe force-with-lease scenario — HEAD strictly contains
-    # everything on remote plus our new commits, so a force push is just
-    # catching up rather than overwriting unrelated work.
-    if git --no-optional-locks merge-base --is-ancestor "$remote_sha" HEAD; then
-      echo "[post-merge] self-heal: remote is an ancestor of HEAD (we're strictly ahead); safe to push." >&2
-    else
-      diff_paths="$(git --no-optional-locks diff --name-only "$remote_sha" HEAD)"
-      only_generated=1
+    # Returns 0 if the newline-separated path list on stdin is empty or contains
+    # ONLY auto-generated / attached-asset paths we always allow to diverge.
+    only_allowed_paths() {
+      local p allowed=1
       while IFS= read -r p; do
         [ -z "$p" ] && continue
         case "$p" in
           artifacts/mockup-sandbox/src/.generated/*) ;;
           attached_assets/*) ;;
-          *) only_generated=0 ;;
+          *) allowed=0 ;;
         esac
-      done <<< "$diff_paths"
-      if [ "$only_generated" -ne 1 ]; then
-        echo "[post-merge] self-heal: refusing to force-push — local and remote trees differ outside auto-generated paths AND remote is not an ancestor:" >&2
-        echo "$diff_paths" >&2
-        # Genuine divergence: origin/main carries unique commit(s) that local
-        # does NOT (remote is not an ancestor of HEAD), so a force-with-lease
-        # here could clobber real remote work. This cannot be reconciled from
-        # the post-merge hook — it would need a merge commit + conflict
-        # resolution (e.g. src/data/patchNotes.js, which both sides edit), and
-        # a non-interactive hook must never attempt that. Reconciliation is
-        # owned by the dedicated "push outstanding commits to GitHub" task,
-        # which can merge both sides losslessly and then fast-forward push.
-        #
-        # Treat this as NON-FATAL: dependency install, migrations, and the
-        # frontend builds above all succeeded, so the post-merge SETUP is
-        # complete — only the GitHub mirror sync is deferred. Exiting non-zero
-        # here would make every subsequent merge report SETUP_FAILED for a
-        # condition the hook is deliberately (and correctly) refusing to fix.
+      done
+      [ "$allowed" -eq 1 ]
+    }
+
+    if git --no-optional-locks merge-base --is-ancestor "$remote_sha" HEAD; then
+      # Textbook safe force-with-lease: HEAD strictly contains everything on
+      # remote plus our new commits, so a force push is just catching up.
+      echo "[post-merge] self-heal: remote is an ancestor of HEAD (we're strictly ahead); safe to push." >&2
+    elif only_allowed_paths <<< "$(git --no-optional-locks diff --name-only "$remote_sha" HEAD)"; then
+      # Remote tip diverges from HEAD only in auto-generated mockup index /
+      # attached_assets — safe to overwrite.
+      echo "[post-merge] self-heal: only auto-generated mockup index / attached_assets differ; safe to overwrite." >&2
+    else
+      # The platform routinely re-commits an EARLIER merge under a new SHA on
+      # origin. Once local has advanced past that point, remote is no longer an
+      # ancestor AND diff(remote..HEAD) shows all our newer work, so the two
+      # checks above can't tell that remote introduces nothing unique. Prove it:
+      # if remote_sha's tree matches ANY recent HEAD ancestor (modulo the allowed
+      # paths), then every byte on remote is already contained in local history
+      # and a force-with-lease loses nothing. This is the common case that used
+      # to require a manual reconciliation task on every queued batch of merges.
+      # Only if NO ancestor matches do we treat it as genuine remote-only work
+      # and defer (a force push there could clobber real work, and a lossless
+      # merge + conflict resolution must not be attempted by a non-interactive
+      # hook).
+      recommit_of_ancestor=0
+      while IFS= read -r anc; do
+        [ -z "$anc" ] && continue
+        if only_allowed_paths <<< "$(git --no-optional-locks diff --name-only "$anc" "$remote_sha")"; then
+          recommit_of_ancestor=1
+          echo "[post-merge] self-heal: remote tip is a re-commit of local ancestor ${anc} (no unique remote work); safe to push." >&2
+          break
+        fi
+      done <<< "$(git --no-optional-locks rev-list --max-count=120 HEAD)"
+
+      if [ "$recommit_of_ancestor" -ne 1 ]; then
+        echo "[post-merge] self-heal: refusing to force-push — origin/main carries unique commit(s) not reachable from HEAD and not a re-commit of any recent local ancestor:" >&2
+        git --no-optional-locks diff --name-only "$remote_sha" HEAD >&2
+        # Genuine divergence (real remote-only work). Treat as NON-FATAL: deps,
+        # migrations, and the frontend builds above all succeeded, so post-merge
+        # SETUP is complete — only the GitHub mirror sync is deferred to the
+        # dedicated "push outstanding commits to GitHub" task, which can merge
+        # both sides losslessly. Exiting non-zero here would make every
+        # subsequent merge report SETUP_FAILED for a condition the hook is
+        # deliberately refusing to auto-resolve.
         echo "[post-merge] GitHub mirror sync deferred to the reconciliation task; post-merge setup is otherwise complete." >&2
         exit 0
       fi
-      echo "[post-merge] self-heal: only auto-generated mockup index / attached_assets differ; safe to overwrite." >&2
     fi
   else
     echo "[post-merge] self-heal: local and remote trees match exactly." >&2
