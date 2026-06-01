@@ -17,7 +17,9 @@
     "start": "node src/index.js",
     "test": "node --test tests/",
     "perf:backfill": "node scripts/perf-backfill.js",
-    "migrate": "node-pg-migrate -m migrations -j sql up"
+    "migrate": "node-pg-migrate -m migrations -j sql up",
+    "render:trailer": "node scripts/render-trailer.mjs",
+    "strip:tier-plaques": "node scripts/strip-tier-plaques.mjs"
   },
   "keywords": [
     "dota2",

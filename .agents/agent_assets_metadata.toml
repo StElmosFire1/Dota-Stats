@@ -126,6 +126,42 @@ uri = "file://attached_assets/tutorial/bg_outro.png"
 type = "image"
 title = "tutorial outro"
 
+[[generated]]
+id = "ZXjrKDpF34xd8NBd22T1D"
+uri = "file://attached_assets/generated_images/trailer_bg_battle.png"
+type = "image"
+title = "epic battle sky background"
+
+[[generated]]
+id = "22pOdIIruaUURS60o8i6v"
+uri = "file://attached_assets/generated_images/trailer_brass_frame.png"
+type = "image"
+title = "brass heraldry frame"
+
+[[generated]]
+id = "WiuSJNLE2_D3_zHKvKBK2"
+uri = "file://attached_assets/generated_images/trailer_embers.png"
+type = "image"
+title = "ember particles overlay"
+
+[[generated]]
+id = "s42qfp9bOyoS8nMibi6dp"
+uri = "file://attached_assets/generated_images/trailer_parchment.png"
+type = "image"
+title = "parchment texture"
+
+[[generated]]
+id = "LEZt2hU7s5AT7TYcQF8GV"
+uri = "file://attached_assets/generated_images/trailer_throne_room.png"
+type = "image"
+title = "epic throne room interior"
+
+[[generated]]
+id = "HUVMZx-v_yJVtmdQZShTD"
+uri = "file://attached_assets/generated_images/trailer_rank_ladder.png"
+type = "image"
+title = "rank ladder shields"
+
 [[outputs]]
 id = "4nBf5s_DOIub3AejPTlsx"
 uri = "file://web/public/voice-packs/cinematic/level-up.mp3"
@@ -425,3 +461,15 @@ id = "SJnYeAukyxLLXJd6EmwZD"
 uri = "file://trailer-handoff/BRIEF.md"
 type = "text"
 title = "Trailer Brief, Storyboard & Brand Kit (readable)"
+
+[[outputs]]
+id = "7qrMNhJwVuczxkoK_u2qM"
+uri = "file://attached_assets/generated_audio/epic_orchestral_score.mp3"
+type = "audio"
+title = "epic orchestral battle score"
+
+[[outputs]]
+id = "q2no9E8gSmjr4oCtbCv02"
+uri = "file://attached_assets/oce-inhouse-hype-trailer.mp4"
+type = "video"
+title = "OCE Inhouse Hype Trailer (1920x1080, 30fps)"

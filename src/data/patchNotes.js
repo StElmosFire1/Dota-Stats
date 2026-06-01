@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "8.94",
+    "title": "Hype trailer polish — clean tier crests, rock-steady titles",
+    "published_at": "2026-06-01",
+    "notes": [
+      "**No more boxed emblems.** The Vagabond and Outlaw tier crests in the stats beat used to sit on a baked-in square plaque (navy panel + gold frame + tier name) that read as an ugly box against the dark footage. They're now matted down to clean free-standing crests matching the rest of the 11-tier ladder.",
+      "**Titles hold their size.** Fade-in headings no longer appear to grow from small to full as they reveal — the text now develops in colour at constant size, so every title and caption stays rock-steady on screen.",
+      "**Cleaner eyebrows.** Dropped the \"FEATURE 01/02/03\" prefixes; the section labels now read simply COMPETITIVE LOBBIES, SKILL-BASED RATING, and GROW & COMPETE.",
+      "**Tidier inhouse beat.** Removed the \"Captain draft — 1-2-2-1 pick order\" caption under the draft-board screenshot.",
+      "**Scope.** Marketing asset only — re-rendered to a downloadable 1920×1080 30fps MP4. No app or community-edition behaviour changes."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "8.93",
     "title": "Richer match cards — real names, kill score, team MMR & MVP",
     "published_at": "2026-05-31",
