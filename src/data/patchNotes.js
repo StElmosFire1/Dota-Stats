@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.98",
+    "title": "Fix: signed-in session probe + replay-path + inhouse gate crashes",
+    "published_at": "2026-06-01",
+    "notes": [
+      "**Stay signed in.** Fixed a server bug where the session probe (`/api/auth/me`) threw a `config is not defined` error for logged-in users, which could make the site appear signed-out after a refresh. The Discord invite URL is now resolved correctly.",
+      "**Replay path admin.** The superuser \"set replay path\" action hit the same missing-reference bug and always failed — it now resolves and validates the archive path as intended.",
+      "**Inhouse join gate.** The Discord guild-membership check that runs when queueing for an inhouse lobby referenced the same undefined value; non-members now get the correct \"join the Discord server\" message with an invite link instead of a server error.",
+      "**Scope.** Full edition only (oceinhouse.gg). Root cause was three code paths reading `config` without importing it in scope; all now import it locally like the rest of the file."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "8.96",
     "title": "Admin: link any player's Twitch channel to the Live hub",
     "published_at": "2026-06-01",

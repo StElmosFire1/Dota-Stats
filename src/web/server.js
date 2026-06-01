@@ -4626,6 +4626,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
     // browser cache; this header covers shared caches at the edge.
     res.set('Cache-Control', 'no-store, must-revalidate');
     res.set('Vary', 'Cookie');
+    const { config } = require('../config');
     if (req.session && req.session.accountId) {
       // First-login Discord onboarding (task 89): tell the frontend whether
       // we still need to prompt this user for their Discord User ID. We check
@@ -6705,6 +6706,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
       const { matchId } = req.params;
       let { replay_path } = req.body || {};
       if (replay_path) {
+        const { config } = require('../config');
         const ssh = config.dota?.dedicatedServer?.ssh || {};
         const archiveDir = process.env.REPLAY_ARCHIVE_DIR || ssh.replayArchiveDir || '/opt/dota2/game/dota/replays/archive';
         // Resolve bare filenames (no path separator) against the archive directory.
@@ -12354,6 +12356,7 @@ NOTES
   // lock everyone out of joining.
   async function _enforceDiscordGuildGate(actor) {
     if (!actor || actor.isAdmin) return null;
+    const { config } = require('../config');
     let discordId = null;
     try {
       discordId = await db.getDiscordIdByAccountId(actor.accountId);
