@@ -15196,6 +15196,48 @@ NOTES
     }
   });
 
+  // ---- Admin: link/unlink any player's Twitch channel (full edition) -------
+  // Superuser-only. Sets player_profiles.extras->>'twitch_login' so the owner
+  // can opt a player into the /live hub without raw SQL.
+  router.get('/admin/twitch/links', requireSuperuser, async (req, res) => {
+    try {
+      const links = await db.getTwitchLinkedAccounts();
+      res.json({ ok: true, links });
+    } catch (err) {
+      console.error('[API] admin/twitch/links GET error:', err.message);
+      res.status(500).json({ error: 'Failed to load Twitch links' });
+    }
+  });
+
+  router.post('/admin/twitch/link', express.json(), requireSuperuser, async (req, res) => {
+    try {
+      const body = req.body || {};
+      const accountId = String(body.account_id == null ? '' : body.account_id).trim();
+      if (!/^\d{1,12}$/.test(accountId)) {
+        return res.status(400).json({ error: 'account_id must be a numeric Steam (account/friend) id' });
+      }
+      const { normalizeLogin } = require('../api/twitch');
+      const rawLogin = body.twitch_login;
+      const hasLogin = rawLogin != null && String(rawLogin).trim() !== '';
+      const login = hasLogin ? normalizeLogin(rawLogin) : null;
+      if (hasLogin && !login) {
+        return res.status(400).json({
+          error: 'Invalid Twitch channel — 3–25 letters, numbers or underscores (a twitch.tv/… URL is fine too)',
+        });
+      }
+      const row = await db.setPlayerTwitchLogin(accountId, login);
+      res.json({
+        ok: true,
+        account_id: accountId,
+        twitch_login: row ? row.twitch_login : login,
+        cleared: !login,
+      });
+    } catch (err) {
+      console.error('[API] admin/twitch/link POST error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to update Twitch link' });
+    }
+  });
+
   router.post('/me/profile', express.json(), async (req, res) => {
     try {
       const accountId = req.session?.accountId;

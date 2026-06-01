@@ -15660,6 +15660,39 @@ async function getTwitchLinkedAccounts() {
   return r.rows || [];
 }
 
+// Admin-only — set or clear a player's linked Twitch channel
+// (player_profiles.extras->>'twitch_login') without touching any other
+// customization. Creates the player_profiles row if missing. `login` should
+// already be normalized by the caller; pass null/'' to clear the link.
+async function setPlayerTwitchLogin(accountId, login) {
+  if (!accountId) throw new Error('setPlayerTwitchLogin: account_id required');
+  const p = getPool();
+  if (login) {
+    const r = await p.query(
+      `INSERT INTO player_profiles (account_id, extras, updated_at)
+       VALUES ($1, jsonb_build_object('twitch_login', $2::text), NOW())
+       ON CONFLICT (account_id) DO UPDATE
+         SET extras = jsonb_set(COALESCE(player_profiles.extras, '{}'::jsonb),
+                                '{twitch_login}', to_jsonb($2::text), true),
+             updated_at = NOW()
+       RETURNING account_id, extras->>'twitch_login' AS twitch_login`,
+      [accountId, login]
+    );
+    return r.rows[0] || { account_id: accountId, twitch_login: login };
+  }
+  // Clear — strip the key so getTwitchLinkedAccounts() (which filters on a
+  // non-empty value) no longer surfaces this account.
+  const r = await p.query(
+    `UPDATE player_profiles
+        SET extras = COALESCE(extras, '{}'::jsonb) - 'twitch_login',
+            updated_at = NOW()
+      WHERE account_id = $1
+      RETURNING account_id, extras->>'twitch_login' AS twitch_login`,
+    [accountId]
+  );
+  return r.rows[0] || { account_id: accountId, twitch_login: null };
+}
+
 // Upsert. All fields are optional; pass null to clear an individual field.
 // The route handler validates premium-gated values BEFORE calling this.
 async function setPlayerProfileCustomization(accountId, fields = {}) {
@@ -25560,6 +25593,7 @@ module.exports = {
   getPlayerProfileCustomization,
   setPlayerProfileCustomization,
   getTwitchLinkedAccounts,
+  setPlayerTwitchLogin,
   getPlayerProfileCard,
   listOwnedFounderRings,
   setEquippedFounderRing,

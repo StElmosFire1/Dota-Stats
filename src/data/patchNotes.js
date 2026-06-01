@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.96",
+    "title": "Admin: link any player's Twitch channel to the Live hub",
+    "published_at": "2026-06-01",
+    "notes": [
+      "**No more raw SQL.** A new \"📺 Twitch channel links\" card in the Admin Panel (Overview tab) lets a superuser link or unlink any player's Twitch channel for the /live hub. Enter the player's account id + channel (a `twitch.tv/…` URL is accepted too) and save; leave the channel blank to clear it.",
+      "**Live list of who's linked.** The card lists every currently-linked account with a one-click Unlink button, so you can audit and tidy links without touching the database.",
+      "**Same validation as self-service.** The channel name is normalised and validated server-side (3–25 letters/numbers/underscores) just like the profile-settings field, and the row is created automatically if the player has no profile yet.",
+      "**Scope.** Full edition only (oceinhouse.gg), superuser-gated. Keyboard + screen-reader accessible; a11y gate green."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "8.95",
     "title": "Live now — watch inhouse players streaming on Twitch",
     "published_at": "2026-06-01",

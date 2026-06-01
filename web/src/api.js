@@ -184,6 +184,18 @@ export async function getAssetHotlinkReport(superuserKey, days = 7) {
   return superuserJson(`/admin/asset-hotlink-report${qs}`, { superuserKey });
 }
 
+// Admin Twitch links — list and set/clear a player's linked channel (superuser).
+export async function getTwitchLinks(superuserKey) {
+  return superuserJson('/admin/twitch/links', { superuserKey });
+}
+export async function setTwitchLink(accountId, twitchLogin, superuserKey) {
+  return superuserJson('/admin/twitch/link', {
+    method: 'POST',
+    body: { account_id: accountId, twitch_login: twitchLogin },
+    superuserKey,
+  });
+}
+
 // Task #497 — Lockdown gate runtime toggle (superuser).
 export async function getLockdownState(superuserKey) {
   return superuserJson('/admin/lockdown', { superuserKey });

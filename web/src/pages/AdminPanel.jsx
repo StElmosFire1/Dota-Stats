@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import { useTour } from '../components/SpotlightTour';
@@ -1082,6 +1082,157 @@ function AssetHotlinkCard({ superuserKey }) {
               </div>
             )}
           </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// Superuser-only — link/unlink any player's Twitch channel so they appear on
+// the /live hub. Writes player_profiles.extras->>'twitch_login' via the admin
+// API; saves the owner from running raw SQL on the prod database.
+function TwitchLinkCard({ superuserKey }) {
+  const [links, setLinks] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [channel, setChannel] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState('');
+
+  const load = useCallback(() => {
+    if (!superuserKey) return;
+    setLoading(true); setError('');
+    getTwitchLinks(superuserKey)
+      .then(d => setLinks(d.links || []))
+      .catch(e => setError(e.message || 'Failed to load Twitch links'))
+      .finally(() => setLoading(false));
+  }, [superuserKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!accountId.trim()) { setError('Enter the player\u2019s account id'); return; }
+    setSaving(true); setError(''); setNotice('');
+    try {
+      const r = await setTwitchLink(accountId.trim(), channel.trim(), superuserKey);
+      setNotice(r.cleared
+        ? `Cleared Twitch link for ${r.account_id}`
+        : `Linked ${r.account_id} \u2192 twitch.tv/${r.twitch_login}`);
+      setAccountId(''); setChannel('');
+      load();
+    } catch (err) {
+      setError(err.message || 'Failed to save Twitch link');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const unlink = async (acct) => {
+    setSaving(true); setError(''); setNotice('');
+    try {
+      await setTwitchLink(String(acct), '', superuserKey);
+      setNotice(`Cleared Twitch link for ${acct}`);
+      load();
+    } catch (err) {
+      setError(err.message || 'Failed to clear Twitch link');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section style={{ marginBottom: 36 }} aria-labelledby="ap-twitch-link-h">
+      <div className="card" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+          <h2 id="ap-twitch-link-h" style={{ margin: 0, fontSize: '1.05rem' }}>
+            📺 Twitch channel links
+          </h2>
+          <button
+            type="button"
+            className="btn"
+            onClick={load}
+            disabled={loading}
+            aria-label="Refresh Twitch links"
+          >
+            {loading ? '…' : '↻ Refresh'}
+          </button>
+        </div>
+
+        <p style={{ margin: '0 0 14px', fontSize: 13, color: 'var(--text-muted)' }}>
+          Link any player&rsquo;s Twitch channel so they show up on the <Link to="/live">/live</Link> hub.
+          The channel must opt in via their own profile, or you can set it here. Leave the channel
+          blank and submit to clear an existing link.
+        </p>
+
+        <form onSubmit={submit} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 16 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, color: 'var(--text-muted)' }}>
+            Account id
+            <input
+              type="text"
+              inputMode="numeric"
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              placeholder="e.g. 135991380"
+              style={{ fontSize: 14, padding: '6px 8px', minWidth: 160 }}
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, color: 'var(--text-muted)' }}>
+            Twitch channel
+            <input
+              type="text"
+              value={channel}
+              onChange={(e) => setChannel(e.target.value)}
+              placeholder="frangie or twitch.tv/frangie"
+              style={{ fontSize: 14, padding: '6px 8px', minWidth: 200 }}
+            />
+          </label>
+          <button type="submit" className="btn primary" disabled={saving}>
+            {saving ? 'Saving…' : 'Save link'}
+          </button>
+        </form>
+
+        {error ? <p style={{ color: 'var(--danger, #e25555)', fontSize: 13, margin: '0 0 10px' }}>{error}</p> : null}
+        {notice ? <p style={{ color: 'var(--accent)', fontSize: 13, margin: '0 0 10px' }}>{notice}</p> : null}
+
+        {links && links.length > 0 ? (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}>
+                <th style={{ padding: '6px 8px' }}>Player</th>
+                <th style={{ padding: '6px 8px' }}>Account id</th>
+                <th style={{ padding: '6px 8px' }}>Channel</th>
+                <th style={{ padding: '6px 8px' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {links.map((l) => (
+                <tr key={l.account_id} style={{ borderTop: '1px solid var(--border, #2a3142)' }}>
+                  <td style={{ padding: '6px 8px' }}>{l.display_name || '—'}</td>
+                  <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{l.account_id}</td>
+                  <td style={{ padding: '6px 8px' }}>
+                    <a href={`https://twitch.tv/${l.twitch_login}`} target="_blank" rel="noopener noreferrer">
+                      twitch.tv/{l.twitch_login}
+                    </a>
+                  </td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => unlink(l.account_id)}
+                      disabled={saving}
+                      aria-label={`Unlink Twitch channel for account ${l.account_id}`}
+                    >
+                      Unlink
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          !loading && <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>No channels linked yet.</p>
         )}
       </div>
     </section>
@@ -5718,6 +5869,9 @@ export default function AdminPanel() {
 
       {/* Task #498 — Lockdown access log (hidden when the gate is off) */}
       <LockdownAttemptsCard superuserKey={superuserKey} />
+
+      {/* Twitch channel links for the /live hub */}
+      <TwitchLinkCard superuserKey={superuserKey} />
 
       {/* Task #492 — AI agent traffic */}
       <AgentTrafficCard superuserKey={superuserKey} />
