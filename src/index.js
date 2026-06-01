@@ -224,6 +224,17 @@ async function main() {
     console.log('[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)');
   }
 
+  // "Live now" hub — poll Twitch every ~60s for inhouse players who linked a
+  // channel. Self-disables when TWITCH_CLIENT_ID/SECRET are unset; failures
+  // never block startup.
+  try {
+    const db = require('./db');
+    const { getTwitchPoller } = require('./api/twitchPoller');
+    getTwitchPoller(db).start();
+  } catch (err) {
+    console.warn('[Startup] Twitch live poller not started:', err.message);
+  }
+
   // Task #378 — Pro replay browser sync. Polls OpenDota /proMatches every
   // ~6h and drains a per-match detail queue (picks/bans/players) at 1 req/s
   // — gated on the `pro_replay_browser` feature flag state being non-off

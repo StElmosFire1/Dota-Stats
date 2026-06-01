@@ -1817,6 +1817,28 @@ export default function SettingsProfile() {
             <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
               Only https URLs on the official Twitch / YouTube / Steam domains are accepted.
             </p>
+
+            {/* Live now hub — link a Twitch channel so you show up on /live when streaming */}
+            <div style={{ marginTop: 16 }}>
+              <label htmlFor="twitch-login-input" style={{ display: 'block', fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
+                Twitch channel (for the Live now hub)
+              </label>
+              <input
+                id="twitch-login-input"
+                type="text"
+                value={extras.twitch_login || ''}
+                onChange={(e) => setExtra('twitch_login', e.target.value.trim().slice(0, 60) || null)}
+                placeholder="your_twitch_login"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+                style={{ width: '100%', maxWidth: 360, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13 }}
+              />
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                Just your channel name (or a twitch.tv link). When you go live, you'll appear on the{' '}
+                <Link to="/live">Live now</Link> page with an embedded player and chat.
+              </p>
+            </div>
           </section>
 
           <div style={{ marginTop: 28, display: 'flex', gap: 10 }}>

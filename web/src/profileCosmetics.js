@@ -254,6 +254,8 @@ export const DEFAULT_EXTRAS = {
   // auto MMR / W-L stats line, and a toggle for the MMR pill.
   share_card_tagline: null,
   share_card_show_mmr: true,
+  // "Live now" hub — linked Twitch channel login (or null).
+  twitch_login: null,
   // Task #447 — public embeddable stat cards (iframe + PNG) opt-out.
   // Default true so existing players are opted-in; flip false on
   // /settings/profile to make `/embed/player/:id` + `/og/player/:id.png`

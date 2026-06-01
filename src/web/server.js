@@ -15180,6 +15180,22 @@ NOTES
     }
   });
 
+  // "Live now" hub — inhouse players currently streaming on Twitch. Reads the
+  // in-memory cache maintained by the TwitchPoller (started in src/index.js);
+  // never calls Twitch on the request path. Public (no auth) — it only exposes
+  // already-public stream metadata for opted-in linked channels.
+  router.get('/twitch/live', async (req, res) => {
+    try {
+      const { getTwitchPoller } = require('../api/twitchPoller');
+      const snap = getTwitchPoller(db).getLive();
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json(snap);
+    } catch (err) {
+      console.warn('[api] /twitch/live failed:', err.message);
+      res.json({ configured: false, updatedAt: 0, live: [] });
+    }
+  });
+
   router.post('/me/profile', express.json(), async (req, res) => {
     try {
       const accountId = req.session?.accountId;

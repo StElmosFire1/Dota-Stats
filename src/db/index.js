@@ -15644,6 +15644,22 @@ async function getPlayerProfileCustomization(accountId) {
   return row;
 }
 
+// "Live now" hub — every account that has linked a Twitch channel via
+// player_profiles.extras.twitch_login. Joins nicknames for a display name so
+// the hub can label streams with the player's inhouse handle.
+async function getTwitchLinkedAccounts() {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT pp.account_id,
+            pp.extras->>'twitch_login' AS twitch_login,
+            n.nickname AS display_name
+       FROM player_profiles pp
+       LEFT JOIN nicknames n ON n.account_id::text = pp.account_id::text
+      WHERE COALESCE(pp.extras->>'twitch_login', '') <> ''`
+  );
+  return r.rows || [];
+}
+
 // Upsert. All fields are optional; pass null to clear an individual field.
 // The route handler validates premium-gated values BEFORE calling this.
 async function setPlayerProfileCustomization(accountId, fields = {}) {
@@ -25543,6 +25559,7 @@ module.exports = {
   getMvpAttitudeTrends,
   getPlayerProfileCustomization,
   setPlayerProfileCustomization,
+  getTwitchLinkedAccounts,
   getPlayerProfileCard,
   listOwnedFounderRings,
   setEquippedFounderRing,

@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.95",
+    "title": "Live now — watch inhouse players streaming on Twitch",
+    "published_at": "2026-06-01",
+    "notes": [
+      "**New /live hub.** A dedicated \"Live now\" page lists every inhouse player currently streaming on Twitch, with an embedded player + live chat for the featured stream and a switchable list of everyone else who's live. Find it under the Community menu.",
+      "**Link your channel.** Add your Twitch channel on Profile Settings (under the social links) and you'll appear on the hub automatically whenever you go live — no manual toggling.",
+      "**Light on Twitch's API.** A background poller refreshes who's live about once a minute and caches it server-side, so the page loads instantly and we stay well under rate limits. The hub self-disables cleanly if Twitch credentials aren't configured.",
+      "**Scope.** Full edition only (oceinhouse.gg). Keyboard + screen-reader accessible; a11y gate green."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "8.94",
     "title": "Hype trailer polish — clean tier crests, rock-steady titles",
     "published_at": "2026-06-01",

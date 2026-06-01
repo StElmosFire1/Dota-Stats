@@ -267,6 +267,19 @@ function isAllowedSocialUrl(field, raw) {
   } catch { return false; }
 }
 
+// Canonical Twitch login for the "Live now" hub: lower-case [a-z0-9_], 3-25
+// chars. Accepts a bare login or a full twitch.tv URL; anything else clears it.
+function normalizeTwitchLogin(raw) {
+  if (raw == null) return null;
+  let s = String(raw).trim();
+  if (!s) return null;
+  const m = s.match(/twitch\.tv\/([A-Za-z0-9_]+)/i);
+  if (m) s = m[1];
+  s = s.toLowerCase().replace(/[^a-z0-9_]/g, '');
+  if (s.length < 3 || s.length > 25) return null;
+  return s;
+}
+
 function isValidHeroBorder(c) {
   if (c == null || c === '') return true;
   return HERO_BORDER_COLORS.includes(c);
@@ -328,6 +341,9 @@ function validateExtras(raw) {
     share_card_tagline: shareCardTagline,
     share_card_show_mmr: shareCardShowMmr,
     embed_enabled: embedEnabled,
+    // "Live now" hub — linked Twitch channel (canonical login or null). No
+    // Pro-gating; every signed-in player can surface their own stream.
+    twitch_login: normalizeTwitchLogin(e.twitch_login),
   };
   if (!isValidHeroBorder(out.pinned_hero_border)) return { ok: false, error: 'Unknown pinned-hero border colour' };
   if (!isValidFlair(out.flair_override)) return { ok: false, error: 'Unknown flair override' };

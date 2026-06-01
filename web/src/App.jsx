@@ -59,6 +59,7 @@ function ProReplaysGuard() {
 }
 const Players = lazy(() => import('./pages/Players'));
 const Lootbox = lazy(() => import('./pages/Lootbox'));
+const TwitchLive = lazy(() => import('./pages/TwitchLive'));
 const Collection = lazy(() => import('./pages/Collection'));
 const OverallStats = lazy(() => import('./pages/OverallStats'));
 const PositionStats = lazy(() => import('./pages/PositionStats'));
@@ -824,6 +825,7 @@ function Nav() {
           <DropdownItem to={liveCount > 0 ? '/players?tab=live' : '/players'}>
             {liveCount > 0 ? `Players · ${liveCount} live` : 'Players'}
           </DropdownItem>
+          <DropdownItem to="/live">Live Streams</DropdownItem>
           <DropdownItem to="/coaches">Coaching Marketplace</DropdownItem>
           <DropdownItem to="/sponsorships">Sponsor a Slot</DropdownItem>
           <DropdownItem to="/social">Social Feed</DropdownItem>
@@ -1373,6 +1375,7 @@ function AppRoutes() {
                 <Route path="/" element={<Home />} />
                 <Route path="/how-it-works" element={<HowItWorks />} />
                 <Route path="/leaderboard" element={<Leaderboard />} />
+                <Route path="/live" element={<TwitchLive />} />
                 <Route path="/matches" element={<MatchList />} />
                 <Route path="/this-week" element={<ThisWeek />} />
                 <Route path="/match/:matchId" element={<MatchDetail />} />
