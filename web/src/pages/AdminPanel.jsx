@@ -5615,6 +5615,199 @@ function OpsHistoryCard({ superuserKey }) {
   );
 }
 
+// ── Ops Sparklines (Overview tab) ─────────────────────────────────────────
+// Compact at-a-glance health card for the Overview tab. Pulls the persisted
+// 1-minute telemetry samples from GET /api/admin/ops/history and renders one
+// inline SVG line chart per metric so an operator can spot error spikes /
+// throughput drops without opening the full /admin/ops dashboard or the raw
+// log buffer. Self-contained (no charting lib): the sparkline is a single
+// normalised <path>. Supports a 1h/6h/24h/7d window selector, a manual
+// refresh button, and a configurable auto-refresh interval.
+function MiniSparkline({ values, color = 'var(--brass, #c5a975)', height = 30, label }) {
+  const defined = values.filter(v => v != null && Number.isFinite(v));
+  if (defined.length < 2) {
+    return (
+      <div style={{ marginTop: 6, height: height + 12, color: 'var(--text-muted)', fontSize: 11, display: 'flex', alignItems: 'center' }}>
+        collecting…
+      </div>
+    );
+  }
+  const min = Math.min(...defined);
+  const max = Math.max(...defined);
+  const span = max - min || 1;
+  const w = 240;
+  const h = height;
+  const n = values.length;
+  let path = '';
+  let started = false;
+  values.forEach((v, i) => {
+    if (v == null || !Number.isFinite(v)) return;
+    const x = n === 1 ? 0 : (i / (n - 1)) * w;
+    const y = h - ((v - min) / span) * h;
+    path += `${started ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)} `;
+    started = true;
+  });
+  const last = defined[defined.length - 1];
+  return (
+    <div style={{ marginTop: 6 }} aria-label={label}>
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none"
+        style={{ width: '100%', height, display: 'block' }} aria-hidden="true">
+        <path d={path} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+        <span>min {Math.round(min)}</span>
+        <span>max {Math.round(max)}</span>
+        <span>now {Math.round(last)}</span>
+      </div>
+    </div>
+  );
+}
+
+function OpsSparklinesCard({ superuserKey }) {
+  const [samples, setSamples] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [hours, setHours] = React.useState(24);
+  const [autoMs, setAutoMs] = React.useState(60000);
+  const [error, setError] = React.useState('');
+  const [lastLoaded, setLastLoaded] = React.useState(null);
+
+  const load = React.useCallback(() => {
+    if (!superuserKey) return;
+    setLoading(true); setError('');
+    getAdminOpsHistory(superuserKey, hours)
+      .then(d => { setSamples(d.samples || []); setLastLoaded(Date.now()); })
+      .catch(e => setError(e.message || 'Failed to load'))
+      .finally(() => setLoading(false));
+  }, [superuserKey, hours]);
+
+  // Initial load + reload whenever the window changes.
+  React.useEffect(() => { load(); }, [load]);
+
+  // Configurable auto-refresh. 0 disables.
+  React.useEffect(() => {
+    if (!autoMs || !superuserKey) return undefined;
+    const t = setInterval(load, autoMs);
+    return () => clearInterval(t);
+  }, [autoMs, load, superuserKey]);
+
+  // Walk the sample array once, building one value array per metric.
+  // Cumulative counters (provisioner success/failure totals) are converted
+  // to per-sample deltas; a counter reset (process restart) clamps to 0 so a
+  // restart doesn't render as a misleading negative spike.
+  const series = React.useMemo(() => {
+    const empty = {
+      http5xx: [], parserDur: [], parserQueue: [], stripeLag: [],
+      provInFlight: [], provSucc: [], provFail: [], discordLatency: [], pushSubs: [],
+    };
+    if (!samples || !samples.length) return empty;
+    const out = { ...empty };
+    let prevSucc = null;
+    let prevFail = null;
+    for (const s of samples) {
+      out.http5xx.push(s.http5xx);
+      out.parserDur.push(s.parserLastDurationMs);
+      out.parserQueue.push(s.parserQueueDepth);
+      out.stripeLag.push(s.stripeMaxLagMs);
+      out.provInFlight.push(s.provisionerInFlight);
+      out.discordLatency.push(s.discordGatewayLatencyMs);
+      out.pushSubs.push(s.pushSubscriptionCount);
+      out.provSucc.push(prevSucc == null || s.provisionerSuccessTotal < prevSucc ? 0 : s.provisionerSuccessTotal - prevSucc);
+      out.provFail.push(prevFail == null || s.provisionerFailureTotal < prevFail ? 0 : s.provisionerFailureTotal - prevFail);
+      prevSucc = s.provisionerSuccessTotal;
+      prevFail = s.provisionerFailureTotal;
+    }
+    return out;
+  }, [samples]);
+
+  const METRICS = [
+    { key: 'http5xx', title: 'HTTP 5xx (60m)', values: series.http5xx, color: '#f08a8a' },
+    { key: 'parserDur', title: 'Parser last parse (ms)', values: series.parserDur },
+    { key: 'parserQueue', title: 'Parser queue depth', values: series.parserQueue },
+    { key: 'provSucc', title: 'Provisions ok /min', values: series.provSucc, color: '#6dd58c' },
+    { key: 'provFail', title: 'Provisions failed /min', values: series.provFail, color: '#f08a8a' },
+    { key: 'provInFlight', title: 'Provisions in-flight', values: series.provInFlight },
+    { key: 'stripeLag', title: 'Stripe webhook lag (ms)', values: series.stripeLag },
+    { key: 'discordLatency', title: 'Discord latency (ms)', values: series.discordLatency },
+    { key: 'pushSubs', title: 'Push subscriptions', values: series.pushSubs },
+  ];
+
+  const HOUR_OPTIONS = [1, 6, 24, 168];
+  const AUTO_OPTIONS = [
+    { ms: 0, label: 'Off' },
+    { ms: 10000, label: '10s' },
+    { ms: 30000, label: '30s' },
+    { ms: 60000, label: '60s' },
+  ];
+
+  return (
+    <section style={{ marginBottom: 36 }} aria-labelledby="ap-ops-sparklines-h">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <h2 id="ap-ops-sparklines-h" style={{ margin: 0, fontSize: '1.05rem' }}>📈 Ops Sparklines</h2>
+        <div role="group" aria-label="Time window for ops sparklines" style={{ display: 'flex', gap: 4 }}>
+          {HOUR_OPTIONS.map(h => (
+            <button
+              key={h}
+              type="button"
+              onClick={() => setHours(h)}
+              aria-pressed={hours === h}
+              style={{
+                padding: '3px 10px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
+                border: `1px solid ${hours === h ? 'var(--accent)' : 'var(--border)'}`,
+                background: hours === h ? 'rgba(197,169,117,0.15)' : 'transparent',
+                color: hours === h ? 'var(--accent)' : 'var(--text-muted)',
+                fontWeight: hours === h ? 700 : 400,
+              }}
+            >
+              {h < 24 ? `${h}h` : h === 24 ? '24h' : '7d'}
+            </button>
+          ))}
+        </div>
+        <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          Auto-refresh:
+          <select
+            value={autoMs}
+            onChange={e => setAutoMs(Number(e.target.value))}
+            aria-label="Auto-refresh interval for ops sparklines"
+            style={{ fontSize: 12, padding: '2px 6px' }}
+          >
+            {AUTO_OPTIONS.map(o => <option key={o.ms} value={o.ms}>{o.label}</option>)}
+          </select>
+        </label>
+        <button type="button" className="btn" style={{ fontSize: 12, padding: '4px 12px' }}
+          onClick={load} disabled={loading}>
+          {loading ? 'Loading…' : 'Refresh'}
+        </button>
+        {lastLoaded && (
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            updated {new Date(lastLoaded).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </span>
+        )}
+      </div>
+      {error && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{error}</div>}
+      {samples !== null && samples.length === 0 && !error && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          No telemetry samples in the selected window yet — the server records one sample per minute.
+        </p>
+      )}
+      {samples !== null && samples.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+          {METRICS.map(m => (
+            <div key={m.key} style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: 8, padding: '10px 12px',
+            }}>
+              <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-primary)', marginBottom: 2 }}>
+                {m.title}
+              </div>
+              <MiniSparkline values={m.values} color={m.color} label={`${m.title} trend over last ${hours < 24 ? `${hours} hours` : hours === 24 ? '24 hours' : '7 days'}`} />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ── V3 Modifier History Debug ─────────────────────────────────────────────
 // Lets a superuser look up any player's per-match V3 PERF modifier history
 // for debugging rating anomalies. Uses the existing public (unauthenticated)
@@ -6795,6 +6988,9 @@ export default function AdminPanel() {
           />
         </div>
       </section>
+
+      {/* Task #702 — Ops history sparklines */}
+      <OpsSparklinesCard superuserKey={superuserKey} />
 
       {/* Task #497 — Site lockdown toggle */}
       <LockdownCard superuserKey={superuserKey} />

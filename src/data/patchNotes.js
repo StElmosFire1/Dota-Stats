@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "9.01",
+    "title": "Admin: ops history sparklines on the Overview tab",
+    "published_at": "2026-06-02",
+    "notes": [
+      "**Ops Sparklines card** added to Admin Panel → Overview tab. Renders one compact inline line chart per ops metric from the persisted 1-minute telemetry samples (GET /api/admin/ops/history): HTTP 5xx (60m), parser last-parse duration, parser queue depth, provisions ok/min, provisions failed/min, provisions in-flight, Stripe webhook lag, Discord gateway latency, and push subscription count. Each sparkline shows min/max/now so operators can eyeball error spikes or throughput drops without opening the full /admin/ops dashboard or the raw log buffer.",
+      "**Cumulative counters shown as deltas.** Provisioner success/failure totals are differenced into per-sample rates, with a process-restart clamp so a counter reset never renders as a negative spike.",
+      "**Window + refresh controls.** 24h default with a 1h / 6h / 24h / 7d selector, a manual Refresh button, and a configurable auto-refresh interval (Off / 10s / 30s / 60s) plus a last-updated timestamp.",
+      "**Scope.** Full edition only, superuser-gated. No charting dependency — each sparkline is a single normalised SVG path. A11y gate green."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.00",
     "title": "Admin: economy & pricing editor — all coin/Stripe prices now live-editable",
     "published_at": "2026-06-02",
