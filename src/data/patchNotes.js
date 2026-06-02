@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "9.00",
+    "title": "Admin: economy & pricing editor — all coin/Stripe prices now live-editable",
+    "published_at": "2026-06-02",
+    "notes": [
+      "**Economy & Pricing panel** added to Admin Panel → Gifts, Coaching & Tournaments tab. A superuser can now view and override every hardcoded price point without a redeploy: Pro Monthly and Lifetime Stripe prices; Gift Season Pass price; Profile Frame Stripe prices (Gold, Neon Blue, Cosmic, Fire); Founders Ring prices (Inscribed legacy, Static-tier individual rings, Animated-tier individual rings); all five Coin Cosmetic price categories (voice packs, layout themes, premium frames, static founder rings, animated founder rings); and all four Coin Top-Up Pack definitions (coins awarded + AUD price for Starter, Standard, Premium, Whale).",
+      "**DB-backed with 30 s cache.** Overrides are stored in `site_settings` under key `economy_price_overrides` (JSON blob). A 30-second in-process TTL cache means new purchases see the updated price within 30 s of an admin save; the cache is explicitly cleared on save so the window is usually instant. Hardcoded defaults remain the fallback when no override exists. Env-var overrides (PRO_MONTHLY_PRICE_CENTS, etc.) are still respected when no DB override is set.",
+      "**Audit trail.** Every save writes a row to the new `economy_price_audit` table (changed_by Steam account ID, old JSON, new JSON, timestamp). The last 10 audit entries are displayed at the bottom of the panel.",
+      "**Search-indexed.** The new panel is indexed in admin search as 'Economy & Pricing' and scrolls directly to the section anchor.",
+      "**Scope.** Full edition only, superuser-gated. A11y gate green — all inputs carry aria-label, all buttons have accessible text."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "8.99",
     "title": "Admin: notification test harness + background-job run-now center",
     "published_at": "2026-06-01",

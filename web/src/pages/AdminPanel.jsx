@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import { useTour } from '../components/SpotlightTour';
@@ -6644,6 +6644,7 @@ export default function AdminPanel() {
     { label: 'Unregistered Players', tab: 'users', anchor: 'ap-anchor-unregistered-players', icon: '👤', kw: 'orphan link account' },
     { label: 'Discord ID Collisions', tab: 'users', anchor: 'ap-anchor-discord-collisions', icon: '🔗', kw: 'discord duplicate merge split collision unique link reconcile' },
     { label: 'Sign-Up Requests', tab: 'users', anchor: 'signup-requests', icon: '📋', kw: 'applications join approve reject pending' },
+    { label: 'Economy & Pricing', tab: 'marketplace', anchor: 'ap-anchor-economy-pricing', icon: '💰', kw: 'coin prices packs frame gift pro founders ring economy pricing admin editable live override stripe aud cents monthly lifetime season pass' },
     { label: 'Gift Purchases', tab: 'marketplace', anchor: 'ap-anchor-gifts', icon: '🎁', kw: 'pro gift stripe' },
     { label: 'Founders Pass Refunds', tab: 'marketplace', anchor: 'ap-anchor-founders-refunds', icon: '💍', kw: 'founders ring refund cap race stripe audit failed' },
     { label: 'Coaching Marketplace', tab: 'marketplace', anchor: 'ap-anchor-coaching', icon: '🎓', kw: 'coach payout connect bookings' },
@@ -6948,6 +6949,9 @@ export default function AdminPanel() {
       </>)}
 
       {activeTab === 'marketplace' && (<>
+      {/* Economy & Pricing — live-editable price overrides (Task #700) */}
+      <EconomyPricingPanel superuserKey={superuserKey} />
+
       {/* Gift Purchases — audit all sent/received gifts */}
       <GiftPurchasesPanel superuserKey={superuserKey} />
 
@@ -7783,6 +7787,245 @@ function ReplayInspectorPanel({ superuserKey }) {
 }
 
 // ───────── Gift Purchases audit panel ─────────
+// ── Economy & Pricing panel (Task #700) ─────────────────────────────────────
+// All coin/Stripe prices are now admin-editable via DB overrides that take
+// effect within 30 s for new purchases (instantly on save via cache clear).
+const ECON_PRICE_GROUPS = [
+  {
+    label: 'Pro Membership',
+    fields: [
+      { key: 'pro_monthly_cents',  label: 'Pro Monthly price',           unit: 'AUD cents', note: 'Stripe checkout. Default $6.00 AUD (600 cents).' },
+      { key: 'pro_lifetime_cents', label: 'Pro Lifetime / Gift Pro price', unit: 'AUD cents', note: 'Stripe checkout. Default $50.00 AUD (5000 cents).' },
+    ],
+  },
+  {
+    label: 'Gift Checkout',
+    fields: [
+      { key: 'gift_season_pass_cents', label: 'Gift: Season Pass price', unit: 'AUD cents', note: 'Default $7.99 AUD (799 cents).' },
+    ],
+  },
+  {
+    label: 'Profile Frames (Stripe)',
+    fields: [
+      { key: 'frame_gold_cents',     label: 'Gold frame',     unit: 'AUD cents', note: 'Default $2.99 AUD (299 cents).' },
+      { key: 'frame_neon_blue_cents', label: 'Neon Blue frame', unit: 'AUD cents', note: 'Default $2.99 AUD (299 cents).' },
+      { key: 'frame_cosmic_cents',   label: 'Cosmic frame',   unit: 'AUD cents', note: 'Default $3.99 AUD (399 cents).' },
+      { key: 'frame_fire_cents',     label: 'Fire frame',     unit: 'AUD cents', note: 'Default $3.99 AUD (399 cents).' },
+    ],
+  },
+  {
+    label: 'Founders Rings (Stripe)',
+    fields: [
+      { key: 'founders_ring_cents',          label: 'Founders Pass (Inscribed) ring',     unit: 'AUD cents', note: 'Legacy capped ring. Default $9.99 AUD (999 cents).' },
+      { key: 'founder_ring_static_cents',    label: 'Individual Static rings (Classic, Laurel)', unit: 'AUD cents', note: 'Default $4.99 AUD (499 cents).' },
+      { key: 'founder_ring_animated_cents',  label: 'Individual Animated rings (all others)',    unit: 'AUD cents', note: 'Default $7.99 AUD (799 cents).' },
+    ],
+  },
+  {
+    label: 'Coin Cosmetic Prices',
+    fields: [
+      { key: 'coin_voice_pack_cents',            label: 'Voice Packs (all 5 SKUs)',               unit: 'coins', note: 'Default 800 🪙.' },
+      { key: 'coin_layout_theme_cents',          label: 'Layout Themes (all 5 SKUs)',             unit: 'coins', note: 'Default 1200 🪙.' },
+      { key: 'coin_frame_cents',                 label: 'Premium Frames (Neon Blue, Cosmic, Fire)', unit: 'coins', note: 'Default 2500 🪙.' },
+      { key: 'coin_founder_ring_static_cents',   label: 'Static Founder Rings (Classic, Laurel)',  unit: 'coins', note: 'Default 1200 🪙.' },
+      { key: 'coin_founder_ring_animated_cents', label: 'Animated Founder Rings (all others)',     unit: 'coins', note: 'Default 2000 🪙.' },
+    ],
+  },
+  {
+    label: 'Coin Top-Up Packs',
+    fields: [
+      { key: 'coin_pack_starter_coins',   label: 'Starter — coins awarded', unit: 'coins',     note: 'Default 500.' },
+      { key: 'coin_pack_starter_cents',   label: 'Starter — price',         unit: 'AUD cents', note: 'Default $4.99 AUD (499 cents).' },
+      { key: 'coin_pack_standard_coins',  label: 'Standard — coins awarded', unit: 'coins',    note: 'Default 1200.' },
+      { key: 'coin_pack_standard_cents',  label: 'Standard — price',         unit: 'AUD cents', note: 'Default $9.99 AUD (999 cents).' },
+      { key: 'coin_pack_premium_coins',   label: 'Premium — coins awarded', unit: 'coins',     note: 'Default 2800.' },
+      { key: 'coin_pack_premium_cents',   label: 'Premium — price',         unit: 'AUD cents', note: 'Default $19.99 AUD (1999 cents).' },
+      { key: 'coin_pack_whale_coins',     label: 'Whale — coins awarded',   unit: 'coins',     note: 'Default 7500.' },
+      { key: 'coin_pack_whale_cents',     label: 'Whale — price',           unit: 'AUD cents', note: 'Default $49.99 AUD (4999 cents).' },
+    ],
+  },
+];
+
+function EconomyPricingPanel({ superuserKey }) {
+  const [data, setData] = React.useState(null);
+  const [draft, setDraft] = React.useState({});
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+  const [open, setOpen] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    if (!superuserKey) return;
+    try {
+      const j = await getAdminEconomyPrices(superuserKey);
+      setData(j);
+      setDraft({});
+      setMsg('');
+    } catch (e) { setMsg(`Load error: ${e.message}`); }
+  }, [superuserKey]);
+
+  React.useEffect(() => { if (open) load(); }, [open, load]);
+
+  const handleChange = (key, val) => setDraft(d => ({ ...d, [key]: val }));
+  const handleReset = (key) => setDraft(d => { const n = { ...d }; delete n[key]; return { ...n, [key]: '' }; });
+
+  const save = async () => {
+    if (!window.confirm('Save all economy price overrides? Empty fields will revert to the hardcoded default.')) return;
+    setSaving(true); setMsg('');
+    try {
+      await setAdminEconomyPrices(draft, superuserKey);
+      setMsg('Prices saved. Cache cleared — effective for new purchases immediately.');
+      load();
+    } catch (e) { setMsg(`Save error: ${e.message}`); }
+    finally { setSaving(false); }
+  };
+
+  const fmtAud = (cents) => cents != null ? `$${(cents / 100).toFixed(2)} AUD` : '—';
+  const fmtDate = (ts) => ts ? new Date(ts).toLocaleString('en-AU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+
+  return (
+    <section style={{ marginBottom: 36 }} aria-labelledby="ap-anchor-economy-pricing">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+        <h2 id="ap-anchor-economy-pricing" style={{ margin: 0 }}>💰 Economy &amp; Pricing</h2>
+        <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+          style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer' }}>
+          {open ? 'Collapse ▲' : 'Expand ▼'}
+        </button>
+      </div>
+      {!open && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+          Live-editable overrides for all Stripe and coin prices — Pro, gifts, frames, founders rings, coin cosmetics, and top-up packs. Click Expand to edit.
+        </p>
+      )}
+      {open && (
+        <>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0, marginBottom: 12 }}>
+            Override any price below. Leave a field blank to use the hardcoded default. Changes take effect immediately for new purchases (30 s TTL cache, cleared on save).
+          </p>
+          {msg && (
+            <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 6, background: msg.startsWith('Save error') || msg.startsWith('Load error') ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)', color: msg.startsWith('Save error') || msg.startsWith('Load error') ? '#ef4444' : 'var(--accent-green)', fontSize: 13 }}>
+              {msg}
+            </div>
+          )}
+          {!data && !msg && <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading…</p>}
+          {data && ECON_PRICE_GROUPS.map(group => (
+            <div key={group.label} style={{ marginBottom: 20 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, marginTop: 0 }}>
+                {group.label}
+              </h3>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                    <th style={{ padding: '4px 10px 4px 0', fontWeight: 500, minWidth: 220 }}>Price point</th>
+                    <th style={{ padding: '4px 10px', fontWeight: 500 }}>Default</th>
+                    <th style={{ padding: '4px 10px', fontWeight: 500 }}>Current effective</th>
+                    <th style={{ padding: '4px 0', fontWeight: 500 }}>Override</th>
+                    <th style={{ padding: '4px 0 4px 8px', fontWeight: 500, width: 70 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.fields.map(f => {
+                    const def = data.defaults?.[f.key];
+                    const eff = data.effective?.[f.key];
+                    const ov  = data.overrides?.[f.key];
+                    const draftVal = draft[f.key];
+                    const displayVal = draftVal !== undefined ? draftVal : (ov != null ? String(ov) : '');
+                    const isOverridden = ov != null;
+                    const isDirty = draftVal !== undefined;
+                    return (
+                      <tr key={f.key} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td style={{ padding: '7px 10px 7px 0' }}>
+                          <span style={{ fontWeight: isOverridden ? 600 : 400 }}>{f.label}</span>
+                          <div style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 2 }}>{f.note}</div>
+                        </td>
+                        <td style={{ padding: '7px 10px', color: 'var(--text-muted)' }}>
+                          {def} {f.unit}
+                        </td>
+                        <td style={{ padding: '7px 10px', color: isOverridden ? 'var(--accent)' : 'var(--text-muted)', fontWeight: isOverridden ? 600 : 400 }}>
+                          {eff} {f.unit}
+                          {isOverridden && <span style={{ fontSize: 10, marginLeft: 4, color: 'var(--accent)' }}>overridden</span>}
+                        </td>
+                        <td style={{ padding: '7px 10px 7px 0' }}>
+                          <input
+                            type="number" min="1" step="1"
+                            value={displayVal}
+                            placeholder={String(def)}
+                            aria-label={`Override price for ${f.label}`}
+                            onChange={e => handleChange(f.key, e.target.value)}
+                            style={{ width: 100, padding: '4px 8px', borderRadius: 5, border: `1px solid ${isDirty ? 'var(--accent)' : 'var(--border)'}`, background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13 }}
+                          />
+                        </td>
+                        <td style={{ padding: '7px 0 7px 8px' }}>
+                          {(isOverridden || (isDirty && displayVal !== '')) && (
+                            <button type="button" onClick={() => handleReset(f.key)}
+                              aria-label={`Reset ${f.label} to default`}
+                              style={{ fontSize: 11, padding: '4px 8px', borderRadius: 4, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                              ↩ Reset
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ))}
+          {data && (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 16, flexWrap: 'wrap' }}>
+              <button type="button" onClick={save} disabled={saving}
+                style={{ padding: '7px 20px', borderRadius: 6, background: 'var(--accent-blue)', color: '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
+                {saving ? 'Saving…' : '💾 Save all overrides'}
+              </button>
+              <button type="button" onClick={load}
+                style={{ padding: '7px 14px', borderRadius: 6, background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 13 }}>
+                Refresh
+              </button>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Blank fields revert to the hardcoded default on save.
+              </span>
+            </div>
+          )}
+
+          {data?.audit?.length > 0 && (
+            <div style={{ marginTop: 24 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+                Recent changes
+              </h3>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                    <th style={{ padding: '4px 10px 4px 0', fontWeight: 500 }}>When</th>
+                    <th style={{ padding: '4px 10px', fontWeight: 500 }}>Changed by</th>
+                    <th style={{ padding: '4px 0', fontWeight: 500 }}>Keys changed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.audit.map(row => {
+                    const newObj = (() => { try { return JSON.parse(row.new_value || '{}'); } catch { return {}; } })();
+                    const oldObj = (() => { try { return JSON.parse(row.old_value || '{}'); } catch { return {}; } })();
+                    const changed = Object.keys({ ...newObj, ...oldObj }).filter(k => newObj[k] !== oldObj[k]);
+                    return (
+                      <tr key={row.id} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td style={{ padding: '5px 10px 5px 0', whiteSpace: 'nowrap' }}>{fmtDate(row.changed_at)}</td>
+                        <td style={{ padding: '5px 10px' }}>{row.changed_by}</td>
+                        <td style={{ padding: '5px 0', color: 'var(--text-muted)', maxWidth: 400 }}>
+                          {changed.length > 0
+                            ? changed.map(k => `${k}: ${oldObj[k] ?? 'default'} → ${newObj[k] ?? 'default'}`).join(', ')
+                            : 'no changes'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 function GiftPurchasesPanel({ superuserKey }) {
   const [gifts, setGifts] = React.useState(null);
   const [loading, setLoading] = React.useState(false);

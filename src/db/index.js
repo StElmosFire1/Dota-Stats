@@ -1019,6 +1019,15 @@ async function init() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS economy_price_audit (
+        id SERIAL PRIMARY KEY,
+        changed_by TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT NOT NULL,
+        changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
     // v5.95 — drop the unused `use_v3_trueskill` row left over from the
     // V1/V3 toggle era. The setting was ignored at runtime since v5.90 and
     // is now physically removed so it stops appearing in admin tooling /
@@ -5424,6 +5433,33 @@ async function setSmurfThreshold(value) {
   }
   await setSetting('smurf_threshold', String(n));
   return n;
+}
+
+// ── Economy price overrides (Task #700) ─────────────────────────────────────
+async function getEconomyPriceOverrides() {
+  return getSetting('economy_price_overrides');
+}
+
+async function setEconomyPriceOverrides(overrides, changedBy) {
+  const p = getPool();
+  const old = await getSetting('economy_price_overrides');
+  const newVal = JSON.stringify(overrides);
+  await setSetting('economy_price_overrides', newVal);
+  await p.query(
+    `INSERT INTO economy_price_audit (changed_by, old_value, new_value) VALUES ($1, $2, $3)`,
+    [changedBy || 'unknown', old, newVal]
+  );
+}
+
+async function listEconomyPriceAudit(limit = 20) {
+  const p = getPool();
+  const res = await p.query(
+    `SELECT id, changed_by, old_value, new_value, changed_at
+     FROM economy_price_audit
+     ORDER BY changed_at DESC LIMIT $1`,
+    [limit]
+  );
+  return res.rows;
 }
 
 // List scores at or above the threshold. By default ack'd accounts are
@@ -25397,6 +25433,9 @@ module.exports = {
   getSmurfThreshold,
   setSmurfThreshold,
   listSmurfScores,
+  getEconomyPriceOverrides,
+  setEconomyPriceOverrides,
+  listEconomyPriceAudit,
   getSmurfScore,
   acknowledgeSmurfScore,
   listSmurfAcknowledgements,

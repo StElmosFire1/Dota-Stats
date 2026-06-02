@@ -187,6 +187,107 @@ ensureDir(CHUNK_DIR);
 ensureDir(UPLOAD_DIR);
 ensureDir(REPLAY_STORE_DIR);
 
+// ── Economy price overrides (Task #700) ─────────────────────────────────────
+// Hardcoded fallback values for every economy price point. DB overrides stored
+// in site_settings under key 'economy_price_overrides' (JSON blob) take
+// precedence. Cache TTL is 30 s; explicitly cleared on admin save so changes
+// take effect for new purchases within 30 s (usually instantly after save).
+const ECONOMY_DEFAULTS = Object.freeze({
+  pro_monthly_cents:                600,
+  pro_lifetime_cents:               5000,
+  gift_season_pass_cents:           799,
+  founders_ring_cents:              999,
+  founder_ring_static_cents:        499,
+  founder_ring_animated_cents:      799,
+  frame_gold_cents:                 299,
+  frame_neon_blue_cents:            299,
+  frame_cosmic_cents:               399,
+  frame_fire_cents:                 399,
+  coin_voice_pack_cents:            800,
+  coin_layout_theme_cents:          1200,
+  coin_frame_cents:                 2500,
+  coin_founder_ring_static_cents:   1200,
+  coin_founder_ring_animated_cents: 2000,
+  coin_pack_starter_coins:          500,
+  coin_pack_starter_cents:          499,
+  coin_pack_standard_coins:         1200,
+  coin_pack_standard_cents:         999,
+  coin_pack_premium_coins:          2800,
+  coin_pack_premium_cents:          1999,
+  coin_pack_whale_coins:            7500,
+  coin_pack_whale_cents:            4999,
+});
+
+let _econCache = { data: null, expiresAt: 0 };
+
+async function _getEconOverrides() {
+  const now = Date.now();
+  if (_econCache.data !== null && now < _econCache.expiresAt) return _econCache.data;
+  try {
+    const raw = await db.getSetting('economy_price_overrides');
+    _econCache.data = raw ? JSON.parse(raw) : {};
+  } catch (_) {
+    _econCache.data = {};
+  }
+  _econCache.expiresAt = now + 30_000;
+  return _econCache.data;
+}
+
+function _clearEconCache() {
+  _econCache = { data: null, expiresAt: 0 };
+}
+
+function _econInt(overrides, key) {
+  const v = overrides[key];
+  if (v == null) return ECONOMY_DEFAULTS[key];
+  const n = parseInt(v, 10);
+  return (Number.isFinite(n) && n > 0) ? n : ECONOMY_DEFAULTS[key];
+}
+
+async function _getEffectiveCoinPrices() {
+  const o = await _getEconOverrides();
+  const vp  = _econInt(o, 'coin_voice_pack_cents');
+  const lt  = _econInt(o, 'coin_layout_theme_cents');
+  const fr  = _econInt(o, 'coin_frame_cents');
+  const frs = _econInt(o, 'coin_founder_ring_static_cents');
+  const fra = _econInt(o, 'coin_founder_ring_animated_cents');
+  return {
+    'voice_pack:captain': vp, 'voice_pack:hype': vp, 'voice_pack:calm': vp,
+    'voice_pack:roast': vp,   'voice_pack:cinematic': vp,
+    'layout_theme:newsprint': lt, 'layout_theme:carbon': lt, 'layout_theme:holo': lt,
+    'layout_theme:heritage': lt,  'layout_theme:broadcast': lt,
+    'frame:neon-blue': fr, 'frame:cosmic': fr, 'frame:fire': fr,
+    'founder_ring:classic': frs,  'founder_ring:laurel': frs,
+    'founder_ring:beveled': fra,  'founder_ring:phoenix': fra, 'founder_ring:twin': fra,
+    'founder_ring:astrolabe': fra, 'founder_ring:eclipse': fra, 'founder_ring:forge': fra,
+    'founder_ring:storm': fra,    'founder_ring:starmap': fra,
+  };
+}
+
+async function _getEffectiveCoinPacks() {
+  const o = await _getEconOverrides();
+  const sc = _econInt(o, 'coin_pack_starter_coins'),  sp = _econInt(o, 'coin_pack_starter_cents');
+  const dc = _econInt(o, 'coin_pack_standard_coins'), dp = _econInt(o, 'coin_pack_standard_cents');
+  const pc = _econInt(o, 'coin_pack_premium_coins'),  pp = _econInt(o, 'coin_pack_premium_cents');
+  const wc = _econInt(o, 'coin_pack_whale_coins'),    wp = _econInt(o, 'coin_pack_whale_cents');
+  return {
+    starter:  { id: 'starter',  coins: sc, priceCents: sp, label: `Starter (${sc.toLocaleString()} 🪙)` },
+    standard: { id: 'standard', coins: dc, priceCents: dp, label: `Standard (${dc.toLocaleString()} 🪙)` },
+    premium:  { id: 'premium',  coins: pc, priceCents: pp, label: `Premium (${pc.toLocaleString()} 🪙)` },
+    whale:    { id: 'whale',    coins: wc, priceCents: wp, label: `Whale (${wc.toLocaleString()} 🪙)` },
+  };
+}
+
+async function _getEffectiveFramePrices() {
+  const o = await _getEconOverrides();
+  return {
+    gold:        _econInt(o, 'frame_gold_cents'),
+    'neon-blue': _econInt(o, 'frame_neon_blue_cents'),
+    cosmic:      _econInt(o, 'frame_cosmic_cents'),
+    fire:        _econInt(o, 'frame_fire_cents'),
+  };
+}
+
 function _runStaleUploadReaper() {
   const now = Date.now();
   let reaped = 0;
@@ -16256,16 +16357,18 @@ NOTES
   });
 
   // ---------- Pro Tier endpoints ----------
-  function _proLifetimePriceCents() {
-    // Task #318 — lifetime is now the premium tier (Founders only). Default
-    // bumped from $20 to $50 AUD to reflect its grandfathered status.
+  // Task #700 — DB override wins over env var wins over hardcoded default.
+  async function _proLifetimePriceCents() {
+    const o = await _getEconOverrides();
+    if (o.pro_lifetime_cents != null) return _econInt(o, 'pro_lifetime_cents');
     const n = parseInt(process.env.PRO_LIFETIME_PRICE_CENTS || '5000', 10);
-    return Number.isFinite(n) && n > 0 ? n : 5000;
+    return Number.isFinite(n) && n > 0 ? n : ECONOMY_DEFAULTS.pro_lifetime_cents;
   }
-  function _proMonthlyPriceCents() {
-    // Task #318 — default $6 AUD / month. Override via PRO_MONTHLY_PRICE_CENTS.
+  async function _proMonthlyPriceCents() {
+    const o = await _getEconOverrides();
+    if (o.pro_monthly_cents != null) return _econInt(o, 'pro_monthly_cents');
     const n = parseInt(process.env.PRO_MONTHLY_PRICE_CENTS || '600', 10);
-    return Number.isFinite(n) && n > 0 ? n : 600;
+    return Number.isFinite(n) && n > 0 ? n : ECONOMY_DEFAULTS.pro_monthly_cents;
   }
 
   router.get('/pro/status', async (req, res) => {
@@ -16330,13 +16433,17 @@ NOTES
     try {
       if (!(await _flagOn('pro_tier', req))) return res.status(404).json({ error: 'Not found' });
       // Task #318 — return both monthly (default) and lifetime/founder options.
+      const [monthlyPrice, lifetimePrice] = await Promise.all([
+        _proMonthlyPriceCents(),
+        _proLifetimePriceCents(),
+      ]);
       res.json({
         currency: 'aud',
-        monthly: { plan_type: 'monthly', price_cents: _proMonthlyPriceCents(), interval: 'month' },
-        lifetime: { plan_type: 'lifetime', price_cents: _proLifetimePriceCents(), founder_perk: true },
+        monthly: { plan_type: 'monthly', price_cents: monthlyPrice, interval: 'month' },
+        lifetime: { plan_type: 'lifetime', price_cents: lifetimePrice, founder_perk: true },
         // Back-compat fields some older clients may still read.
         plan_type: 'monthly',
-        price_cents: _proMonthlyPriceCents(),
+        price_cents: monthlyPrice,
       });
     } catch (err) {
       console.error('[API] pro/pricing:', err.message);
@@ -16413,8 +16520,8 @@ NOTES
       if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: 'Payments are not configured.' });
       }
-      const FRAME_PRICES = { gold: 299, 'neon-blue': 299, cosmic: 399, fire: 399 };
-      const priceCents = FRAME_PRICES[frameId] || 299;
+      const FRAME_PRICES = await _getEffectiveFramePrices();
+      const priceCents = FRAME_PRICES[frameId] ?? ECONOMY_DEFAULTS.frame_gold_cents;
       const stripe = require('../observability/stripeClient').getStripe();
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
       const frameLabelMap = { gold: 'Gold', 'neon-blue': 'Neon Blue', cosmic: 'Cosmic', fire: 'Fire' };
@@ -16548,18 +16655,31 @@ NOTES
     const n = parseInt(process.env.FOUNDERS_RING_CAP || '200', 10);
     return Number.isFinite(n) && n > 0 ? n : 200;
   }
-  function _foundersRingPriceCents() {
+  // Task #700 — DB override wins over env var wins over hardcoded default.
+  async function _foundersRingPriceCents() {
+    const o = await _getEconOverrides();
+    if (o.founders_ring_cents != null) return _econInt(o, 'founders_ring_cents');
     const n = parseInt(process.env.FOUNDERS_RING_PRICE_CENTS || '999', 10);
-    return Number.isFinite(n) && n > 0 ? n : 999;
+    return Number.isFinite(n) && n > 0 ? n : ECONOMY_DEFAULTS.founders_ring_cents;
   }
   // Task #314 / v7.34 — per-slug Stripe price for the individually-sold rings.
   // Static rings (Classic, Laurel) are cheaper than animated. Inscribed is
   // not individually priced — it ships with the Founders Pack only.
-  function _founderRingIndividualPriceCents(slug) {
+  // Task #700 — DB override wins over profileCosmetics default.
+  async function _founderRingIndividualPriceCents(slug) {
     const cosm = require('../profileCosmetics');
     const tier = cosm.FOUNDER_RING_TIER[slug];
-    if (tier === 'static')   return cosm.FOUNDER_RING_USD_CENTS.static;
-    if (tier === 'animated') return cosm.FOUNDER_RING_USD_CENTS.animated;
+    const o = await _getEconOverrides();
+    if (tier === 'static') {
+      return o.founder_ring_static_cents != null
+        ? _econInt(o, 'founder_ring_static_cents')
+        : cosm.FOUNDER_RING_USD_CENTS.static;
+    }
+    if (tier === 'animated') {
+      return o.founder_ring_animated_cents != null
+        ? _econInt(o, 'founder_ring_animated_cents')
+        : cosm.FOUNDER_RING_USD_CENTS.animated;
+    }
     return null;
   }
 
@@ -16576,7 +16696,7 @@ NOTES
         sku: cosm.FOUNDERS_RING_SKU,
         cap, sold, remaining,
         sold_out: remaining <= 0,
-        price_cents: _foundersRingPriceCents(),
+        price_cents: await _foundersRingPriceCents(),
         currency: 'aud',
         owned,
         signed_in: Boolean(accountId),
@@ -16624,7 +16744,7 @@ NOTES
         if (sold >= cap) {
           return res.status(409).json({ error: 'The Founders Pass has sold out.', sold_out: true });
         }
-        const priceCents = _foundersRingPriceCents();
+        const priceCents = await _foundersRingPriceCents();
         const session = await stripe.checkout.sessions.create({
           payment_method_types: ['card'],
           line_items: [{
@@ -16661,7 +16781,7 @@ NOTES
       if (Array.isArray(ownedCoin) && ownedCoin.some(o => o.kind === 'founder_ring' && o.value === slug)) {
         return res.status(409).json({ error: 'You already own that ring (via coins).', already_owned: true });
       }
-      const priceCents = _founderRingIndividualPriceCents(slug);
+      const priceCents = await _founderRingIndividualPriceCents(slug);
       if (!priceCents) return res.status(400).json({ error: 'That ring is not individually purchasable.' });
       const label = cosm.FOUNDER_RING_LABEL[slug] || slug;
       const tierLabel = cosm.FOUNDER_RING_TIER[slug] === 'animated' ? 'Animated' : 'Static';
@@ -16800,7 +16920,7 @@ NOTES
       }
       const stripe = require('../observability/stripeClient').getStripe();
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
-      const priceCents = _proPriceCents();
+      const priceCents = await _proLifetimePriceCents();
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [{
@@ -16864,7 +16984,8 @@ NOTES
       }
       const stripe = require('../observability/stripeClient').getStripe();
       const baseUrl = process.env.SITE_URL || `http://localhost:${process.env.PORT || 5000}`;
-      const SEASON_PASS_GIFT_CENTS = 799;
+      const econO = await _getEconOverrides();
+      const SEASON_PASS_GIFT_CENTS = _econInt(econO, 'gift_season_pass_cents');
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [{
@@ -17070,7 +17191,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       let session;
       let priceCents;
       if (planType === 'lifetime') {
-        priceCents = _proLifetimePriceCents();
+        priceCents = await _proLifetimePriceCents();
         session = await stripe.checkout.sessions.create({
           payment_method_types: ['card'],
           line_items: [{
@@ -17090,7 +17211,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
           metadata: { purpose: 'pro_lifetime', account_id: String(accountId) },
         });
       } else {
-        priceCents = _proMonthlyPriceCents();
+        priceCents = await _proMonthlyPriceCents();
         // Prefer a Stripe Dashboard-managed Price (recurring) if configured;
         // otherwise inline price_data with a recurring interval so existing
         // deployments don't need to pre-provision a Product before this ships.
@@ -17647,54 +17768,111 @@ Return exactly this JSON shape (all fields required, arrays of strings):
 
   // ─── Task #313 / v6.79 — In-app currency ────────────────────────────────
   // Server-authoritative price catalog. SKU shape `<kind>:<value>`:
-  //   - voice_pack:<id>       (800)
-  //   - layout_theme:<id>     (1200)
-  //   - frame:<id>            (2500 — deliberately above the $5 Stripe price
-  //                            so coin path stays the "alternative" route,
-  //                            not the cheap shortcut)
-  // Title + accent are deferred to phase 2 (no coin alt-buy yet); they remain
-  // Pro-only because the save validation paths don't yet check coin ownership.
-  const COIN_PRICES = Object.freeze({
-    'voice_pack:captain':   800,
-    'voice_pack:hype':      800,
-    'voice_pack:calm':      800,
-    'voice_pack:roast':     800,
-    'voice_pack:cinematic': 800,
-    'layout_theme:newsprint': 1200,
-    'layout_theme:carbon':    1200,
-    'layout_theme:holo':      1200,
-    'layout_theme:heritage':  1200,
-    'layout_theme:broadcast': 1200,
-    // Real frame catalog from web/src/profileCosmetics.js: gold is Pro-bundled
-    // (no coin path); neon-blue/cosmic/fire are the individually-purchasable
-    // premium frames. 2500 🪙 is deliberately above the $2.99/$3.99 Stripe
-    // price so coin path stays the "alternative" route, not the cheap one.
-    'frame:neon-blue': 2500,
-    'frame:cosmic':    2500,
-    'frame:fire':      2500,
-    // Task #314 / v7.34 — Founders Ring catalog. Static tier (Classic,
-    // Laurel) = 1200 🪙; animated tier (everything else) = 2000 🪙. Inscribed
-    // is bundled with the Founders Pack and isn't sold individually.
-    'founder_ring:classic':   1200,
-    'founder_ring:laurel':    1200,
-    'founder_ring:beveled':   2000,
-    'founder_ring:phoenix':   2000,
-    'founder_ring:twin':      2000,
-    'founder_ring:astrolabe': 2000,
-    'founder_ring:eclipse':   2000,
-    'founder_ring:forge':     2000,
-    'founder_ring:storm':     2000,
-    'founder_ring:starmap':   2000,
+  // ── Economy price admin routes (Task #700) ──────────────────────────────────
+  // GET  /api/admin/economy/prices — returns defaults, current overrides, effective merged values, audit
+  // POST /api/admin/economy/prices — validates + saves a new override set, clears cache
+  router.get('/admin/economy/prices', requireSuperuser, async (req, res) => {
+    try {
+      const raw = await db.getSetting('economy_price_overrides');
+      const overrides = raw ? JSON.parse(raw) : {};
+      const audit = await db.listEconomyPriceAudit(10);
+      // Effective mirrors the real runtime precedence:
+      //   DB override > env-var fallback (Pro prices only) > hardcoded default.
+      // This means the admin panel always shows what users will actually be charged.
+      const proMonthlyEnv = parseInt(process.env.PRO_MONTHLY_PRICE_CENTS || '600', 10);
+      const proLifetimeEnv = parseInt(process.env.PRO_LIFETIME_PRICE_CENTS || '5000', 10);
+      const effective = {};
+      for (const key of Object.keys(ECONOMY_DEFAULTS)) {
+        const ov = overrides[key];
+        if (ov != null) {
+          const n = parseInt(ov, 10);
+          effective[key] = (Number.isFinite(n) && n > 0) ? n : ECONOMY_DEFAULTS[key];
+        } else if (key === 'pro_monthly_cents' && Number.isFinite(proMonthlyEnv) && proMonthlyEnv > 0) {
+          effective[key] = proMonthlyEnv;
+        } else if (key === 'pro_lifetime_cents' && Number.isFinite(proLifetimeEnv) && proLifetimeEnv > 0) {
+          effective[key] = proLifetimeEnv;
+        } else {
+          effective[key] = ECONOMY_DEFAULTS[key];
+        }
+      }
+      res.json({ defaults: ECONOMY_DEFAULTS, overrides, effective, audit });
+    } catch (err) {
+      console.error('[API] admin/economy/prices GET:', err.message);
+      res.status(500).json({ error: err.message });
+    }
   });
+
+  router.post('/admin/economy/prices', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { overrides } = req.body || {};
+      if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) {
+        return res.status(400).json({ error: 'overrides must be a plain object' });
+      }
+      // Load existing stored overrides so we can merge — an operator editing one
+      // price group must not silently wipe overrides saved for another group.
+      const existing = await (async () => {
+        try {
+          const raw = await db.getSetting('economy_price_overrides');
+          return raw ? JSON.parse(raw) : {};
+        } catch { return {}; }
+      })();
+      // Apply the incoming patch on top of existing: empty string means "delete
+      // this override and revert to default"; a valid integer means "set/update".
+      const merged = { ...existing };
+      for (const [key, val] of Object.entries(overrides)) {
+        if (!(key in ECONOMY_DEFAULTS)) continue;
+        if (val === '' || val == null) {
+          // Explicit clear — remove from override set so default takes effect.
+          delete merged[key];
+          continue;
+        }
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || n <= 0) {
+          return res.status(400).json({ error: `Invalid value for ${key}: must be a positive integer` });
+        }
+        merged[key] = n;
+      }
+      const changedBy = req.session?.accountId ? String(req.session.accountId) : 'superuser';
+      await db.setEconomyPriceOverrides(merged, changedBy);
+      _clearEconCache();
+      const audit = await db.listEconomyPriceAudit(10);
+      // Effective mirrors runtime: DB override > env var fallback (Pro only) > hardcoded default.
+      const proMonthlyEnv = parseInt(process.env.PRO_MONTHLY_PRICE_CENTS || '600', 10);
+      const proLifetimeEnv = parseInt(process.env.PRO_LIFETIME_PRICE_CENTS || '5000', 10);
+      const effective = {};
+      for (const key of Object.keys(ECONOMY_DEFAULTS)) {
+        if (merged[key] != null) {
+          effective[key] = merged[key];
+        } else if (key === 'pro_monthly_cents' && Number.isFinite(proMonthlyEnv) && proMonthlyEnv > 0) {
+          effective[key] = proMonthlyEnv;
+        } else if (key === 'pro_lifetime_cents' && Number.isFinite(proLifetimeEnv) && proLifetimeEnv > 0) {
+          effective[key] = proLifetimeEnv;
+        } else {
+          effective[key] = ECONOMY_DEFAULTS[key];
+        }
+      }
+      res.json({ ok: true, overrides: merged, effective, audit });
+    } catch (err) {
+      console.error('[API] admin/economy/prices POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #700 — COIN_PRICES is now dynamically built from economy overrides.
+  // Call _getEffectiveCoinPrices() in each route handler instead of using a
+  // static const — this makes every coin cosmetic price admin-editable live.
 
   router.get('/coins/me', async (req, res) => {
     const accountId = req.session?.accountId;
     if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
     try {
-      const balance = await db.getCoinBalance(accountId);
-      const recent = await db.listCoinTransactions(accountId, 20);
-      const owned = await db.getCoinOwnedCosmetics(accountId);
-      res.json({ ...balance, recent, owned, prices: COIN_PRICES });
+      const [balance, recent, owned, coinPrices] = await Promise.all([
+        db.getCoinBalance(accountId),
+        db.listCoinTransactions(accountId, 20),
+        db.getCoinOwnedCosmetics(accountId),
+        _getEffectiveCoinPrices(),
+      ]);
+      res.json({ ...balance, recent, owned, prices: coinPrices });
     } catch (e) {
       console.error('[API] /coins/me:', e.message);
       res.status(500).json({ error: e.message });
@@ -17705,7 +17883,8 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     const accountId = req.session?.accountId;
     if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
     const sku = String(req.body?.sku || '');
-    const cost = COIN_PRICES[sku];
+    const coinPrices = await _getEffectiveCoinPrices();
+    const cost = coinPrices[sku];
     if (!cost) return res.status(400).json({ error: 'Unknown or non-coin SKU' });
     try {
       const result = await db.purchaseCosmeticWithCoins({ accountId, sku, cost });
@@ -17718,17 +17897,11 @@ Return exactly this JSON shape (all fields required, arrays of strings):
     }
   });
 
-  // Task #316 — real-money coin top-ups via Stripe checkout. Catalog is
-  // server-authoritative (browser supplies only the pack id).
-  const COIN_PACKS = Object.freeze({
-    starter:    { id: 'starter',    coins: 500,   priceCents: 499,  label: 'Starter (500 🪙)' },
-    standard:   { id: 'standard',   coins: 1200,  priceCents: 999,  label: 'Standard (1,200 🪙)' },
-    premium:    { id: 'premium',    coins: 2800,  priceCents: 1999, label: 'Premium (2,800 🪙)' },
-    whale:      { id: 'whale',      coins: 7500,  priceCents: 4999, label: 'Whale (7,500 🪙)' },
-  });
-
+  // Task #316 / Task #700 — real-money coin top-ups via Stripe checkout.
+  // Catalog is server-authoritative and admin-editable via economy overrides.
   router.get('/coins/packs', async (req, res) => {
-    res.json({ packs: Object.values(COIN_PACKS) });
+    const coinPacks = await _getEffectiveCoinPacks();
+    res.json({ packs: Object.values(coinPacks) });
   });
 
   router.post('/coins/buy', express.json(), async (req, res) => {
@@ -17737,7 +17910,8 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
       if (!stripe) return res.status(503).json({ error: 'Payments not configured' });
       const packId = String(req.body?.pack || '');
-      const pack = COIN_PACKS[packId];
+      const coinPacks = await _getEffectiveCoinPacks();
+      const pack = coinPacks[packId];
       if (!pack) return res.status(400).json({ error: 'Unknown coin pack' });
       const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
       const host = req.headers['x-forwarded-host'] || req.headers.host;
@@ -21321,7 +21495,8 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       if (String(recipientAccountId) === String(gifterAccountId)) {
         return res.status(400).json({ error: 'You cannot gift yourself.' });
       }
-      const pack = COIN_PACKS[String(packId || '')];
+      const _giftCoinPacks = await _getEffectiveCoinPacks();
+      const pack = _giftCoinPacks[String(packId || '')];
       if (!pack) return res.status(400).json({ error: 'Unknown coin pack.' });
       const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
       const host = req.headers['x-forwarded-host'] || req.headers.host;

@@ -2755,3 +2755,13 @@ export const adminRunJob = (superuserKey, job, opts = {}) =>
     body: opts,
     superuserKey,
   });
+
+export const getAdminEconomyPrices = (superuserKey) =>
+  superuserJson('/admin/economy/prices', { superuserKey });
+
+export const setAdminEconomyPrices = (overrides, superuserKey) =>
+  superuserJson('/admin/economy/prices', {
+    method: 'POST',
+    body: { overrides },
+    superuserKey,
+  });
