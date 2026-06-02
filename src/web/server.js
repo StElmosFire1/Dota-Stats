@@ -4941,6 +4941,15 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
     steamAuthTokens.delete(token); // single-use
     const { accountId, steamId64, displayName } = data;
+
+    // Task #708 — preserve already-established privilege flags across the
+    // session-fixation-safety regenerate so a superuser who then signs in
+    // with Steam stays past the lockdown gate without a second password
+    // prompt. Only the caller's own server-set flags are carried forward;
+    // nothing client-supplied is trusted here.
+    const prevIsSuperuser = !!(req.session && req.session.isSuperuser);
+    const prevIsAdmin     = !!(req.session && req.session.isAdmin);
+
     req.session.regenerate((regErr) => {
       if (regErr) {
         console.error('[Auth Complete] session.regenerate failed:', regErr);
@@ -4949,6 +4958,10 @@ function createApiRouter(startupStatus = {}, _app = null) {
       req.session.accountId = accountId;
       req.session.steamId64 = steamId64;
       req.session.displayName = displayName;
+
+      // Re-apply privilege flags captured before regeneration.
+      if (prevIsSuperuser) req.session.isSuperuser = true;
+      if (prevIsAdmin)     req.session.isAdmin     = true;
       // Task #431 — stamp the hashed IP/UA immediately on the freshly
       // regenerated session so the smurf scorer's fingerprint signal
       // can see it without waiting for a subsequent request.
