@@ -5988,12 +5988,64 @@ function OpsLogsCard({ superuserKey }) {
   );
 }
 
-// ── Ops History (1-min persisted samples) ────────────────────────────────
-// Shows the persisted 1-minute telemetry samples from GET /api/admin/ops/history.
-// Renders a simple tabular view grouped by source with a sparkline-style bar
-// representation of the counts over time. No external charting library needed.
+// ── Shared ops-history series extraction ──────────────────────────────────
+// Walks the raw GET /api/admin/ops/history sample array (shape defined by
+// readHistory in src/web/opsState.js) and produces one value array per metric.
+// Cumulative counters (provisioner success/failure totals) are converted to
+// per-sample deltas; a counter reset (process restart) clamps to 0 so a restart
+// doesn't render as a misleading negative spike. Used by both the Overview
+// "Ops Sparklines" card and the Config-tab "Ops History" card so they can't
+// drift apart.
+function buildOpsSeries(samples) {
+  const empty = {
+    http5xx: [], parserDur: [], parserQueue: [], stripeLag: [],
+    provInFlight: [], provSucc: [], provFail: [], discordLatency: [], pushSubs: [],
+  };
+  if (!samples || !samples.length) return empty;
+  const out = { ...empty };
+  let prevSucc = null;
+  let prevFail = null;
+  for (const s of samples) {
+    out.http5xx.push(s.http5xx);
+    out.parserDur.push(s.parserLastDurationMs);
+    out.parserQueue.push(s.parserQueueDepth);
+    out.stripeLag.push(s.stripeMaxLagMs);
+    out.provInFlight.push(s.provisionerInFlight);
+    out.discordLatency.push(s.discordGatewayLatencyMs);
+    out.pushSubs.push(s.pushSubscriptionCount);
+    out.provSucc.push(prevSucc == null || s.provisionerSuccessTotal < prevSucc ? 0 : s.provisionerSuccessTotal - prevSucc);
+    out.provFail.push(prevFail == null || s.provisionerFailureTotal < prevFail ? 0 : s.provisionerFailureTotal - prevFail);
+    prevSucc = s.provisionerSuccessTotal;
+    prevFail = s.provisionerFailureTotal;
+  }
+  return out;
+}
+
+function buildOpsMetrics(series) {
+  return [
+    { key: 'http5xx', title: 'HTTP 5xx (60m)', values: series.http5xx, color: '#f08a8a' },
+    { key: 'parserDur', title: 'Parser last parse (ms)', values: series.parserDur },
+    { key: 'parserQueue', title: 'Parser queue depth', values: series.parserQueue },
+    { key: 'provSucc', title: 'Provisions ok /min', values: series.provSucc, color: '#6dd58c' },
+    { key: 'provFail', title: 'Provisions failed /min', values: series.provFail, color: '#f08a8a' },
+    { key: 'provInFlight', title: 'Provisions in-flight', values: series.provInFlight },
+    { key: 'stripeLag', title: 'Stripe webhook lag (ms)', values: series.stripeLag },
+    { key: 'discordLatency', title: 'Discord latency (ms)', values: series.discordLatency },
+    { key: 'pushSubs', title: 'Push subscriptions', values: series.pushSubs },
+  ];
+}
+
+function opsWindowLabel(hours) {
+  return hours < 24 ? `${hours} hours` : hours === 24 ? '24 hours' : '7 days';
+}
+
+// ── Ops History (Config tab) ──────────────────────────────────────────────
+// Config-tab view of the same persisted 1-minute telemetry samples from
+// GET /api/admin/ops/history. Renders accurate per-metric sparklines by reusing
+// buildOpsSeries / buildOpsMetrics / MiniSparkline — the same extraction the
+// Overview "Ops Sparklines" card uses — so the two never disagree.
 function OpsHistoryCard({ superuserKey }) {
-  const [rows, setRows] = React.useState(null);
+  const [samples, setSamples] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
   const [hours, setHours] = React.useState(24);
   const [error, setError] = React.useState('');
@@ -6002,27 +6054,13 @@ function OpsHistoryCard({ superuserKey }) {
     if (!superuserKey) return;
     setLoading(true); setError('');
     getAdminOpsHistory(superuserKey, hours)
-      .then(d => setRows(d.rows || d.samples || d.history || []))
+      .then(d => setSamples(d.samples || []))
       .catch(e => setError(e.message || 'Failed to load'))
       .finally(() => setLoading(false));
   }, [superuserKey, hours]);
 
-  function fmtBucket(ts) {
-    if (!ts) return '—';
-    try { return new Date(ts).toLocaleString('en-AU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ts; }
-  }
-
-  // Group rows by source so each source gets its own mini table block.
-  const grouped = React.useMemo(() => {
-    if (!rows || rows.length === 0) return {};
-    const g = {};
-    rows.forEach(r => {
-      const src = r.source || r.src || '(global)';
-      if (!g[src]) g[src] = [];
-      g[src].push(r);
-    });
-    return g;
-  }, [rows]);
+  const series = React.useMemo(() => buildOpsSeries(samples), [samples]);
+  const METRICS = buildOpsMetrics(series);
 
   const HOUR_OPTIONS = [1, 6, 24, 168];
 
@@ -6053,60 +6091,33 @@ function OpsHistoryCard({ superuserKey }) {
         </div>
         <button type="button" className="btn" style={{ fontSize: 12, padding: '4px 12px' }}
           onClick={load} disabled={loading}>
-          {loading ? 'Loading…' : rows === null ? 'Load' : 'Refresh'}
+          {loading ? 'Loading…' : samples === null ? 'Load' : 'Refresh'}
         </button>
       </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 10 }}>
-        Persisted 1-minute telemetry samples, grouped by source. Use this to spot sustained error
-        spikes or throughput drops across the selected time window.
+        Persisted 1-minute telemetry samples. Use this to spot sustained error spikes or throughput
+        drops across the selected time window.
       </p>
       {error && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{error}</div>}
-      {rows !== null && rows.length === 0 && (
-        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No history samples in the selected window.</p>
+      {samples !== null && samples.length === 0 && !error && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          No telemetry samples in the selected window yet — the server records one sample per minute.
+        </p>
       )}
-      {rows !== null && rows.length > 0 && (
-        Object.entries(grouped).map(([src, entries]) => {
-          const maxCount = Math.max(...entries.map(e => e.count ?? e.value ?? 1), 1);
-          return (
-            <div key={src} style={{ marginBottom: 24 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, color: 'var(--accent)' }}>
-                {src}
-                <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
-                  {entries.length} sample{entries.length !== 1 ? 's' : ''}
-                </span>
+      {samples !== null && samples.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14 }}>
+          {METRICS.map(m => (
+            <div key={m.key} style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: 8, padding: '10px 12px',
+            }}>
+              <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--text-primary)', marginBottom: 2 }}>
+                {m.title}
               </div>
-              <div style={{
-                overflowX: 'auto', display: 'flex', gap: 2, alignItems: 'flex-end',
-                background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '10px 10px 4px',
-                minHeight: 56,
-              }}
-                role="img"
-                aria-label={`Ops history sparkline for ${src}`}
-              >
-                {entries.slice(-120).map((e, i) => {
-                  const val = e.count ?? e.value ?? 0;
-                  const pct = maxCount > 0 ? Math.max(4, Math.round((val / maxCount) * 44)) : 4;
-                  const hasErr = (e.error_count ?? 0) > 0;
-                  return (
-                    <div key={i} title={`${fmtBucket(e.bucket || e.ts)}: ${val}${hasErr ? ` (${e.error_count} errors)` : ''}`}
-                      style={{
-                        width: 6, minWidth: 6, height: pct,
-                        background: hasErr ? '#ef4444' : '#22c55e',
-                        borderRadius: 2, flexShrink: 0,
-                        opacity: 0.75,
-                      }}
-                    />
-                  );
-                })}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
-                <span>{fmtBucket(entries[0]?.bucket || entries[0]?.ts)}</span>
-                <span>max {maxCount.toLocaleString()}</span>
-                <span>{fmtBucket(entries[entries.length - 1]?.bucket || entries[entries.length - 1]?.ts)}</span>
-              </div>
+              <MiniSparkline values={m.values} color={m.color} label={`${m.title} trend over last ${opsWindowLabel(hours)}`} />
             </div>
-          );
-        })
+          ))}
+        </div>
       )}
     </section>
   );
@@ -6191,42 +6202,9 @@ function OpsSparklinesCard({ superuserKey }) {
   // Cumulative counters (provisioner success/failure totals) are converted
   // to per-sample deltas; a counter reset (process restart) clamps to 0 so a
   // restart doesn't render as a misleading negative spike.
-  const series = React.useMemo(() => {
-    const empty = {
-      http5xx: [], parserDur: [], parserQueue: [], stripeLag: [],
-      provInFlight: [], provSucc: [], provFail: [], discordLatency: [], pushSubs: [],
-    };
-    if (!samples || !samples.length) return empty;
-    const out = { ...empty };
-    let prevSucc = null;
-    let prevFail = null;
-    for (const s of samples) {
-      out.http5xx.push(s.http5xx);
-      out.parserDur.push(s.parserLastDurationMs);
-      out.parserQueue.push(s.parserQueueDepth);
-      out.stripeLag.push(s.stripeMaxLagMs);
-      out.provInFlight.push(s.provisionerInFlight);
-      out.discordLatency.push(s.discordGatewayLatencyMs);
-      out.pushSubs.push(s.pushSubscriptionCount);
-      out.provSucc.push(prevSucc == null || s.provisionerSuccessTotal < prevSucc ? 0 : s.provisionerSuccessTotal - prevSucc);
-      out.provFail.push(prevFail == null || s.provisionerFailureTotal < prevFail ? 0 : s.provisionerFailureTotal - prevFail);
-      prevSucc = s.provisionerSuccessTotal;
-      prevFail = s.provisionerFailureTotal;
-    }
-    return out;
-  }, [samples]);
+  const series = React.useMemo(() => buildOpsSeries(samples), [samples]);
 
-  const METRICS = [
-    { key: 'http5xx', title: 'HTTP 5xx (60m)', values: series.http5xx, color: '#f08a8a' },
-    { key: 'parserDur', title: 'Parser last parse (ms)', values: series.parserDur },
-    { key: 'parserQueue', title: 'Parser queue depth', values: series.parserQueue },
-    { key: 'provSucc', title: 'Provisions ok /min', values: series.provSucc, color: '#6dd58c' },
-    { key: 'provFail', title: 'Provisions failed /min', values: series.provFail, color: '#f08a8a' },
-    { key: 'provInFlight', title: 'Provisions in-flight', values: series.provInFlight },
-    { key: 'stripeLag', title: 'Stripe webhook lag (ms)', values: series.stripeLag },
-    { key: 'discordLatency', title: 'Discord latency (ms)', values: series.discordLatency },
-    { key: 'pushSubs', title: 'Push subscriptions', values: series.pushSubs },
-  ];
+  const METRICS = buildOpsMetrics(series);
 
   const HOUR_OPTIONS = [1, 6, 24, 168];
   const AUTO_OPTIONS = [
