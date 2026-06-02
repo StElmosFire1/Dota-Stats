@@ -88,6 +88,21 @@ function createLootboxDb({ getPool }) {
         );
       }
     }
+
+    // Admin-created seasonal sets (Task #703). The static catalog still defines
+    // the built-in sets; these are operator-curated groupings of existing
+    // catalog cosmetics so a new seasonal rotation can be assembled from the
+    // AdminPanel without a DB shell. Retirement re-uses lootbox_retired_sets.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS lootbox_custom_sets (
+        set_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        item_skus JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_by BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
   }
 
   function _weekStartExpr() {
@@ -101,15 +116,121 @@ function createLootboxDb({ getPool }) {
     return r.rows.map((x) => x.set_id);
   }
 
-  async function listSets() {
-    const retired = new Set(await getRetiredSetIds());
-    return Object.values(catalog.SETS).map((s) => ({
-      ...s, retired: retired.has(s.id),
+  // Per-set retirement metadata (id -> { retired, retired_at }).
+  async function _retiredMeta() {
+    const p = getPool();
+    const r = await p.query(`SELECT set_id, retired_at FROM lootbox_retired_sets`);
+    const m = new Map();
+    for (const row of r.rows) m.set(row.set_id, row.retired_at);
+    return m;
+  }
+
+  async function getCustomSets() {
+    const p = getPool();
+    const r = await p.query(
+      `SELECT set_id, name, description, item_skus, created_by, created_at
+         FROM lootbox_custom_sets ORDER BY created_at DESC`
+    );
+    return r.rows.map((row) => ({
+      ...row,
+      item_skus: Array.isArray(row.item_skus) ? row.item_skus : [],
     }));
   }
 
+  // sku -> setId map for every admin-created custom set, so the drop engine and
+  // published odds can honour retirement of operator-curated sets.
+  async function getCustomSetMembership() {
+    const sets = await getCustomSets();
+    const map = {};
+    for (const s of sets) {
+      for (const sku of s.item_skus) {
+        if (!(sku in map)) map[sku] = s.set_id;
+      }
+    }
+    return map;
+  }
+
+  async function listSets() {
+    const retiredMeta = await _retiredMeta();
+    const builtIn = Object.values(catalog.SETS).map((s) => {
+      const itemCount = catalog.ITEMS.filter((it) => it.set === s.id).length;
+      return {
+        id: s.id,
+        set_id: s.id,
+        label: s.label,
+        name: s.label,
+        description: s.description || '',
+        item_count: itemCount,
+        custom: false,
+        retired: retiredMeta.has(s.id),
+        retired_at: retiredMeta.get(s.id) || null,
+      };
+    });
+    const custom = (await getCustomSets()).map((s) => ({
+      id: s.set_id,
+      set_id: s.set_id,
+      label: s.name,
+      name: s.name,
+      description: s.description || '',
+      item_count: s.item_skus.length,
+      item_skus: s.item_skus,
+      custom: true,
+      created_at: s.created_at,
+      retired: retiredMeta.has(s.set_id),
+      retired_at: retiredMeta.get(s.set_id) || null,
+    }));
+    return [...builtIn, ...custom];
+  }
+
+  function _slugify(name) {
+    return String(name)
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48);
+  }
+
+  // Create an admin-curated seasonal set from existing catalog cosmetics.
+  async function createSet({ name, description = '', itemSkus = [], by = null }) {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) { const e = new Error('Set name is required'); e.code = 'BAD_NAME'; throw e; }
+
+    // Validate item SKUs against the catalog (only real cosmetics, deduped).
+    const skus = Array.from(new Set((Array.isArray(itemSkus) ? itemSkus : []).map(String)));
+    const invalid = skus.filter((sku) => !catalog.getItem(sku));
+    if (invalid.length) {
+      const e = new Error(`Unknown item SKUs: ${invalid.join(', ')}`); e.code = 'BAD_ITEMS'; throw e;
+    }
+    if (skus.length === 0) { const e = new Error('Pick at least one item'); e.code = 'NO_ITEMS'; throw e; }
+
+    const p = getPool();
+    const existing = new Set([
+      ...Object.keys(catalog.SETS),
+      ...(await getCustomSets()).map((s) => s.set_id),
+    ]);
+    const base = _slugify(trimmed) || 'set';
+    let setId = base;
+    let n = 2;
+    while (existing.has(setId)) { setId = `${base}-${n++}`; }
+
+    await p.query(
+      `INSERT INTO lootbox_custom_sets (set_id, name, description, item_skus, created_by)
+       VALUES ($1, $2, $3, $4::jsonb, $5)`,
+      [setId, trimmed, String(description || '').trim() || null, JSON.stringify(skus), by]
+    );
+    return { set_id: setId, name: trimmed, description: String(description || '').trim(), item_skus: skus };
+  }
+
   async function setRetired({ setId, retired, by = null }) {
-    if (!catalog.SETS[setId]) { const e = new Error('Unknown set'); e.code = 'UNKNOWN_SET'; throw e; }
+    const isBuiltIn = !!catalog.SETS[setId];
+    let isCustom = false;
+    if (!isBuiltIn) {
+      const p0 = getPool();
+      const r = await p0.query(`SELECT 1 FROM lootbox_custom_sets WHERE set_id = $1`, [setId]);
+      isCustom = r.rowCount > 0;
+    }
+    if (!isBuiltIn && !isCustom) { const e = new Error('Unknown set'); e.code = 'UNKNOWN_SET'; throw e; }
     const p = getPool();
     if (retired) {
       await p.query(
@@ -234,7 +355,9 @@ function createLootboxDb({ getPool }) {
         [accountId]
       );
       const ownedSkus = new Set(ownedRows.rows.map((r) => `${r.kind}:${r.value}`));
-      const item = catalog.rollDrop(free ? 'free' : boxId, retired, rng, ownedSkus);
+      // Honour retirement of admin-created custom sets too (sku -> setId map).
+      const membership = await getCustomSetMembership();
+      const item = catalog.rollDrop(free ? 'free' : boxId, retired, rng, ownedSkus, membership);
 
       let outcome = 'new';
       let isNew = false;
@@ -471,7 +594,10 @@ function createLootboxDb({ getPool }) {
   return {
     applyLootboxSchema,
     getRetiredSetIds,
+    getCustomSets,
+    getCustomSetMembership,
     listSets,
+    createSet,
     setRetired,
     getWildcardTokens,
     canClaimFree,

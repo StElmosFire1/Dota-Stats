@@ -36,12 +36,13 @@ function mountLootboxRoutes({ router, express, deps }) {
   router.get('/lootbox/catalog', async (req, res) => {
     try {
       const retired = await lb.getRetiredSetIds();
+      const membership = lb.getCustomSetMembership ? await lb.getCustomSetMembership() : null;
       const boxes = [...Object.values(catalog.BOXES), catalog.FREE_BOX].map((b) => ({
         id: b.id,
         label: b.label,
         price: b.price,
         blurb: b.blurb,
-        odds: catalog.publishedOdds(b.id, retired),
+        odds: catalog.publishedOdds(b.id, retired, membership),
       }));
       res.json({
         edition: 'full',
@@ -152,12 +153,37 @@ function mountLootboxRoutes({ router, express, deps }) {
   });
 
   // ---- Admin: seasonal-set retirement -------------------------------------
+  // The catalog item list rides along so the AdminPanel "Create new set" form
+  // can render an item picker without a second round-trip.
   router.get('/admin/lootbox/sets', requireSuperuser, async (req, res) => {
     try {
-      res.json({ sets: await lb.listSets() });
+      const items = catalog.ITEMS.map((it) => ({
+        sku: it.sku, kind: it.kind, value: it.value, label: it.label,
+        rarity: it.rarity, set: it.set || null, special: !!it.special,
+      }));
+      res.json({ sets: await lb.listSets(), items });
     } catch (err) {
       console.error('[lootbox] admin sets:', err.message);
       res.status(500).json({ error: 'Failed to load sets' });
+    }
+  });
+
+  // ---- Admin: create a new seasonal set -----------------------------------
+  router.post('/admin/lootbox/sets', requireSuperuser, json, async (req, res) => {
+    try {
+      const name = String(req.body?.name || '');
+      const description = String(req.body?.description || '');
+      const itemSkus = Array.isArray(req.body?.itemSkus) ? req.body.itemSkus : [];
+      const created = await lb.createSet({
+        name, description, itemSkus, by: req.session.accountId || null,
+      });
+      res.json({ ok: true, set: created, sets: await lb.listSets() });
+    } catch (err) {
+      if (['BAD_NAME', 'BAD_ITEMS', 'NO_ITEMS'].includes(err.code)) {
+        return res.status(400).json({ error: err.message, code: err.code });
+      }
+      console.error('[lootbox] admin create set:', err.message);
+      res.status(500).json({ error: 'Failed to create set' });
     }
   });
 

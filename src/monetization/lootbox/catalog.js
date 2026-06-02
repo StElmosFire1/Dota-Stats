@@ -166,14 +166,31 @@ function isCosmeticKind(kind) {
 }
 
 /**
+ * Resolve an item's effective set id. Static membership (catalog `it.set`)
+ * takes precedence; `setMembership` (a runtime sku→setId map for admin-created
+ * custom sets) layers on top for items the static catalog doesn't assign.
+ */
+function itemSetId(item, setMembership = null) {
+  if (item.set) return item.set;
+  if (setMembership) {
+    const m = setMembership instanceof Map ? setMembership.get(item.sku) : setMembership[item.sku];
+    if (m) return m;
+  }
+  return null;
+}
+
+/**
  * Items eligible to DROP from a given box, excluding any whose set is retired.
  * `retiredSetIds` is a Set/array of set ids currently retired (runtime state).
+ * `setMembership` is an optional sku→setId map for admin-created custom sets so
+ * retiring such a set removes its member items from drops too.
  */
-function eligibleItems(boxId, retiredSetIds = []) {
+function eligibleItems(boxId, retiredSetIds = [], setMembership = null) {
   const retired = new Set(retiredSetIds);
   const isFree = boxId === 'free';
   return ITEMS.filter((it) => {
-    if (it.set && retired.has(it.set)) return false;
+    const setId = itemSetId(it, setMembership);
+    if (setId && retired.has(setId)) return false;
     if (isFree && !it.freePool) return false;
     return true;
   });
@@ -185,10 +202,10 @@ function eligibleItems(boxId, retiredSetIds = []) {
  * render the exact same numbers the server rolls against. Rarities with no
  * eligible items (or zero weight) are omitted.
  */
-function publishedOdds(boxId, retiredSetIds = []) {
+function publishedOdds(boxId, retiredSetIds = [], setMembership = null) {
   const box = getBox(boxId);
   if (!box) return [];
-  const items = eligibleItems(boxId, retiredSetIds);
+  const items = eligibleItems(boxId, retiredSetIds, setMembership);
   const byRarity = {};
   for (const r of RARITIES) byRarity[r] = [];
   for (const it of items) byRarity[it.rarity].push(it);
@@ -214,7 +231,7 @@ function publishedOdds(boxId, retiredSetIds = []) {
       pct: total > 0 ? +((eff[r] / total) * 100).toFixed(2) : 0,
       items: byRarity[r].map((it) => ({
         sku: it.sku, kind: it.kind, value: it.value, label: it.label,
-        boxExclusive: !!it.boxExclusive, set: it.set || null, special: !!it.special,
+        boxExclusive: !!it.boxExclusive, set: itemSetId(it, setMembership), special: !!it.special,
         days: it.days || null,
       })),
     });
@@ -238,10 +255,10 @@ function publishedOdds(boxId, retiredSetIds = []) {
  * `rng` defaults to Math.random (injectable for tests). `ownedSkus` is an
  * optional Set/array of owned SKUs (`${kind}:${value}`); omit for raw odds.
  */
-function rollDrop(boxId, retiredSetIds = [], rng = Math.random, ownedSkus = null) {
+function rollDrop(boxId, retiredSetIds = [], rng = Math.random, ownedSkus = null, setMembership = null) {
   const box = getBox(boxId);
   if (!box) throw new Error(`rollDrop: unknown box ${boxId}`);
-  const items = eligibleItems(boxId, retiredSetIds);
+  const items = eligibleItems(boxId, retiredSetIds, setMembership);
   const byRarity = {};
   for (const r of RARITIES) byRarity[r] = [];
   for (const it of items) byRarity[it.rarity].push(it);
@@ -298,6 +315,7 @@ module.exports = {
   getBox,
   getItem,
   isCosmeticKind,
+  itemSetId,
   eligibleItems,
   publishedOdds,
   rollDrop,

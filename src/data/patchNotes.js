@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "9.02",
+    "title": "Admin: create new lootbox sets from the AdminPanel",
+    "published_at": "2026-06-02",
+    "notes": [
+      "**Create-set form** added below the Lootbox Sets table (Admin Panel → Overview tab). Operators can now assemble a new seasonal set — name, optional description, and an item picker pulled live from the cosmetics catalog — without dropping into a DB shell before each rotation. The new set appears in the table immediately on success.",
+      "**DB-backed custom sets.** Admin-created sets live in the new `lootbox_custom_sets` table (set_id slug, name, description, item SKUs, creator). The built-in catalog sets are unchanged; custom sets layer on top. Retiring a custom set removes its member items from active drop pools and the published odds exactly like the built-in sets, via a sku→setId membership map threaded through the drop engine.",
+      "**Set list normalised.** The admin sets list now returns a consistent shape for built-in and custom sets alike (set_id, name, description, item_count, retired, retired_at), so the table populates the Name/Items/Retired-at columns that previously showed em-dashes for built-in sets.",
+      "**Scope.** Full edition only, superuser-gated. POST /api/admin/lootbox/sets create endpoint; a11y gate green."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.01",
     "title": "Admin: ops history sparklines on the Overview tab",
     "published_at": "2026-06-02",

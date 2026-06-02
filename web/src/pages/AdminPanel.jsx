@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import { useTour } from '../components/SpotlightTour';
@@ -5929,19 +5929,62 @@ function V3ModifierDebugCard() {
 // already owned by players stays in their collection.
 function LootboxSetsCard({ superuserKey }) {
   const [sets, setSets] = React.useState(null);
+  const [items, setItems] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(null);
   const [msg, setMsg] = React.useState('');
   const [error, setError] = React.useState('');
 
+  // Create-set form state.
+  const [showCreate, setShowCreate] = React.useState(false);
+  const [newName, setNewName] = React.useState('');
+  const [newDesc, setNewDesc] = React.useState('');
+  const [pickedSkus, setPickedSkus] = React.useState(() => new Set());
+  const [creating, setCreating] = React.useState(false);
+
   const load = React.useCallback(() => {
     if (!superuserKey) return;
     setLoading(true); setError(''); setMsg('');
     getLootboxAdminSets(superuserKey)
-      .then(d => setSets(d.sets || []))
+      .then(d => { setSets(d.sets || []); setItems(d.items || []); })
       .catch(e => setError(e.message || 'Failed to load sets'))
       .finally(() => setLoading(false));
   }, [superuserKey]);
+
+  function toggleSku(sku) {
+    setPickedSkus(prev => {
+      const next = new Set(prev);
+      if (next.has(sku)) next.delete(sku); else next.add(sku);
+      return next;
+    });
+  }
+
+  function resetCreate() {
+    setNewName(''); setNewDesc(''); setPickedSkus(new Set()); setShowCreate(false);
+  }
+
+  async function handleCreate(e) {
+    e.preventDefault();
+    if (!newName.trim() || pickedSkus.size === 0) {
+      setError('Give the set a name and pick at least one item.');
+      return;
+    }
+    setCreating(true); setMsg(''); setError('');
+    try {
+      const d = await createLootboxSet(superuserKey, {
+        name: newName.trim(),
+        description: newDesc.trim(),
+        itemSkus: Array.from(pickedSkus),
+      });
+      setMsg(`✓ Created set "${d.set?.name || newName.trim()}" (${pickedSkus.size} item${pickedSkus.size === 1 ? '' : 's'}).`);
+      if (d.sets) setSets(d.sets);
+      resetCreate();
+    } catch (err) {
+      setError(`Create failed: ${err.message}`);
+    } finally {
+      setCreating(false);
+    }
+  }
 
   async function handleRetire(setId, retire) {
     const label = retire ? 'retire' : 'un-retire';
@@ -6045,6 +6088,113 @@ function LootboxSetsCard({ superuserKey }) {
           </table>
         </div>
       )}
+
+      {/* Create new set ---------------------------------------------------- */}
+      <div style={{ marginTop: 18, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setShowCreate(v => !v)}
+          aria-expanded={showCreate}
+          aria-controls="lootbox-create-set-form"
+          style={{ fontSize: 13, padding: '5px 12px' }}
+        >
+          {showCreate ? '× Cancel' : '+ Create new set'}
+        </button>
+
+        {showCreate && (
+          <form
+            id="lootbox-create-set-form"
+            onSubmit={handleCreate}
+            style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}
+          >
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 220px' }}>
+                <span>Set name</span>
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  placeholder="e.g. OCE Cup 2027"
+                  maxLength={80}
+                  style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                />
+              </label>
+              <label style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4, flex: '2 1 320px' }}>
+                <span>Description <span style={{ color: 'var(--text-muted)' }}>(optional)</span></span>
+                <input
+                  type="text"
+                  value={newDesc}
+                  onChange={e => setNewDesc(e.target.value)}
+                  placeholder="Tournament set — retired after the season."
+                  maxLength={240}
+                  style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                />
+              </label>
+            </div>
+
+            <fieldset style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', margin: 0 }}>
+              <legend style={{ fontSize: 13, fontWeight: 600, padding: '0 6px' }}>
+                Items <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({pickedSkus.size} selected)</span>
+              </legend>
+              {items.length === 0 ? (
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>
+                  Load the card to pull the cosmetics catalog.
+                </p>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+                  {items.map(it => {
+                    const checked = pickedSkus.has(it.sku);
+                    return (
+                      <label
+                        key={it.sku}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5,
+                          padding: '5px 8px', borderRadius: 6, cursor: 'pointer',
+                          border: `1px solid ${checked ? 'var(--accent, #c5a975)' : 'var(--border)'}`,
+                          background: checked ? 'rgba(197,169,117,0.12)' : 'transparent',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleSku(it.sku)}
+                        />
+                        <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                          <span style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {it.label}
+                          </span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                            {it.kind} · {it.rarity}{it.set ? ` · in ${it.set}` : ''}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </fieldset>
+
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                type="submit"
+                className="btn"
+                disabled={creating || !newName.trim() || pickedSkus.size === 0}
+                style={{ padding: '6px 16px', fontSize: 13 }}
+              >
+                {creating ? 'Creating…' : 'Create set'}
+              </button>
+              <button
+                type="button"
+                onClick={resetCreate}
+                style={{ padding: '6px 12px', fontSize: 13, background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', cursor: 'pointer' }}
+              >
+                Reset
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </section>
   );
 }

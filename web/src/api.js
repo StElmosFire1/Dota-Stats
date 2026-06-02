@@ -372,6 +372,12 @@ export async function retireLootboxSet(superuserKey, setId, retired) {
     method: 'POST', superuserKey, body: { setId, retired: !!retired },
   });
 }
+export async function createLootboxSet(superuserKey, { name, description, itemSkus }) {
+  return superuserJson('/admin/lootbox/sets', {
+    method: 'POST', superuserKey,
+    body: { name, description, itemSkus },
+  });
+}
 
 // Task #446 — Discord Rich Presence
 export async function getMeDiscordRpc() {
