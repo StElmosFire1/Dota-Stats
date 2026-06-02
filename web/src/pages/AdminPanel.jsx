@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast } from '../api';
+import Dialog from '../components/Dialog';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import { useTour } from '../components/SpotlightTour';
@@ -2990,6 +2991,308 @@ function ErrorLogViewer({ superuserKey }) {
       <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
         Shows server-side errors logged during API operations. Useful for diagnosing replay parse failures and data issues.
       </p>
+    </section>
+  );
+}
+
+// Task #714 — Admin mass Discord DM tool.
+// Lets a superuser compose a plain-text message, pick individual recipients
+// from every player who has a Discord ID on file, confirm, and see a
+// per-recipient success/failure breakdown after sending.
+function MassDmPanel({ superuserKey }) {
+  const [players, setPlayers] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(new Set());
+  const [message, setMessage] = useState('');
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [results, setResults] = useState(null);
+  const [sendError, setSendError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true); setLoadError('');
+    try {
+      const d = await getAdminDmRecipients(superuserKey);
+      setPlayers(d.players || []);
+    } catch (e) {
+      setLoadError(e.message || 'Failed to load recipients');
+    } finally {
+      setLoading(false);
+    }
+  }, [superuserKey]);
+
+  const reachable = players ? players.filter(p => p.has_discord) : [];
+  const unreachable = players ? players.filter(p => !p.has_discord) : [];
+
+  const filtered = reachable.filter(p =>
+    !search.trim() ||
+    p.display_name.toLowerCase().includes(search.trim().toLowerCase()) ||
+    p.account_id.includes(search.trim())
+  );
+
+  function toggleOne(accountId) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(accountId)) next.delete(accountId);
+      else next.add(accountId);
+      return next;
+    });
+  }
+
+  function selectAllFiltered() {
+    setSelected(prev => {
+      const next = new Set(prev);
+      filtered.forEach(p => next.add(p.account_id));
+      return next;
+    });
+  }
+
+  function clearAllFiltered() {
+    setSelected(prev => {
+      const next = new Set(prev);
+      filtered.forEach(p => next.delete(p.account_id));
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelected(new Set(reachable.map(p => p.account_id)));
+  }
+
+  function clearAll() {
+    setSelected(new Set());
+  }
+
+  async function send() {
+    setSending(true); setSendError(''); setResults(null);
+    try {
+      const accountIds = Array.from(selected);
+      const d = await adminDmBlast(superuserKey, message, accountIds);
+      setResults(d);
+      setShowConfirm(false);
+    } catch (e) {
+      setSendError(e.message || 'Send failed');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const inputStyle = {
+    padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)',
+    background: 'var(--bg-input, var(--bg))', color: 'var(--text-primary)', fontSize: 13,
+    width: '100%', boxSizing: 'border-box',
+  };
+
+  return (
+    <section className="admin-section" id="ap-anchor-mass-dm" aria-labelledby="ap-mass-dm-h" style={{ marginTop: 32 }}>
+      <h2 id="ap-mass-dm-h" className="section-title" style={{ marginBottom: 6 }}>
+        📢 Mass Discord DM
+      </h2>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
+        Send a plain-text message directly to individual Discord users.{' '}
+        <strong>Ignores per-user notification preferences</strong> — this is an explicit admin broadcast.
+        Players with no Discord ID on file cannot be selected.
+      </p>
+
+      {!players && !loading && (
+        <button type="button" className="btn" onClick={load}>Load recipients</button>
+      )}
+      {loading && <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Loading recipients…</p>}
+      {loadError && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 10 }}>{loadError}</div>}
+
+      {players && (
+        <div style={{ display: 'grid', gap: 18 }}>
+          {/* Message composer */}
+          <div>
+            <label htmlFor="ap-mass-dm-msg" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+              Message
+            </label>
+            <textarea
+              id="ap-mass-dm-msg"
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              placeholder="Type your message here…"
+              rows={4}
+              style={{ ...inputStyle, resize: 'vertical' }}
+            />
+          </div>
+
+          {/* Recipient picker */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>
+                Recipients{' '}
+                <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+                  ({selected.size} selected · {reachable.length} reachable · {unreachable.length} unreachable)
+                </span>
+              </span>
+              <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+                <button type="button" className="btn" style={{ fontSize: 11, padding: '3px 8px' }} onClick={selectAll} aria-label="Select all reachable recipients">
+                  Select all
+                </button>
+                <button type="button" className="btn" style={{ fontSize: 11, padding: '3px 8px' }} onClick={clearAll} aria-label="Clear all selections">
+                  Clear all
+                </button>
+              </div>
+            </div>
+
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+              <input
+                type="search"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search by name or account ID…"
+                aria-label="Search recipients"
+                style={{ ...inputStyle }}
+              />
+            </div>
+
+            {search && (
+              <div style={{ padding: '4px 12px 4px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{filtered.length} result(s)</span>
+                <button type="button" className="btn" style={{ fontSize: 11, padding: '2px 7px' }} onClick={selectAllFiltered} aria-label="Select all filtered recipients">
+                  Select filtered
+                </button>
+                <button type="button" className="btn" style={{ fontSize: 11, padding: '2px 7px' }} onClick={clearAllFiltered} aria-label="Clear filtered selections">
+                  Clear filtered
+                </button>
+              </div>
+            )}
+
+            <ul
+              role="listbox"
+              aria-label="Recipient list"
+              aria-multiselectable="true"
+              style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 300, overflowY: 'auto' }}
+            >
+              {filtered.map(p => {
+                const isSelected = selected.has(p.account_id);
+                return (
+                  <li
+                    key={p.account_id}
+                    role="option"
+                    aria-selected={isSelected}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '7px 12px', cursor: 'pointer',
+                      background: isSelected ? 'rgba(197,169,117,0.08)' : 'transparent',
+                      borderBottom: '1px solid var(--border)',
+                    }}
+                    onClick={() => toggleOne(p.account_id)}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleOne(p.account_id); } }}
+                    tabIndex={0}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleOne(p.account_id)}
+                      aria-label={`Select ${p.display_name}`}
+                      tabIndex={-1}
+                      style={{ accentColor: 'var(--accent)', width: 15, height: 15, flexShrink: 0 }}
+                      onClick={e => e.stopPropagation()}
+                    />
+                    <span style={{ fontSize: 13, flexGrow: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.display_name}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>
+                      {p.account_id}
+                    </span>
+                  </li>
+                );
+              })}
+              {filtered.length === 0 && (
+                <li style={{ padding: '12px', fontSize: 13, color: 'var(--text-muted)' }}>No reachable recipients match your search.</li>
+              )}
+            </ul>
+
+            {unreachable.length > 0 && (
+              <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--text-muted)' }}>
+                ⚠️ {unreachable.length} player(s) have no Discord ID on file and cannot be selected.
+              </div>
+            )}
+          </div>
+
+          {/* Send button */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!message.trim() || selected.size === 0 || sending}
+              onClick={() => { setShowConfirm(true); setSendError(''); }}
+              aria-label={`Send DM to ${selected.size} selected recipient(s)`}
+            >
+              📨 Send to {selected.size} recipient{selected.size !== 1 ? 's' : ''}
+            </button>
+            {selected.size === 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Select at least one recipient.</span>}
+            {!message.trim() && selected.size > 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Enter a message first.</span>}
+          </div>
+
+          {/* Confirm dialog — uses the shared <Dialog> primitive for focus trapping, Escape-to-close, and ARIA */}
+          <Dialog
+            open={showConfirm}
+            onClose={() => !sending && setShowConfirm(false)}
+            labelledBy="ap-mass-dm-confirm-title"
+            contentStyle={{ maxWidth: 480, width: '90%', padding: 28 }}
+          >
+            <h3 id="ap-mass-dm-confirm-title" style={{ margin: '0 0 12px', fontSize: '1.05rem' }}>
+              Confirm mass DM
+            </h3>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 12px' }}>
+              You are about to send a Discord DM to <strong>{selected.size}</strong> player{selected.size !== 1 ? 's' : ''}.
+              This bypasses notification preferences and cannot be undone.
+            </p>
+            <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 12, fontSize: 13, marginBottom: 16, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 140, overflowY: 'auto', border: '1px solid var(--border)' }}>
+              {message.trim()}
+            </div>
+            {sendError && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 10 }}>{sendError}</div>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn" onClick={() => setShowConfirm(false)} disabled={sending}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={send}
+                disabled={sending}
+                aria-label="Confirm and send the mass DM"
+              >
+                {sending ? 'Sending…' : `✅ Confirm & send to ${selected.size}`}
+              </button>
+            </div>
+          </Dialog>
+
+          {/* Results */}
+          {results && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16 }}>
+              <div style={{ display: 'flex', gap: 20, marginBottom: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 14 }}>
+                  <strong style={{ color: '#22c55e' }}>✓ {results.sent}</strong> sent
+                </span>
+                <span style={{ fontSize: 14 }}>
+                  <strong style={{ color: results.failed > 0 ? '#ef4444' : 'var(--text-muted)' }}>✗ {results.failed}</strong> failed
+                </span>
+              </div>
+              {results.failedList && results.failedList.length > 0 && (
+                <>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Failures:</div>
+                  <ul style={{ margin: 0, padding: '0 0 0 18px', fontSize: 12, color: '#f87171' }}>
+                    {results.failedList.map((f, i) => (
+                      <li key={i}>
+                        {f.account_id}{f.discord_id ? ` (${f.discord_id})` : ''} — {f.reason}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+              {results.failed === 0 && (
+                <p style={{ fontSize: 13, color: '#22c55e', margin: 0 }}>All messages delivered successfully.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -6968,6 +7271,7 @@ export default function AdminPanel() {
     { label: 'Test Post-Match DM', tab: 'steambot', anchor: 'ap-anchor-test-dm', icon: '✉️', kw: 'discord direct message debug' },
     { label: 'Test RSVP Registration DM', tab: 'steambot', anchor: 'ap-anchor-test-rsvp-dm', icon: '✉️', kw: 'discord rsvp invite' },
     { label: 'Server Error Log', tab: 'steambot', anchor: 'ap-anchor-error-log', icon: '🚨', kw: 'errors crashes log' },
+    { label: 'Mass Discord DM', tab: 'steambot', anchor: 'ap-anchor-mass-dm', icon: '📢', kw: 'mass dm broadcast message players discord bulk announce' },
     { label: 'Season Lifecycle', tab: 'seasons', anchor: 'ap-anchor-season-lifecycle', icon: '📅', kw: 'start end activate launch' },
     { label: 'Season Tiers', tab: 'seasons', anchor: 'ap-anchor-season-tiers', icon: '🏆', kw: 'rank divisions ladder' },
     { label: 'Rating System', tab: 'seasons', anchor: 'ap-anchor-rating-system', icon: '⚖️', kw: 'trueskill mmr recompute' },
@@ -7284,6 +7588,9 @@ export default function AdminPanel() {
 
       {/* Server Error Log */}
       <ErrorLogViewer superuserKey={superuserKey} />
+
+      {/* Task #714 — Mass Discord DM broadcaster */}
+      <MassDmPanel superuserKey={superuserKey} />
       </>)}
 
       {activeTab === 'seasons' && (<>

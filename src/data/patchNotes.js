@@ -1,5 +1,13 @@
 module.exports = [
   {
+    "version": "9.05",
+    "title": "Admin mass Discord DM tool",
+    "published_at": "2026-06-02",
+    "notes": [
+      "**Mass Discord DM broadcaster (full edition, superuser only).** A new card in the Admin Panel → Bot Tools tab lets a superuser compose a plain-text message and send it as a Discord DM to any selection of players at once. The recipient picker shows every player with a known Discord ID, supports search, per-person toggles, and select-all / clear-all (both globally and filtered). Players with no Discord ID on file are shown as unreachable and cannot be selected. A confirm dialog (shared `<Dialog>` primitive, focus-trapped) shows the message preview and the recipient count before sending. Sends are delivered sequentially at 700 ms intervals to respect Discord rate limits, then a per-recipient results panel shows how many succeeded and lists any failures with their reason (DMs closed, user not found, etc.). The tool explicitly notes in its description that it bypasses per-user notification preferences — this is an intentional admin broadcast. Backed by `GET /api/admin/dm-recipients` and `POST /api/admin/dm-blast`, both superuser-gated. Community edition is untouched."
+    ]
+  },
+  {
     "version": "9.04",
     "title": "Fix: one lobby widget on the home page, not two",
     "published_at": "2026-06-02",

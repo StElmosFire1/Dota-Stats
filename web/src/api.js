@@ -2771,3 +2771,13 @@ export const setAdminEconomyPrices = (overrides, superuserKey) =>
     body: { overrides },
     superuserKey,
   });
+
+export const getAdminDmRecipients = (superuserKey) =>
+  superuserJson('/admin/dm-recipients', { superuserKey });
+
+export const adminDmBlast = (superuserKey, message, accountIds) =>
+  superuserJson('/admin/dm-blast', {
+    method: 'POST',
+    body: { message, accountIds },
+    superuserKey,
+  });

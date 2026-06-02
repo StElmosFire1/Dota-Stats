@@ -7044,6 +7044,29 @@ async function getDiscordIdByAccountId(accountId32) {
   return r2.rows[0]?.discord_id || null;
 }
 
+// Task #714 — Admin mass-DM tool. Returns every tracked player with their
+// best display name plus a has_discord flag. The discord_id field is
+// intentionally included so the send endpoint can resolve targets server-side
+// without a second round-trip per player.
+async function getDmReachablePlayers() {
+  const p = getPool();
+  const r = await p.query(`
+    SELECT
+      n.account_id,
+      COALESCE(NULLIF(TRIM(n.nickname), ''), NULLIF(TRIM(n.discord_name), ''), n.account_id::text) AS display_name,
+      COALESCE(NULLIF(TRIM(n.discord_id), ''), NULLIF(TRIM(pl.discord_id), '')) AS discord_id
+    FROM nicknames n
+    LEFT JOIN players pl ON pl.account_id_32 = n.account_id::text
+    ORDER BY display_name
+  `);
+  return r.rows.map(row => ({
+    account_id: String(row.account_id),
+    display_name: row.display_name || String(row.account_id),
+    discord_id: row.discord_id || null,
+    has_discord: !!row.discord_id,
+  }));
+}
+
 // Task #128 — record a failed `addUserToLeagueGuild` outcome so the next-
 // visit site banner can prompt the player to click *Reconnect with Discord*
 // and retry the join. UPSERT by discord_id: one pending row per Discord
@@ -25467,6 +25490,7 @@ module.exports = {
   unlinkOwnDiscordId,
   getNicknameByDiscordId,
   getDiscordIdByAccountId,
+  getDmReachablePlayers,
   getSteamByDiscordId,
   findAccountIdsByDiscordId,
   recordDiscordAutoJoinFailure,

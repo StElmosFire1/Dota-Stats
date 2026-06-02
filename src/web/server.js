@@ -12011,6 +12011,83 @@ NOTES
     );
   });
 
+  // Task #714 — Admin mass-DM tool.
+  // GET /admin/dm-recipients — list every tracked player with their best
+  // display name and a has_discord flag so the UI can render the picker.
+  router.get('/admin/dm-recipients', requireSuperuser, async (req, res) => {
+    try {
+      const players = await db.getDmReachablePlayers();
+      res.json({ players });
+    } catch (err) {
+      console.error('[AdminDmBlast] getDmReachablePlayers error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to load recipients' });
+    }
+  });
+
+  // POST /admin/dm-blast — send a plain-text message to a picked set of
+  // players via Discord DM. Sends sequentially with a short delay so we
+  // don't hammer Discord's rate limit. Returns a per-recipient breakdown.
+  router.post('/admin/dm-blast', requireSuperuser, express.json(), async (req, res) => {
+    const { message, accountIds } = req.body || {};
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ error: 'message is required and must not be empty' });
+    }
+    if (!Array.isArray(accountIds) || accountIds.length === 0) {
+      return res.status(400).json({ error: 'accountIds must be a non-empty array' });
+    }
+    if (accountIds.length > 500) {
+      return res.status(400).json({ error: 'Cannot send to more than 500 recipients at once' });
+    }
+
+    const bot = getDiscordBot();
+    if (!bot || !bot.client) {
+      return res.status(503).json({ error: 'Discord bot is not connected. Try again once the bot is online.' });
+    }
+
+    const text = message.trim();
+    const sent = [];
+    const failed = [];
+
+    for (const rawId of accountIds) {
+      const accountId = String(rawId);
+      let discordId = null;
+      try {
+        discordId = await db.getDiscordIdByAccountId(accountId);
+      } catch (e) {
+        failed.push({ account_id: accountId, reason: 'DB lookup error: ' + e.message });
+        continue;
+      }
+      if (!discordId) {
+        failed.push({ account_id: accountId, reason: 'No Discord ID on file' });
+        continue;
+      }
+      try {
+        const user = await bot.client.users.fetch(discordId).catch(() => null);
+        if (!user) {
+          failed.push({ account_id: accountId, discord_id: discordId, reason: 'User not found on Discord' });
+          continue;
+        }
+        await user.send({ content: text });
+        sent.push({ account_id: accountId, discord_id: discordId });
+      } catch (e) {
+        const reason = e?.message?.includes('Cannot send messages to this user')
+          ? 'DMs are closed (user has DMs disabled)'
+          : (e?.message || 'Send failed');
+        failed.push({ account_id: accountId, discord_id: discordId, reason });
+      }
+      // 700 ms between sends to respect Discord's DM rate limit.
+      await new Promise(r => setTimeout(r, 700));
+    }
+
+    res.json({
+      ok: true,
+      sent: sent.length,
+      failed: failed.length,
+      sentList: sent,
+      failedList: failed,
+    });
+  });
+
   // Task #699 — background-job run-now center. Each case calls the underlying
   // job function once, exactly as the cron would. Destructive jobs (account
   // deletion sweep, payout sweep) require { confirmed: true } in the request
