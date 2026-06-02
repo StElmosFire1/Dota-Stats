@@ -829,7 +829,6 @@ function Nav() {
           <DropdownItem to="/coaches">Coaching Marketplace</DropdownItem>
           <DropdownItem to="/sponsorships">Sponsor a Slot</DropdownItem>
           <DropdownItem to="/social">Social Feed</DropdownItem>
-          <DropdownItem to="/patch-notes">Patch Notes</DropdownItem>
           {/* Task #443 — personal Season Wrapped; signed-in only. */}
           {accountId && <DropdownItem to="/wrapped/me/latest">Season Wrapped</DropdownItem>}
           {/* v6.62 / Task #206 — only signed-in players need the cosmetics shop;
