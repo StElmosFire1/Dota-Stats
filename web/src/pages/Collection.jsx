@@ -9,13 +9,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSteamAuth } from '../context/SteamAuthContext';
-import {
-  RARITY_COLORS,
-  avatarRingStyle,
-  bannerStyle,
-  nameplateStyle,
-  recapSkinSwatch,
-} from '../profileCosmetics';
+import { RARITY_COLORS } from '../profileCosmetics';
+import CosmeticPreview from '../components/CosmeticPreview';
 import { getLootboxCollection, equipCosmetic } from '../api';
 
 const KIND_META = {
@@ -29,37 +24,6 @@ function rarityColor(r) {
   return RARITY_COLORS[r] || 'var(--brass, #c5a975)';
 }
 
-// Small CSS-only preview of each cosmetic so the locker shows what you own.
-function Preview({ item }) {
-  const { kind, value, label } = item;
-  if (kind === 'avatar_ring') {
-    const s = avatarRingStyle(value);
-    return (
-      <div aria-hidden="true" style={{
-        width: 56, height: 56, borderRadius: '50%', margin: '0 auto',
-        background: 'var(--bg-primary)', ...(s || {}),
-      }} />
-    );
-  }
-  if (kind === 'profile_banner') {
-    const s = bannerStyle(value);
-    return <div aria-hidden="true" style={{ height: 40, borderRadius: 8, ...(s || {}) }} />;
-  }
-  if (kind === 'nameplate_fx') {
-    const s = nameplateStyle(value);
-    return (
-      <div aria-hidden="true" style={{
-        textAlign: 'center', fontFamily: 'var(--font-serif, inherit)', fontWeight: 800,
-        fontSize: 22, color: 'var(--text-primary)', ...(s || {}),
-      }}>{label.replace(/ (Text|Wave|Glow)$/, '')}</div>
-    );
-  }
-  if (kind === 'recap_skin') {
-    const s = recapSkinSwatch(value);
-    return <div aria-hidden="true" style={{ height: 40, borderRadius: 8, ...(s || {}) }} />;
-  }
-  return null;
-}
 
 export default function Collection() {
   const { steamUser } = useSteamAuth();
@@ -163,7 +127,7 @@ export default function Collection() {
                   display: 'flex', flexDirection: 'column', gap: 10,
                 }}>
                   <div style={{ height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {item.owned ? <div style={{ width: '100%' }}><Preview item={item} /></div>
+                    {item.owned ? <div style={{ width: '100%' }}><CosmeticPreview kind={item.kind} value={item.value} label={item.label} size="md" /></div>
                       : <span aria-hidden="true" style={{ fontSize: 28, opacity: 0.6 }}>🔒</span>}
                   </div>
                   <div>

@@ -2548,9 +2548,45 @@ body.overlay-mode {
   border: 0;
 }
 
-/* ── Task #664 — Lootbox reveal animation (full edition only) ──────────────
-   Motion gated on prefers-reduced-motion so the reveal degrades to a static
-   card for users who opt out (a11y house rule, motion variant). */
+/* ── Task #664 / #709 — Lootbox crate, reveal animation (full edition only) ─
+   Motion gated on prefers-reduced-motion so everything degrades to a static
+   card for users who opt out (a11y house rule, motion variant).
+   Shake intensity scales with rarity: common→sm, rare→md, epic→lg, legendary→xl. */
+
+/* CSS-drawn crate shown during the anticipation phase */
+.lootbox-crate {
+  width: 90px;
+  height: 76px;
+  margin: 0 auto;
+  background: linear-gradient(160deg, var(--bg-card, #1c2740), var(--bg-primary, #0d1424));
+  border: 3px solid var(--lb-rarity, var(--brass, #c5a975));
+  border-radius: 10px;
+  position: relative;
+  box-shadow: 0 0 28px -4px var(--lb-rarity, var(--brass, #c5a975));
+}
+.lootbox-crate-lid {
+  position: absolute;
+  top: -13px;
+  left: -3px;
+  right: -3px;
+  height: 20px;
+  background: linear-gradient(135deg, var(--bg-card, #1c2740), var(--bg-primary, #0d1424));
+  border: 3px solid var(--lb-rarity, var(--brass, #c5a975));
+  border-radius: 6px 6px 0 0;
+}
+.lootbox-crate-line {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  right: 14px;
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--lb-rarity, var(--brass, #c5a975));
+  opacity: 0.35;
+  border-radius: 2px;
+}
+
+/* Static reveal card — always applied (reduced-motion users see this only) */
 .lootbox-reveal-card {
   border-radius: 18px;
   padding: 28px 32px;
@@ -2559,7 +2595,66 @@ body.overlay-mode {
   background: radial-gradient(circle at 50% 0%, rgba(255,255,255,0.08), rgba(0,0,0,0.4));
   box-shadow: 0 0 32px -4px var(--lb-rarity, var(--brass, #c5a975));
 }
+
 @media (prefers-reduced-motion: no-preference) {
+  /* Anticipation shake — four rarity tiers */
+  .lootbox-shake-common    { animation: lb-shake-sm  500ms  cubic-bezier(.36,.07,.19,.97) both; }
+  .lootbox-shake-rare      { animation: lb-shake-md  700ms  cubic-bezier(.36,.07,.19,.97) both; }
+  .lootbox-shake-epic      { animation: lb-shake-lg  900ms  cubic-bezier(.36,.07,.19,.97) both; }
+  .lootbox-shake-legendary { animation: lb-shake-xl  1100ms cubic-bezier(.36,.07,.19,.97) both; }
+
+  @keyframes lb-shake-sm {
+    0%,100% { transform: translate(0,0) rotate(0deg); }
+    10%     { transform: translate(-2px, 1px) rotate(-1.5deg); }
+    22%     { transform: translate(2px,-1px) rotate(1.5deg); }
+    34%     { transform: translate(-3px, 1px) rotate(-2deg); }
+    46%     { transform: translate(3px,-1px) rotate(2deg); }
+    58%     { transform: translate(-2px, 0) rotate(-1deg); }
+    70%     { transform: translate(2px, 1px) rotate(1deg); }
+    82%     { transform: translate(-1px,-1px) rotate(-.5deg); }
+    92%     { transform: translate(1px, 1px) rotate(.5deg); }
+  }
+  @keyframes lb-shake-md {
+    0%,100% { transform: translate(0,0) rotate(0deg); }
+    8%      { transform: translate(-4px, 2px) rotate(-3deg); }
+    18%     { transform: translate(4px,-2px) rotate(3deg); }
+    28%     { transform: translate(-5px, 2px) rotate(-4deg); }
+    38%     { transform: translate(5px,-2px) rotate(4deg); }
+    48%     { transform: translate(-4px, 1px) rotate(-2.5deg); }
+    58%     { transform: translate(4px,-1px) rotate(2.5deg); }
+    68%     { transform: translate(-3px, 2px) rotate(-2deg); }
+    78%     { transform: translate(3px,-1px) rotate(2deg); }
+    90%     { transform: translate(-1px, 1px) rotate(-.5deg); }
+  }
+  @keyframes lb-shake-lg {
+    0%,100% { transform: translate(0,0) rotate(0deg); }
+    7%      { transform: translate(-6px, 3px) rotate(-5deg); }
+    15%     { transform: translate(6px,-3px) rotate(5deg); }
+    23%     { transform: translate(-8px, 3px) rotate(-6deg); }
+    31%     { transform: translate(8px,-3px) rotate(6deg); }
+    40%     { transform: translate(-7px, 3px) rotate(-5deg); }
+    50%     { transform: translate(7px,-3px) rotate(5deg); }
+    60%     { transform: translate(-5px, 2px) rotate(-3.5deg); }
+    70%     { transform: translate(5px,-2px) rotate(3.5deg); }
+    80%     { transform: translate(-3px, 1px) rotate(-2deg); }
+    90%     { transform: translate(2px,-1px) rotate(1deg); }
+  }
+  @keyframes lb-shake-xl {
+    0%,100% { transform: translate(0,0) rotate(0deg); }
+    5%      { transform: translate(-8px, 4px) rotate(-7deg); }
+    12%     { transform: translate(8px,-4px) rotate(7deg); }
+    19%     { transform: translate(-11px, 4px) rotate(-9deg); }
+    26%     { transform: translate(11px,-4px) rotate(9deg); }
+    33%     { transform: translate(-11px, 4px) rotate(-8.5deg); }
+    42%     { transform: translate(11px,-4px) rotate(8.5deg); }
+    52%     { transform: translate(-8px, 3px) rotate(-6deg); }
+    62%     { transform: translate(8px,-3px) rotate(6deg); }
+    72%     { transform: translate(-5px, 2px) rotate(-3.5deg); }
+    82%     { transform: translate(5px,-2px) rotate(3.5deg); }
+    90%     { transform: translate(-2px, 1px) rotate(-1deg); }
+  }
+
+  /* Reveal pop and ongoing glow */
   .lootbox-reveal-card { animation: lb-pop 480ms cubic-bezier(.2,.9,.3,1.3) both; }
   .lootbox-reveal-glow { animation: lb-glow 1600ms ease-in-out infinite alternate; }
   @keyframes lb-pop {
@@ -2569,6 +2664,6 @@ body.overlay-mode {
   }
   @keyframes lb-glow {
     from { box-shadow: 0 0 18px -6px var(--lb-rarity, #c5a975); }
-    to   { box-shadow: 0 0 40px 2px var(--lb-rarity, #c5a975); }
+    to   { box-shadow: 0 0 48px 4px var(--lb-rarity, #c5a975); }
   }
 }

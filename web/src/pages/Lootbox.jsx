@@ -1,16 +1,20 @@
 // Task #664 — Lootbox store (full edition only, oceinhouse.gg).
+// Task #709 — Cosmetic visuals + stronger open animation.
 //
 // Coins-only. Three paid box tiers + one free weekly box. The published odds
 // rendered here are fetched verbatim from GET /api/lootbox/catalog — the same
 // object the server rolls against — so the UI can never advertise odds that
 // differ from reality.
 //
-// Opening a box pops a reveal animation in the shared <Dialog> primitive
-// (focus-trapped, Escape-closeable, ARIA-labelled per the a11y house rules).
+// Opening a box plays an anticipation shake (rarity-scaled) then pops the
+// cosmetic reveal in the shared <Dialog> primitive (focus-trapped, Escape-
+// closeable, ARIA-labelled per the a11y house rules). All motion is gated on
+// prefers-reduced-motion; reduced-motion users get an instant static reveal.
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Dialog from '../components/Dialog';
+import CosmeticPreview from '../components/CosmeticPreview';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { RARITY_COLORS } from '../profileCosmetics';
 import {
@@ -24,6 +28,9 @@ import {
 function rarityColor(r) {
   return RARITY_COLORS[r] || 'var(--brass, #c5a975)';
 }
+
+// Milliseconds of anticipation shake per rarity tier before the reveal pops.
+const SHAKE_DURATION = { common: 500, rare: 700, epic: 900, legendary: 1100 };
 
 function OutcomeLine({ result }) {
   if (!result) return null;
@@ -54,12 +61,22 @@ export default function Lootbox() {
   const [error, setError] = useState(null);
 
   const [busyBox, setBusyBox] = useState(null);
-  const [reveal, setReveal] = useState(null);   // open-box result
-  const [poolBox, setPoolBox] = useState(null);  // box whose drop pool is shown
+  const [reveal, setReveal] = useState(null);
+  // 'shake' → anticipation crate animation; 'reveal' → cosmetic card shown.
+  const [revealPhase, setRevealPhase] = useState(null);
+  const [poolBox, setPoolBox] = useState(null);
   const [redeeming, setRedeeming] = useState(null);
   const [notice, setNotice] = useState(null);
 
   const revealCloseRef = useRef(null);
+
+  // Advance from shake phase to reveal after the rarity-appropriate duration.
+  useEffect(() => {
+    if (revealPhase !== 'shake' || !reveal) return;
+    const ms = SHAKE_DURATION[reveal.item?.rarity] ?? 700;
+    const t = setTimeout(() => setRevealPhase('reveal'), ms);
+    return () => clearTimeout(t);
+  }, [revealPhase, reveal]);
 
   async function loadAll() {
     setLoading(true);
@@ -87,6 +104,9 @@ export default function Lootbox() {
     try {
       const result = boxId === 'free' ? await claimFreeLootbox() : await openLootbox(boxId);
       setReveal(result);
+      // Reduced-motion users get an instant static reveal; others get the shake build-up.
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      setRevealPhase(reducedMotion ? 'reveal' : 'shake');
       const m = await getLootboxMe().catch(() => null);
       if (m) setMe(m);
     } catch (e) {
@@ -94,6 +114,11 @@ export default function Lootbox() {
     } finally {
       setBusyBox(null);
     }
+  }
+
+  function closeReveal() {
+    setReveal(null);
+    setRevealPhase(null);
   }
 
   async function handleRedeem(sku) {
@@ -199,7 +224,6 @@ export default function Lootbox() {
           {signedIn && wildcardTokens > 0 && catalog && (
             <WildcardSection
               catalog={catalog}
-              owned={null}
               tokens={wildcardTokens}
               redeeming={redeeming}
               onRedeem={handleRedeem}
@@ -231,10 +255,10 @@ export default function Lootbox() {
         </>
       )}
 
-      {/* Reveal animation */}
+      {/* Reveal dialog — anticipation shake → cosmetic reveal */}
       <Dialog
         open={!!reveal}
-        onClose={() => setReveal(null)}
+        onClose={closeReveal}
         label="Box opened"
         initialFocusRef={revealCloseRef}
         contentStyle={{
@@ -242,12 +266,45 @@ export default function Lootbox() {
           borderRadius: 20, padding: 0, maxWidth: 420, width: '90vw',
         }}
       >
-        {reveal && (
+        {reveal && revealPhase === 'shake' && (
+          <div style={{ padding: '32px 24px 24px', textAlign: 'center' }}>
+            <div
+              className={`lootbox-crate lootbox-shake-${reveal.item?.rarity || 'common'}`}
+              style={{ '--lb-rarity': rarityColor(reveal.item?.rarity) }}
+              aria-hidden="true"
+            >
+              <div className="lootbox-crate-lid" style={{ '--lb-rarity': rarityColor(reveal.item?.rarity) }} />
+              <div className="lootbox-crate-line" />
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 14, marginBottom: 0 }}>
+              Opening…
+            </p>
+          </div>
+        )}
+        {reveal && revealPhase === 'reveal' && (
           <div style={{ padding: 24 }}>
             <div
               className="lootbox-reveal-card lootbox-reveal-glow"
               style={{ '--lb-rarity': rarityColor(reveal.item.rarity) }}
             >
+              {/* Cosmetic visual */}
+              {reveal.item.kind !== 'pro_time' ? (
+                <div style={{
+                  display: 'flex', justifyContent: 'center', alignItems: 'center',
+                  minHeight: 80, marginBottom: 16, padding: '0 16px',
+                }}>
+                  <div style={{ width: '100%', maxWidth: 200 }}>
+                    <CosmeticPreview
+                      kind={reveal.item.kind}
+                      value={reveal.item.value}
+                      label={reveal.item.label}
+                      size="lg"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 52, marginBottom: 12, lineHeight: 1 }} aria-hidden="true">⭐</div>
+              )}
               <div style={{
                 textTransform: 'uppercase', letterSpacing: 2, fontSize: 12,
                 color: rarityColor(reveal.item.rarity), fontFamily: 'var(--font-condensed, inherit)',
@@ -264,7 +321,7 @@ export default function Lootbox() {
               <button
                 type="button"
                 ref={revealCloseRef}
-                onClick={() => setReveal(null)}
+                onClick={closeReveal}
                 style={btnPrimary}
               >Nice!</button>
             </div>
@@ -279,7 +336,7 @@ export default function Lootbox() {
         label={poolBox ? `${poolBox.label} drop pool` : 'Drop pool'}
         contentStyle={{
           background: 'var(--bg-primary)', border: '1px solid var(--border)',
-          borderRadius: 16, padding: 24, maxWidth: 560, width: '92vw',
+          borderRadius: 16, padding: 24, maxWidth: 580, width: '92vw',
           maxHeight: '80vh', overflowY: 'auto',
         }}
       >
@@ -287,24 +344,37 @@ export default function Lootbox() {
           <div>
             <h2 style={{ marginTop: 0, fontFamily: 'var(--font-serif, inherit)' }}>{poolBox.label} — odds &amp; pool</h2>
             {poolBox.odds.map((row) => (
-              <div key={row.rarity} style={{ marginBottom: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <div key={row.rarity} style={{ marginBottom: 18 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
                   <strong style={{ color: rarityColor(row.rarity) }}>{row.label}</strong>
                   <span className="pb-num">{row.pct}%</span>
                 </div>
-                <ul style={{ listStyle: 'none', padding: 0, margin: '4px 0 0', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {row.items.map((it) => (
-                    <li key={it.sku} style={{
-                      fontSize: 12, padding: '2px 8px', borderRadius: 999,
-                      background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    <div key={it.sku} style={{
+                      width: 120, background: 'var(--bg-card)',
+                      border: `1px solid var(--border)`, borderRadius: 10,
+                      padding: '8px 6px 6px', display: 'flex', flexDirection: 'column', gap: 6,
                     }}>
-                      {it.label}{it.boxExclusive ? ' ★' : ''}{it.set ? ' (set)' : ''}
-                    </li>
+                      {!it.special && (
+                        <div style={{ height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{ width: '100%' }}>
+                            <CosmeticPreview kind={it.kind} value={it.value} label={it.label} size="sm" />
+                          </div>
+                        </div>
+                      )}
+                      {it.special && (
+                        <div style={{ height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }} aria-hidden="true">⭐</div>
+                      )}
+                      <div style={{ fontSize: 11, textAlign: 'center', lineHeight: 1.3, color: 'var(--text-primary)' }}>
+                        {it.label}{it.boxExclusive ? ' ★' : ''}{it.set ? ' (set)' : ''}
+                      </div>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </div>
             ))}
-            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 0 }}>
               ★ = box-exclusive (never sold in the coin shop). Within a rarity, drops are uniform across
               the listed items. These numbers are served by the same catalog the server rolls against.
             </p>
@@ -319,6 +389,23 @@ function BoxCard({ box, free, signedIn, busy, canAfford = true, freeState, onOpe
   const topOdds = box.odds || [];
   const freeReady = freeState ? freeState.canClaim : true;
   const nextReset = freeState?.nextResetAt ? new Date(freeState.nextResetAt) : null;
+
+  // Pick up to 3 representative cosmetic items from the box's drop pool,
+  // selecting from the rarest available tier downwards (one per tier).
+  const previewItems = (() => {
+    const rarityOrder = ['legendary', 'epic', 'rare', 'common'];
+    const result = [];
+    for (const rarity of rarityOrder) {
+      const row = topOdds.find((r) => r.rarity === rarity);
+      if (row?.items?.length) {
+        const pick = row.items.find((i) => !i.special) || null;
+        if (pick) result.push(pick);
+      }
+      if (result.length >= 3) break;
+    }
+    return result;
+  })();
+
   return (
     <div style={{
       background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14,
@@ -332,6 +419,17 @@ function BoxCard({ box, free, signedIn, busy, canAfford = true, freeState, onOpe
         </span>
       </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 14, margin: 0, minHeight: 40 }}>{box.blurb}</p>
+
+      {/* Representative cosmetic previews */}
+      {previewItems.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', padding: '4px 0' }}>
+          {previewItems.map((it) => (
+            <div key={it.sku} style={{ flex: 1, minWidth: 0 }}>
+              <CosmeticPreview kind={it.kind} value={it.value} label={it.label} size="sm" />
+            </div>
+          ))}
+        </div>
+      )}
 
       <ul aria-label={`${box.label} published odds`} style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 3 }}>
         {topOdds.map((row) => (
@@ -366,7 +464,6 @@ function BoxCard({ box, free, signedIn, busy, canAfford = true, freeState, onOpe
 }
 
 function WildcardSection({ catalog, tokens, redeeming, onRedeem }) {
-  // Eligible = any non-special cosmetic from a non-retired set.
   const retired = new Set((catalog.sets || []).filter((s) => s.retired).map((s) => s.id));
   const pool = [];
   for (const box of catalog.boxes || []) {

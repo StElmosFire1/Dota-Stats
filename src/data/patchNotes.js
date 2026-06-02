@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "9.03",
+    "title": "Lootbox visuals and stronger open animation",
+    "published_at": "2026-06-02",
+    "notes": [
+      "**Cosmetic previews in the Odds dialog.** Each item in the drop-pool dialog now shows a visual swatch of the actual cosmetic (avatar ring circle with its glow, banner gradient, nameplate effect text, recap colour strip) alongside its name, so players can see what they're rolling for rather than reading a text label.",
+      "**Box card contents preview.** Each box card in the store shows up to three representative cosmetic swatches drawn from its highest available rarity tiers, giving an at-a-glance sense of what's inside before opening.",
+      "**Visual cosmetic reveal.** The reveal dialog now renders the rolled cosmetic at full size — the ring, banner, nameplate, or recap as it will actually appear on your profile — in addition to the rarity label and outcome line. Pro-time and special outcomes show a star icon fallback.",
+      "**Rarity-scaled anticipation animation.** Opening a box plays an anticipation beat (CSS crate shaking with rarity-scaled intensity: common=mild, rare=medium, epic=heavy, legendary=dramatic) before the card pop, creating a satisfying build-up. All motion respects prefers-reduced-motion — reduced-motion users receive an instant static reveal. A11y gate passes.",
+      "**Shared CosmeticPreview component.** The CSS-based cosmetic renderer extracted from the Collection page into `components/CosmeticPreview.jsx` (`size` prop: sm/md/lg) and reused across the lootbox store, drop-pool dialog, reveal dialog, and the Collection page."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.02",
     "title": "Admin: create new lootbox sets from the AdminPanel",
     "published_at": "2026-06-02",
