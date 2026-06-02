@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "9.06",
+    "title": "Feature inventory stays in sync with the site's pages",
+    "published_at": "2026-06-02",
+    "notes": [
+      "**New build gate keeps `docs/website-features.txt` honest.** The website feature inventory was a hand-maintained snapshot that silently drifted whenever a new page/route was added to the app. A new check (`npm run check:feature-list`, `scripts/check-feature-list.js`) extracts every `<Route path=\"…\">` from `web/src/App.jsx`, resolves nested settings sub-routes to their full URL, normalises route params (so `:matchId` vs `:id` never causes a false alarm), and fails if any real page is missing from the inventory. It's wired into both `deploy.sh` and the post-merge GitHub hook as a hard gate, so an undocumented page now blocks the push/deploy instead of accumulating quietly.",
+      "**Caught and fixed nine already-drifted pages** while wiring this up — `/live` (Twitch live), `/positions` + `/position-player-profiles`, `/synergy`, `/buyin-success`, the single-arg `/wrapped/:id`, and the param-less `/admin/match-insights`, `/admin/browser-smoke`, `/admin/smoke-test` admin landing routes are now all listed.",
+      "**Scope.** Tooling + docs only; no user-facing behaviour change. Covered by `tests/checkFeatureList.test.js`."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.05",
     "title": "Admin mass Discord DM tool",
     "published_at": "2026-06-02",

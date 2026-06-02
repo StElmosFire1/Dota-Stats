@@ -8,6 +8,7 @@
     "check:parser": "bash scripts/build-parser.sh --check",
     "check:a11y": "node scripts/check-a11y.js",
     "check:patch-notes": "node scripts/check-patch-notes.js",
+    "check:feature-list": "node scripts/check-feature-list.js",
     "dedupe:patch-notes": "node scripts/dedupe-patch-notes.js",
     "check:robots": "node scripts/build-robots-txt.js --check",
     "build:robots": "node scripts/build-robots-txt.js",

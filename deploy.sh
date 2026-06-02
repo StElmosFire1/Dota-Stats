@@ -53,6 +53,12 @@ echo "==> Verifying patch notes have unique versions (Task #418)..."
 # a runtime warning from db.seedPatchNotes() on every bot boot.
 node scripts/check-patch-notes.js
 
+echo "==> Verifying the website feature inventory is in sync with App.jsx routes (Task #718)..."
+# Hard gate: refuse to deploy if any <Route path="…"> registered in
+# web/src/App.jsx is not mentioned in docs/website-features.txt. Param names
+# are normalised (:matchId vs :id) so only genuinely undocumented pages fail.
+node scripts/check-feature-list.js
+
 echo "==> Verifying frontend accessibility (Task #164 — house rule gate)..."
 # Hard gate: refuse to deploy if any non-interactive element (div/span/li/tr/td
 # /th/etc.) has an onClick without the documented role+tabIndex+onKeyDown

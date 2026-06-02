@@ -7,10 +7,12 @@ How it works (/how-it-works) [public] — onboarding/explainer
 Matches (/matches) [public] — full match history list
 This week (/this-week) [public] — AI-generated weekly recap, top performers, highlights
 Match detail (/match/:id) [public/pro] — scoreboard, PERF breakdowns; deeper insights pro-gated
-Match insights admin (/admin/match-insights/:id) [admin] — operator deep-dive
+Match insights admin (/admin/match-insights, /admin/match-insights/:id) [admin] — operator deep-dive
 Stats editor (/match/:id/edit) [admin] — manually correct parsed match stats
 Leaderboard (/leaderboard) [public] — ranked standings
 Overall stats (/stats) [public] — site-wide meta trends
+Position stats (/positions, /position-player-profiles) [public] — per-position win rates, role breakdowns, position-player profiles
+Synergy (/synergy) [public] — pairwise teammate synergy win rates
 Records (/records) [public] — all-time + season records, first blood, greatest comebacks
 Hall of Fame (/hall-of-fame) [public] — single-match records, career rankings, top recruiters
 Multikills (/multikills) [public] — rampage/ultrakill leaderboard, "Rampage King"
@@ -20,7 +22,7 @@ Ward map (/ward-map) [pro] — ward-placement heatmaps
 Players directory (/players) [public] — searchable player list
 Player profile (/player/:id) [public/pro] — stats, history, cosmetics; advanced insights pro
 Player growth (/player/:id/growth) [signed-in] — "Growth Coach" PERF trend + tips (own report)
-Wrapped (/wrapped/:season/:id, /wrapped/me/latest) [signed-in] — season recap with share cards
+Wrapped (/wrapped/:season/:id, /wrapped/:id, /wrapped/me/latest) [signed-in] — season recap with share cards
 Player insights / Social / Benchmarks (/insights, /social, /player-network, /benchmarks) [pro] — synergy network, top duos, performance-vs-community benchmarks
 Player tools / Compare / H2H (/player-tools, /compare, /head-to-head, /h2h/:a/:b, /me/h2h/:other) [pro] — side-by-side comparison and head-to-head matchup analysis
 Schedule (/schedule) [public/admin] — upcoming inhouse games, Discord-integrated RSVP; superusers create/cancel
@@ -45,6 +47,7 @@ Join (/join) [public] — intake form for prospective league members
 
 === BROADCAST / STREAMING ===
 Spectate (/spectate/:id) [public] — live spectator dashboard: draft, kill feed, gold leads
+Twitch live (/live) [public] — community streamers currently live on Twitch
 Replay viewer (/replay/:id) [pro] — 2D replay playback, minimap tracking, teamfight detection, coach annotations
 Pro replay browser (/pro-replays) [pro] — browse/download high-skill replays (feature-flagged)
 Overlays (/overlay/live/:lobby, /overlay/scoreboard/:match, /overlay/ticker/:account) [public] — OBS stream overlays
@@ -61,6 +64,7 @@ Pick'em (/pickem) [signed-in] — match-outcome predictions + prop bets, auto-re
 Games (/games, /games/:game) [public] — daily minigames (Heroguessr, item-zoom, statline, mystery player)
 Sponsorships (/sponsorships, /sponsorships/inbox) [public/signed-in] — buy ad slots; owners approve, sponsors see CTR telemetry
 Seasons (/seasons, /seasons/:id/summary) [public/admin] — season hub, prize pools, buy-ins, payouts
+Buy-in success (/buyin-success) [signed-in] — Stripe return page confirming a season/tournament buy-in
 
 === COACHING MARKETPLACE ===
 Coaches (/coaches, /coaches/:id, /coach/:id) [public] — listings + public coach profiles with AI pairing
@@ -82,8 +86,8 @@ Admin panel (/admin) — main console: lockdown toggle, hotlink/AI-traffic repor
 Spotlight (/admin/spotlight) — feature players/matches on home
 Ops (/admin/ops) — infra/server monitoring
 Feature health (/admin/feature-health) — live probe dashboard
-Browser smoke (/admin/browser-smoke/:id) — Playwright perceptual-diff runs + baseline approval
-Smoke test (/admin/smoke-test/:id) — additional E2E suite UI
+Browser smoke (/admin/browser-smoke, /admin/browser-smoke/:id) — Playwright perceptual-diff runs + baseline approval
+Smoke test (/admin/smoke-test, /admin/smoke-test/:id) — additional E2E suite UI
 Smurf watch (/admin/smurf-watch) — multi-account detection scores
 Record match (/admin/record-match) — manual match insert / force scrape
 Upload (/upload) — .dem replay upload + duplicate scanner
