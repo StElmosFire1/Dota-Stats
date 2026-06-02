@@ -13,7 +13,6 @@ import { MmrBadge } from '../components/RankBadge';
 import HomeBanner from '../components/HomeBanner';
 import SponsorshipBanner from '../components/SponsorshipBanner';
 import { PlayerOfTheWeek, HotHeroes, FeaturedPlayer, WatchLiveBadge } from '../components/HomeWidgets';
-import LiveQueueWidget from '../components/LiveQueueWidget';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -1009,10 +1008,6 @@ export default function Home() {
         {tournamentBanner}
         <ActiveLobbyCard accountId={steamUser?.accountId} />
         <WatchLiveBadge />
-        {/* Task #650 — surface live inhouse activity on the signed-in home,
-            matching what signed-out visitors get. emptyMode="recent" falls
-            back to the last few matches when the queue is quiet. */}
-        <LiveQueueWidget emptyMode="recent" />
         <FeaturedPlayer />
         <div style={{
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,

@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.04",
+    "title": "Fix: one lobby widget on the home page, not two",
+    "published_at": "2026-06-02",
+    "notes": [
+      "**No more double lobby cards.** Signed-in users were seeing two overlapping inhouse widgets on the home page — the prominent \"Active Lobby\" card and a second \"Live inhouse queue\" panel right below it, both showing the same queue. The redundant second panel has been removed so the signed-in home now matches the signed-out layout: a single Active Lobby card.",
+      "**Scope.** Full edition only (oceinhouse.gg). Home page presentation only — no change to the inhouse queue itself."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.03",
     "title": "Lootbox visuals and stronger open animation",
     "published_at": "2026-06-02",
