@@ -2737,3 +2737,21 @@ export async function submitGameGuess(game, payload) {
 }
 export const gameImageUrl = (token) => `${BASE}/games/image?t=${encodeURIComponent(token)}`;
 export const gameAudioUrl = (token) => `${BASE}/games/audio?t=${encodeURIComponent(token)}`;
+
+// ── Task #699 — Notification test harness + background-job run-now center ──
+export const adminGetNotifyTestTypes = (superuserKey) =>
+  superuserJson('/admin/notify-test/types', { superuserKey });
+
+export const adminSendNotifyTest = (superuserKey, type, targetAccountId) =>
+  superuserJson('/admin/notify-test', {
+    method: 'POST',
+    body: { type, ...(targetAccountId ? { targetAccountId } : {}) },
+    superuserKey,
+  });
+
+export const adminRunJob = (superuserKey, job, opts = {}) =>
+  superuserJson(`/admin/jobs/run/${encodeURIComponent(job)}`, {
+    method: 'POST',
+    body: opts,
+    superuserKey,
+  });

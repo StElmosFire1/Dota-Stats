@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "8.99",
+    "title": "Admin: notification test harness + background-job run-now center",
+    "published_at": "2026-06-01",
+    "notes": [
+      "**Notification test harness (18 types).** A new '🔔 Notification Test Harness' panel in the Admin Panel → Bot Tools tab lets a superuser fire a real test notification for any of 18 event types — MVP/attitude vote, hot-streak shoutout, tier-change announce, weekly summary/recap, Season Wrapped dry-run, tournament check-in (open / 5-min reminder / DQ removal), tournament payout-pending nudge, coaching booking-confirmed / booking-reminder / review-request / coach-of-the-month, achievement-unlocked, quest-completed, prediction-graded, VOD-delivered, account-anniversary, and the Founders Ring refund apology DM. Each notification routes through the existing notify() helper so the real Discord-DM and web-push formatting pipelines are exercised. All sample content is clearly labelled [TEST]. The target account's preferences are respected and the result card shows which channels were sent vs skipped.",
+      "**Background-job run-now center (11 jobs).** A new '⚡ Background Job Triggers' panel in the same tab lets a superuser run any background cron job on demand: mini-game puzzle pre-generation, API-quota lapse sweep, stale-upload reaper, ops-history snapshot, tournament check-in notify sweep, tournament check-in DQ sweep, pro-match sync, weekly-AI-report + verified-badge expiry (now truly immediate — bypasses Mon 09:00 UTC guard), tournament payout sweep (destructive), account-deletion/anonymisation sweep (destructive), and season auto-rollover (destructive). Each row shows the result inline.",
+      "**Search index.** Both panels are indexed in the admin search and jump directly to the panel anchor.",
+      "**Scope.** Full edition only, superuser-gated. Keyboard and screen-reader accessible; a11y gate green."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "8.98",
     "title": "Fix: signed-in session probe + replay-path + inhouse gate crashes",
     "published_at": "2026-06-01",

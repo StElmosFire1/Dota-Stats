@@ -187,8 +187,9 @@ ensureDir(CHUNK_DIR);
 ensureDir(UPLOAD_DIR);
 ensureDir(REPLAY_STORE_DIR);
 
-setInterval(() => {
+function _runStaleUploadReaper() {
   const now = Date.now();
+  let reaped = 0;
   for (const [jobId, job] of uploadJobs) {
     const age = now - (job.startedAt || 0);
     if (age > STALE_JOB_TTL && (job.status === 'uploading' || job.status === 'assembling')) {
@@ -196,9 +197,12 @@ setInterval(() => {
       cleanupChunks(jobId);
       if (job.filePath) cleanupFile(job.filePath);
       uploadJobs.delete(jobId);
+      reaped++;
     }
   }
-}, 5 * 60 * 1000);
+  return { reaped, total: uploadJobs.size };
+}
+setInterval(_runStaleUploadReaper, 5 * 60 * 1000);
 
 // Task #317 — finalise account-deletion requests once their 30-day grace
 // window elapses. Runs once on boot (after a brief delay so DB init can
@@ -758,6 +762,133 @@ async function _runTournamentPayoutSweep(reason = 'cron') {
 }
 setTimeout(() => { _runTournamentPayoutSweep('boot').catch(() => {}); }, 2 * 60_000).unref();
 setInterval(() => { _runTournamentPayoutSweep('cron').catch(() => {}); }, 10 * 60 * 1000).unref();
+
+// Task #699 — operator "run now" center. Stores the weekly-report worker tick
+// so the admin endpoint can invoke it on-demand without a separate cron tick.
+// Populated by createServer() after startWeeklyReportWorker() returns.
+let _weeklyReportTick = null;
+
+// Task #699 — notification test specs. Each entry maps a human-readable `type`
+// key to the eventKey used by notify() and representative sample payloads.
+// All content is clearly labelled [TEST] so recipients never confuse a test
+// notification with a real event. New types should be added here, not in the
+// endpoint body, to keep the authoritative list in one place.
+const NOTIFY_TEST_SPECS = {
+  mvp_vote: {
+    label: 'MVP / attitude vote',
+    eventKey: 'mvp_vote',
+    discord: { content: '🏆 **[TEST] Post-Match Rating** — Your last inhouse just wrapped up. Rate your teammates\' attitude (1–5 ⭐) and nominate an MVP. _(Test notification — no data saved)_' },
+    push: { title: '[Test] MVP vote prompt', body: 'Rate your teammates and nominate an MVP from the last inhouse.', url: '/matches' },
+  },
+  hot_streak: {
+    label: 'Hot streak shoutout',
+    eventKey: 'hot_streak',
+    discord: { content: '🔥 **[TEST] Hot Streak!** — You\'ve won 5 matches in a row — you\'re on fire! Keep it up. _(Test)_' },
+    push: { title: '[Test] Hot streak! 🔥', body: 'You\'ve won 5 matches in a row — you\'re on fire!', url: '/matches' },
+  },
+  tier_change: {
+    label: 'Tier-change announce',
+    eventKey: 'season_rollover',
+    discord: { content: '⬆️ **[TEST] Tier Change!** — Congratulations — your ladder tier just changed from **Soldier** to **Archon**. Keep climbing! _(Test)_' },
+    push: { title: '[Test] You moved up a tier!', body: 'Your ladder tier changed: Soldier → Archon. Keep climbing!', url: '/leaderboard' },
+  },
+  weekly_recap: {
+    label: 'Weekly summary / recap',
+    eventKey: 'weekly_recap',
+    discord: { content: '📊 **[TEST] Weekly Recap** — Last 7 days: 5 games, 3–2 WR, avg PERF **6.2**. Top hero: Dragon Knight (4 games, 75% WR). _(Test)_' },
+    push: { title: '[Test] Weekly recap ready', body: 'Your weekly inhouse stats are ready — 5 games, 3–2 WR.', url: '/me/weekly-report' },
+  },
+  season_wrapped: {
+    label: 'Season Wrapped (dry-run)',
+    eventKey: 'season_wrapped',
+    discord: { content: '🏁 **[TEST] Season Wrapped — Season 12!** — You finished at **Archon** tier, 42 matches played, 60% WR. Best hero: Dragon Knight. Thanks for playing — see you next season! _(Dry-run — no real season has closed)_' },
+    push: { title: '[Test] Season Wrapped', body: 'Your Season 12 recap is ready — 42 matches, 60% WR.', url: '/season-wrapped' },
+  },
+  tournament_checkin_open: {
+    label: 'Tournament check-in (open)',
+    eventKey: 'tournament_checkin',
+    discord: { content: '🏁 **[TEST] Tournament Check-In Open** — Check-in for "OCE Cup 2026" is now open — confirm your spot within the next 30 minutes. _(Test)_' },
+    push: { title: '[Test] Tournament check-in open', body: 'Check-in for "OCE Cup 2026" is open — confirm your spot now.', url: '/tournaments' },
+  },
+  tournament_checkin_reminder: {
+    label: 'Tournament check-in (5-min reminder)',
+    eventKey: 'tournament_checkin',
+    discord: { content: '⏰ **[TEST] Check-in Closing Soon** — Check-in for "OCE Cup 2026" closes in 5 minutes — check in now or you\'ll be dropped from the bracket. _(Test)_' },
+    push: { title: '[Test] Check-in closing soon', body: 'OCE Cup 2026 check-in closes in 5 minutes — act now!', url: '/tournaments' },
+  },
+  tournament_checkin_dq: {
+    label: 'Tournament check-in (DQ removal)',
+    eventKey: 'tournament_checkin',
+    discord: { content: '🚫 **[TEST] Dropped from Tournament** — You were removed from "OCE Cup 2026" because you didn\'t check in before the window closed. Spots are still open — you can reclaim yours from the bracket. _(Test)_' },
+    push: { title: '[Test] Dropped from tournament', body: 'You were removed from OCE Cup 2026 for missing check-in. Spots still open.', url: '/tournaments' },
+  },
+  tournament_payout_pending: {
+    label: 'Tournament payout-pending nudge',
+    eventKey: 'tournament_payout_pending',
+    discord: { content: '💸 **[TEST] Unclaimed Prize Payout** — You have a prize payout waiting from "OCE Cup 2026"! Connect a payout account in your profile settings to receive it. _(Test)_' },
+    push: { title: '[Test] Unclaimed prize payout', body: 'You have a prize waiting — connect a payout account to claim it.', url: '/me/settings' },
+  },
+  coach_booking_confirmed: {
+    label: 'Coaching booking confirmed',
+    eventKey: 'coach_booking_confirmed',
+    discord: { content: '🎓 **[TEST] Booking Confirmed** — Your coaching session with **Coach A** is confirmed for tomorrow at 7 PM AEST. _(Test)_' },
+    push: { title: '[Test] Coaching session confirmed', body: 'Your session with Coach A is locked in for tomorrow 7 PM AEST.', url: '/coaches' },
+  },
+  coach_booking_reminder: {
+    label: 'Coaching booking reminder (1 hr)',
+    eventKey: 'coach_booking_reminder',
+    discord: { content: '⏰ **[TEST] Session Reminder** — Your coaching session with **Coach A** starts in 1 hour — get ready! _(Test)_' },
+    push: { title: '[Test] Session starts in 1 hour', body: 'Your coaching session with Coach A starts in 1 hour.', url: '/coaches' },
+  },
+  coach_review_request: {
+    label: 'Coaching review-request / VOD delivered',
+    eventKey: 'vod_delivered',
+    discord: { content: '🎬 **[TEST] VOD Review Delivered** — Your VOD review is ready! Your coach has added notes and timestamps — check the coach portal. _(Test)_' },
+    push: { title: '[Test] VOD review delivered', body: 'Your coach finished reviewing your replay — check the portal.', url: '/coaches' },
+  },
+  coach_of_the_month: {
+    label: 'Coach of the Month win',
+    eventKey: 'coach_of_the_month',
+    discord: { content: '🌟 **[TEST] Coach of the Month!** — Congratulations! You\'ve been selected as this month\'s outstanding coach on OCE Inhouse. _(Test)_' },
+    push: { title: '[Test] Coach of the Month! 🌟', body: 'Congratulations! You\'ve been named Coach of the Month.', url: '/coaches' },
+  },
+  achievement_unlocked: {
+    label: 'Achievement unlocked',
+    eventKey: 'achievement_unlocked',
+    discord: { content: '🏅 **[TEST] Achievement Unlocked!** — You just earned **Hat-Trick Hero** — 3 games with 10+ assists in a row. Keep it up! _(Test)_' },
+    push: { title: '[Test] Achievement unlocked! 🏅', body: 'You earned "Hat-Trick Hero" — 3 games with 10+ assists in a row.', url: '/profile' },
+  },
+  quest_completed: {
+    label: 'Quest completed',
+    eventKey: 'quest_completed',
+    discord: { content: '✅ **[TEST] Quest Complete!** — You finished the weekly quest **Team Player** — assist on 15 kills this week. _(Test)_' },
+    push: { title: '[Test] Quest completed! ✅', body: 'Weekly quest "Team Player" done — 15 kill assists achieved.', url: '/profile' },
+  },
+  prediction_graded: {
+    label: 'Match prediction graded',
+    eventKey: 'prediction_graded',
+    discord: { content: '🎯 **[TEST] Prediction Graded** — Your prediction for match #12345 was **correct**! +50 🪙 coins rewarded. _(Test)_' },
+    push: { title: '[Test] Prediction result 🎯', body: 'Your match prediction was correct — +50 coins rewarded!', url: '/matches' },
+  },
+  vod_delivered: {
+    label: 'VOD review delivered',
+    eventKey: 'vod_delivered',
+    discord: { content: '🎬 **[TEST] VOD Review Ready** — Your VOD review is ready! Check the coach portal for your coach\'s notes and timestamps. _(Test)_' },
+    push: { title: '[Test] VOD review ready', body: 'Your VOD review is ready — check the coach portal.', url: '/coaches' },
+  },
+  anniversary_shoutout: {
+    label: 'Account anniversary',
+    eventKey: 'anniversary_shoutout',
+    discord: { content: '🎂 **[TEST] 1-Year Anniversary!** — It\'s been one year since you joined OCE Inhouse — 47 matches played. Here\'s to many more! _(Test)_' },
+    push: { title: '[Test] 1-year anniversary! 🎂', body: 'One year on OCE Inhouse — 47 matches played. Thanks for being here!', url: '/profile' },
+  },
+  founders_ring_refund: {
+    label: 'Founders Ring refund apology DM',
+    eventKey: 'mvp_vote',
+    discord: { content: '💍 **[TEST] Founders Ring Refund Notice** — We\'ve processed a refund for your Founders Ring purchase — the cap-race cap was reached before your order was fully confirmed. The funds will appear in 3–5 business days. We\'re sorry for the inconvenience. _(Test — no actual refund has been processed)_' },
+    push: { title: '[Test] Founders Ring refund', body: 'Your Founders Ring refund has been processed. Check your email.', url: '/me/settings' },
+  },
+};
 
 // Replay store cleanup: runs every 12 hours, deletes expired files from disk.
 setInterval(async () => {
@@ -3014,7 +3145,7 @@ function createServer(startupStatus = {}) {
   try {
     const { startWeeklyReportWorker } = require('../monetization/magazineV3');
     const bot = startupStatus.botInstance || null;
-    startWeeklyReportWorker({
+    const worker = startWeeklyReportWorker({
       db, magV3: db.magV3,
       getGroq: () => {
         try { return require('../services/groqService'); } catch { return null; }
@@ -3074,6 +3205,10 @@ function createServer(startupStatus = {}) {
         } catch { /* best-effort */ }
       },
     });
+    // Task #699 — store the tick so the admin run-now endpoint can invoke it.
+    if (worker && typeof worker._tick === 'function') {
+      _weeklyReportTick = worker._tick.bind(worker);
+    }
     console.log('[mag-v3] weekly report worker started');
   } catch (err) {
     console.warn('[mag-v3] weekly worker failed to start:', err.message);
@@ -11714,6 +11849,163 @@ NOTES
       res.json({ ok: true, username: user.username, id: user.id });
     } catch (err) {
       console.error('[TestRsvpDM]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #699 — Notification test harness. Routes through the real notify()
+  // helper so Discord DMs and web-push formatting are genuinely exercised.
+  // All sample content is clearly labelled [TEST]. Destructive side effects:
+  // none — notify() checks user preferences and skips disabled channels.
+  router.post('/admin/notify-test', requireSuperuser, express.json(), async (req, res) => {
+    const { type, targetAccountId } = req.body || {};
+    const aid = targetAccountId || req.session.accountId;
+    if (!aid) {
+      return res.status(400).json({
+        error: 'targetAccountId is required (or must be signed in as the target account)',
+      });
+    }
+    const spec = NOTIFY_TEST_SPECS[type];
+    if (!spec) {
+      return res.status(400).json({
+        error: `Unknown notification type: ${JSON.stringify(type)}`,
+        availableTypes: Object.keys(NOTIFY_TEST_SPECS).map(k => ({ key: k, label: NOTIFY_TEST_SPECS[k].label })),
+      });
+    }
+    try {
+      const result = await notify(Number(aid), spec.eventKey, {
+        discord: spec.discord,
+        push: spec.push,
+      });
+      res.json({
+        ok: true,
+        type,
+        label: spec.label,
+        targetAccountId: Number(aid),
+        channels: result,
+      });
+    } catch (err) {
+      console.error('[AdminNotifyTest]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #699 — list available notification types (for the dropdown UI).
+  router.get('/admin/notify-test/types', requireSuperuser, (req, res) => {
+    res.json(
+      Object.entries(NOTIFY_TEST_SPECS).map(([key, s]) => ({ key, label: s.label, eventKey: s.eventKey }))
+    );
+  });
+
+  // Task #699 — background-job run-now center. Each case calls the underlying
+  // job function once, exactly as the cron would. Destructive jobs (account
+  // deletion sweep, payout sweep) require { confirmed: true } in the request
+  // body to prevent accidental invocation. All jobs are idempotent except where
+  // noted.
+  router.post('/admin/jobs/run/:job', requireSuperuser, express.json(), async (req, res) => {
+    const { job } = req.params;
+    const DESTRUCTIVE = ['account-deletion-sweep', 'payout-sweep', 'season-rollover'];
+    if (DESTRUCTIVE.includes(job) && !req.body?.confirmed) {
+      return res.status(400).json({
+        error: `Job "${job}" is destructive. Include { confirmed: true } in the request body to proceed.`,
+        requiresConfirm: true,
+      });
+    }
+
+    try {
+      switch (job) {
+        case 'puzzle-pregen': {
+          // Daily mini-game puzzle pre-generation (fills tomorrow's puzzles).
+          const { pregenerateDailyPuzzles } = require('../games/routes');
+          const n = await pregenerateDailyPuzzles(db);
+          return res.json({ ok: true, job, result: { generated: n ?? '(no count returned)' } });
+        }
+
+        case 'api-quota-sweep': {
+          // Degrades API access for accounts whose quota period has lapsed.
+          const n = await db.degradeLapsedApiQuotas({});
+          return res.json({ ok: true, job, result: { degraded: n ?? 0 } });
+        }
+
+        case 'account-deletion-sweep': {
+          // Permanently anonymises accounts flagged for deletion. Irreversible.
+          await _runAccountDeletionSweep();
+          return res.json({ ok: true, job, result: { message: 'Account deletion sweep completed.' } });
+        }
+
+        case 'ops-snapshot': {
+          // Captures a point-in-time ops-history snapshot for the sparklines.
+          const opsState = require('./opsState');
+          await opsState.captureHistorySnapshot(db);
+          return res.json({ ok: true, job, result: { message: 'Ops history snapshot captured.' } });
+        }
+
+        case 'checkin-notify': {
+          // Sends check-in-open notifications for any tournament whose window just opened.
+          const r = await _runCheckinNotifyTick();
+          return res.json({ ok: true, job, result: r || { message: 'Checkin-notify tick completed.' } });
+        }
+
+        case 'checkin-dq': {
+          // DQs players from tournaments who missed the check-in window.
+          const r = await _runCheckinDqSweepTick();
+          return res.json({ ok: true, job, result: r || { message: 'Checkin-DQ sweep completed.' } });
+        }
+
+        case 'pro-match-sync': {
+          // Syncs the latest pro match data from OpenDota.
+          const { getProMatchSyncer } = require('../api/proMatchSyncer');
+          await getProMatchSyncer().runOnce();
+          return res.json({ ok: true, job, result: { message: 'Pro match sync completed.' } });
+        }
+
+        case 'payout-sweep': {
+          // Settles pending Stripe payouts for all completed tournaments.
+          await _runTournamentPayoutSweep('admin-run-now');
+          return res.json({ ok: true, job, result: { message: 'Tournament payout sweep completed.' } });
+        }
+
+        case 'stale-upload-reaper': {
+          // Reaps in-memory upload jobs that have been in 'uploading' or 'assembling'
+          // state past the STALE_JOB_TTL threshold. Removes their chunk files from /tmp.
+          const r = _runStaleUploadReaper();
+          return res.json({ ok: true, job, result: r });
+        }
+
+        case 'weekly-report': {
+          // Expires stale verified badges AND generates weekly AI reports for all Pro
+          // accounts immediately (force: true bypasses the Mon 09:00 UTC schedule guard).
+          if (typeof _weeklyReportTick === 'function') {
+            await _weeklyReportTick({ force: true });
+            return res.json({ ok: true, job, result: { message: 'Weekly report worker tick completed with force=true (badge expiry + report generation ran immediately, regardless of schedule).' } });
+          }
+          // Fallback: call badge expiry directly if the worker wasn't wired.
+          try {
+            const expired = await db.magV3.expireStaleVerifiedBadges();
+            return res.json({ ok: true, job, result: { message: 'Worker tick unavailable — expired stale verified badges directly.', expiredCount: Array.isArray(expired) ? expired.length : 0 } });
+          } catch {
+            return res.json({ ok: true, job, result: { message: 'Weekly report worker not available on this instance.' } });
+          }
+        }
+
+        case 'season-rollover': {
+          // Triggers the season auto-rollover check. Creates a new season if conditions are met.
+          await _runSeasonRolloverTick('admin-run-now');
+          return res.json({ ok: true, job, result: { message: 'Season rollover tick completed.' } });
+        }
+
+        default:
+          return res.status(400).json({
+            error: `Unknown job: ${JSON.stringify(job)}`,
+            availableJobs: [
+              'puzzle-pregen', 'api-quota-sweep', 'stale-upload-reaper',
+              'account-deletion-sweep', 'ops-snapshot', 'checkin-notify', 'checkin-dq',
+              'pro-match-sync', 'payout-sweep', 'weekly-report', 'season-rollover',
+            ],
+          });
+      }
+    } catch (err) {
+      console.error(`[AdminJobRun] ${job} error:`, err.message);
       res.status(500).json({ error: err.message });
     }
   });

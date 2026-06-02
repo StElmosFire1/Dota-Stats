@@ -228,7 +228,10 @@ function startWeeklyReportWorker(deps) {
           isNotificationEnabled } = deps;
   let timer = null;
   let running = false;
-  async function tick() {
+  // Task #699: pass { force: true } to bypass the weekday/hour schedule guard
+  // so the admin run-now endpoint can trigger a full report generation
+  // immediately regardless of the current day or time.
+  async function tick({ force = false } = {}) {
     if (running) return;
     running = true;
     try {
@@ -239,9 +242,9 @@ function startWeeklyReportWorker(deps) {
       } catch (e) { log.warn('[mag-v3:weekly] expire-verified failed:', e.message); }
 
       const now = new Date();
-      if (now.getUTCDay() !== deliveryWeekday) return;
-      // Only run once per day-of-week tick window.
-      if (now.getUTCHours() !== 9) return; // 09:00 UTC
+      if (!force && now.getUTCDay() !== deliveryWeekday) return;
+      // Only run once per day-of-week tick window (unless forced by admin).
+      if (!force && now.getUTCHours() !== 9) return; // 09:00 UTC
 
       const accounts = (await (getProAccountIds ? getProAccountIds() : Promise.resolve([]))) || [];
       if (!accounts.length) return;

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, getPlayerV3ModifierHistory } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob } from '../api';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
 import { useTour } from '../components/SpotlightTour';
@@ -2452,6 +2452,305 @@ function ReplayArchiveManager({ superuserKey }) {
       <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
         Archive directory is controlled by <code>REPLAY_ARCHIVE_DIR</code> on the dedicated server.
       </p>
+    </section>
+  );
+}
+
+// ── Task #699 — Notification test harness ────────────────────────────────────
+// Covers all ~18 event types. Routes through notify() so Discord DMs and
+// web-push formatting are genuinely exercised. All sample content is clearly
+// labelled [TEST].
+function NotificationTestPanel({ superuserKey }) {
+  const [types, setTypes] = useState([]);
+  const [selectedType, setSelectedType] = useState('');
+  const [targetAccountId, setTargetAccountId] = useState('');
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingTypes, setLoadingTypes] = useState(false);
+
+  useEffect(() => {
+    setLoadingTypes(true);
+    adminGetNotifyTestTypes(superuserKey)
+      .then(data => {
+        if (Array.isArray(data)) {
+          setTypes(data);
+          if (data.length) setSelectedType(data[0].key);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTypes(false));
+  }, [superuserKey]);
+
+  const send = async () => {
+    if (!selectedType) return;
+    setLoading(true);
+    setStatus(null);
+    try {
+      const data = await adminSendNotifyTest(
+        superuserKey,
+        selectedType,
+        targetAccountId.trim() || undefined
+      );
+      if (data.ok) {
+        const ch = data.channels;
+        const summary = ch
+          ? Object.entries(ch).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(' | ')
+          : 'sent';
+        setStatus({ ok: true, message: `✅ Test notification sent for "${data.label}". Channels: ${summary}` });
+      } else {
+        setStatus({ ok: false, message: `❌ ${data.error || 'Unknown error'}` });
+      }
+    } catch (e) {
+      setStatus({ ok: false, message: `❌ Request failed: ${e.message}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inputStyle = {
+    padding: '8px 12px', borderRadius: 6, fontSize: 14, width: 320,
+    background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+    color: 'var(--text-primary)',
+  };
+
+  return (
+    <section className="admin-section" id="ap-anchor-notify-test" style={{ marginTop: 32 }}>
+      <h2 className="section-title" style={{ marginBottom: 6 }}>🔔 Notification Test Harness</h2>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
+        Sends a real test notification through the existing Discord-DM and web-push channels so
+        the full formatting pipeline is exercised. All messages are clearly labelled <strong>[TEST]</strong>.
+        The target account&apos;s notification preferences are respected — if Discord DMs or web push
+        are disabled for that event type, those channels will be skipped.
+      </p>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 14 }}>
+        <div>
+          <label htmlFor="notify-test-type" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+            Notification type
+          </label>
+          <select
+            id="notify-test-type"
+            value={selectedType}
+            onChange={e => setSelectedType(e.target.value)}
+            disabled={loadingTypes}
+            style={{ ...inputStyle, width: 340, cursor: loadingTypes ? 'not-allowed' : 'pointer' }}
+            aria-label="Notification type to test"
+          >
+            {loadingTypes && <option value="">Loading types…</option>}
+            {types.map(t => (
+              <option key={t.key} value={t.key}>{t.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="notify-test-account" style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+            Target account ID <span style={{ fontStyle: 'italic' }}>(blank = your own account)</span>
+          </label>
+          <input
+            id="notify-test-account"
+            type="text"
+            placeholder="Steam64 account ID"
+            value={targetAccountId}
+            onChange={e => setTargetAccountId(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && send()}
+            style={inputStyle}
+            aria-label="Target account ID for test notification"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={send}
+          disabled={loading || !selectedType}
+          style={{
+            padding: '8px 18px', borderRadius: 6, fontWeight: 600, fontSize: 14,
+            background: loading ? 'var(--bg-secondary)' : '#6366f1',
+            color: '#fff', border: 'none', cursor: loading || !selectedType ? 'not-allowed' : 'pointer',
+            alignSelf: 'flex-end',
+          }}
+        >
+          {loading ? '⏳ Sending…' : '🔔 Send test'}
+        </button>
+      </div>
+      {status && (
+        <div style={{
+          marginTop: 4, padding: '8px 14px', borderRadius: 6, fontSize: 13,
+          background: status.ok ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
+          border: `1px solid ${status.ok ? '#4ade80' : '#f87171'}`,
+          color: status.ok ? '#4ade80' : '#f87171',
+          wordBreak: 'break-word',
+        }}>
+          {status.message}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ── Task #699 — Background-job run-now center ────────────────────────────────
+// Each row calls its underlying cron function once. Destructive jobs (account
+// deletion, payout sweep, season rollover) show a browser confirm dialog
+// before firing, following the existing pattern in this panel.
+const JOB_DEFINITIONS = [
+  {
+    id: 'puzzle-pregen',
+    label: '🧩 Puzzle Pre-generation',
+    description: 'Generates tomorrow\'s daily mini-game puzzles ahead of schedule.',
+    destructive: false,
+  },
+  {
+    id: 'api-quota-sweep',
+    label: '🔑 API Quota Lapse Sweep',
+    description: 'Degrades API access for any accounts whose quota period has lapsed.',
+    destructive: false,
+  },
+  {
+    id: 'ops-snapshot',
+    label: '📸 Ops History Snapshot',
+    description: 'Captures a point-in-time ops-history entry for the sparklines.',
+    destructive: false,
+  },
+  {
+    id: 'checkin-notify',
+    label: '📣 Tournament Check-in Notify',
+    description: 'Sends check-in-open notifications for any tournament whose window just opened.',
+    destructive: false,
+  },
+  {
+    id: 'checkin-dq',
+    label: '🚫 Tournament Check-in DQ Sweep',
+    description: 'Removes players who missed the check-in window from their brackets.',
+    destructive: false,
+  },
+  {
+    id: 'pro-match-sync',
+    label: '⚔️ Pro Match Sync',
+    description: 'Fetches the latest professional Dota 2 match data from OpenDota.',
+    destructive: false,
+  },
+  {
+    id: 'weekly-report',
+    label: '📊 Weekly Report + Badge Expiry',
+    description: 'Expires stale verified badges and generates weekly AI reports for all Pro accounts immediately (bypasses the normal Mon 09:00 UTC schedule).',
+    destructive: false,
+  },
+  {
+    id: 'stale-upload-reaper',
+    label: '🗑️ Stale Upload Reaper',
+    description: 'Removes in-memory upload jobs that have been stuck in uploading/assembling state past their TTL and cleans up their temporary chunk files.',
+    destructive: false,
+  },
+  {
+    id: 'payout-sweep',
+    label: '💸 Tournament Payout Sweep',
+    description: 'Settles all pending Stripe payouts for completed tournaments. Triggers real Stripe transfers.',
+    destructive: true,
+  },
+  {
+    id: 'account-deletion-sweep',
+    label: '🗑️ Account Deletion Sweep',
+    description: 'Permanently anonymises accounts flagged for deletion. This is irreversible.',
+    destructive: true,
+  },
+  {
+    id: 'season-rollover',
+    label: '🏁 Season Auto-Rollover',
+    description: 'Triggers the season auto-rollover check. Creates a new season if the current end conditions are met.',
+    destructive: true,
+  },
+];
+
+function JobRunNowPanel({ superuserKey }) {
+  const [results, setResults] = useState({});
+  const [running, setRunning] = useState({});
+
+  const runJob = async (jobId, destructive) => {
+    if (destructive) {
+      const jobDef = JOB_DEFINITIONS.find(j => j.id === jobId);
+      const confirmed = window.confirm(
+        `⚠️ "${jobDef?.label}" is a destructive operation.\n\n${jobDef?.description}\n\nProceed?`
+      );
+      if (!confirmed) return;
+    }
+    setRunning(r => ({ ...r, [jobId]: true }));
+    setResults(r => ({ ...r, [jobId]: null }));
+    try {
+      const data = await adminRunJob(superuserKey, jobId, destructive ? { confirmed: true } : {});
+      if (data.ok) {
+        const resultStr = data.result
+          ? Object.entries(data.result).map(([k, v]) => `${k}: ${v}`).join(', ')
+          : 'completed';
+        setResults(r => ({ ...r, [jobId]: { ok: true, message: `✅ ${resultStr}` } }));
+      } else {
+        setResults(r => ({ ...r, [jobId]: { ok: false, message: `❌ ${data.error || 'Unknown error'}` } }));
+      }
+    } catch (e) {
+      setResults(r => ({ ...r, [jobId]: { ok: false, message: `❌ ${e.message}` } }));
+    } finally {
+      setRunning(r => ({ ...r, [jobId]: false }));
+    }
+  };
+
+  return (
+    <section className="admin-section" id="ap-anchor-job-run-now" style={{ marginTop: 32 }}>
+      <h2 className="section-title" style={{ marginBottom: 6 }}>⚡ Background Job Triggers</h2>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
+        Run any background cron job immediately — useful for testing, backfills, or forcing a sweep
+        outside its normal schedule. Jobs marked <strong style={{ color: '#f59e0b' }}>⚠ destructive</strong> require
+        confirmation because they trigger irreversible or financial side effects.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {JOB_DEFINITIONS.map(job => {
+          const res = results[job.id];
+          const busy = running[job.id];
+          return (
+            <div
+              key={job.id}
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 14, flexWrap: 'wrap',
+                padding: '10px 14px', borderRadius: 8,
+                background: 'var(--surface-2, rgba(255,255,255,0.03))',
+                border: '1px solid var(--border)',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>
+                  {job.label}
+                  {job.destructive && (
+                    <span style={{ marginLeft: 8, fontSize: 11, color: '#f59e0b', fontWeight: 500 }}>
+                      ⚠ destructive
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{job.description}</div>
+                {res && (
+                  <div style={{
+                    marginTop: 6, fontSize: 12, fontFamily: 'monospace',
+                    color: res.ok ? '#4ade80' : '#f87171',
+                    wordBreak: 'break-word',
+                  }}>
+                    {res.message}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => runJob(job.id, job.destructive)}
+                disabled={!!busy}
+                aria-label={`Run ${job.label} now`}
+                style={{
+                  padding: '6px 14px', borderRadius: 6, fontWeight: 600, fontSize: 13,
+                  background: busy ? 'var(--bg-secondary)' : job.destructive ? '#dc2626' : '#6366f1',
+                  color: '#fff', border: 'none',
+                  cursor: busy ? 'not-allowed' : 'pointer',
+                  flexShrink: 0, alignSelf: 'center',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {busy ? '⏳ Running…' : '▶ Run now'}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -6321,6 +6620,8 @@ export default function AdminPanel() {
     { label: 'Database Backups', tab: 'matches', anchor: 'ap-anchor-db-backups', icon: '💾', kw: 'restore snapshot pg_dump nicknames' },
     { label: 'Test: Provision & Connect', tab: 'steambot', anchor: 'ap-anchor-inhouse-diag', icon: '🔌', kw: 'rcon dedicated server diagnostic steam connect link test' },
     { label: 'Steam Bot Controls', tab: 'steambot', anchor: 'ap-anchor-steam-bot', icon: '🤖', kw: 'lobby login reconnect status' },
+    { label: 'Notification Test Harness', tab: 'steambot', anchor: 'ap-anchor-notify-test', icon: '🔔', kw: 'notification test send discord dm web push mvp hot streak tier season wrapped tournament checkin payout coaching achievement quest prediction vod anniversary founders ring' },
+    { label: 'Background Job Triggers', tab: 'steambot', anchor: 'ap-anchor-job-run-now', icon: '⚡', kw: 'run now job cron trigger manual sweep puzzle pregen api quota account deletion ops snapshot checkin dq pro match sync payout season rollover weekly report badge expiry background' },
     { label: 'Test Post-Match DM', tab: 'steambot', anchor: 'ap-anchor-test-dm', icon: '✉️', kw: 'discord direct message debug' },
     { label: 'Test RSVP Registration DM', tab: 'steambot', anchor: 'ap-anchor-test-rsvp-dm', icon: '✉️', kw: 'discord rsvp invite' },
     { label: 'Server Error Log', tab: 'steambot', anchor: 'ap-anchor-error-log', icon: '🚨', kw: 'errors crashes log' },
@@ -6622,6 +6923,12 @@ export default function AdminPanel() {
       </>)}
 
       {activeTab === 'steambot' && (<>
+      {/* Task #699 — Notification test harness */}
+      <NotificationTestPanel superuserKey={superuserKey} />
+
+      {/* Task #699 — Background job run-now center */}
+      <JobRunNowPanel superuserKey={superuserKey} />
+
       {/* Test Post-Match DM */}
       <TestDmPanel superuserKey={superuserKey} />
 
