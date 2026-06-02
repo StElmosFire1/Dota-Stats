@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "9.07",
+    "title": "Admin access is now tied to your Steam account",
+    "published_at": "2026-06-02",
+    "notes": [
+      "**No more admin password.** The old \"🔒 Login\" admin-password button is gone. Admin access is now granted per Steam account by the site owner — sign in with Steam and your staff tier (if any) is applied automatically. The top-bar now shows a read-only Admin/Mod badge instead of a login button.",
+      "**Three-tier staff system.** *Owner* (superuser) keeps full control and is the only role that can assign/revoke tiers or run financial/destructive operations. *Admin* can edit matches, run inhouse lobbies & seasons, manage replays/uploads, send mass DMs, and moderate users. *Moderator* can control live lobbies (kick/cancel) and do basic content moderation. Every privileged route does a live database role check and fails closed.",
+      "**Manage staff in the Admin Panel.** A new **🛡️ Staff Roles** section (Players & Sign-Ups tab, owner-only) lets the owner search any player and grant or revoke admin/moderator, with the current staff list shown at a glance.",
+      "**Scope.** Full edition only; the community edition is untouched."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.06",
     "title": "Feature inventory stays in sync with the site's pages",
     "published_at": "2026-06-02",

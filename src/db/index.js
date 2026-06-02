@@ -156,6 +156,19 @@ async function init() {
       );
     `);
 
+    // Steam-account-linked staff roles. The superuser (OWNER) is the only role
+    // that can mutate this table; the upload-key/admin password login is gone —
+    // admin/moderator privilege is granted per Steam account here instead.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS admin_roles (
+        account_id BIGINT PRIMARY KEY,
+        role VARCHAR(16) NOT NULL CHECK (role IN ('admin','moderator')),
+        granted_by BIGINT,
+        granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS position INTEGER DEFAULT 0`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS is_captain BOOLEAN DEFAULT false`);
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS obs_placed INTEGER DEFAULT 0`);
@@ -25307,10 +25320,72 @@ async function getPendingActionsForAccount(accountId) {
   return { actions, count: actions.length };
 }
 
+// ── Steam-account-linked staff roles (admin / moderator) ──────────────────
+// The OWNER (superuser) is resolved separately via SUPERUSER_PASSWORD and is
+// never stored here; this table only holds the two lower tiers.
+async function getAdminRole(accountId) {
+  if (!accountId) return null;
+  const p = getPool();
+  const { rows } = await p.query(
+    'SELECT role FROM admin_roles WHERE account_id = $1',
+    [String(accountId)]
+  );
+  return rows.length ? rows[0].role : null;
+}
+
+async function listAdminRoles() {
+  const p = getPool();
+  const { rows } = await p.query(`
+    SELECT ar.account_id::text AS account_id,
+           ar.role,
+           ar.granted_by::text AS granted_by,
+           ar.granted_at,
+           ar.updated_at,
+           n.nickname AS display_name,
+           pl.discord_id
+      FROM admin_roles ar
+      LEFT JOIN nicknames n ON n.account_id = ar.account_id
+      LEFT JOIN players  pl ON pl.account_id_32 = ar.account_id::text
+     ORDER BY ar.role ASC, ar.granted_at ASC
+  `);
+  return rows;
+}
+
+async function setAdminRole(accountId, role, grantedBy) {
+  if (!accountId) throw new Error('accountId required');
+  if (role !== 'admin' && role !== 'moderator') throw new Error('invalid role');
+  const p = getPool();
+  const { rows } = await p.query(`
+    INSERT INTO admin_roles (account_id, role, granted_by, granted_at, updated_at)
+    VALUES ($1, $2, $3, NOW(), NOW())
+    ON CONFLICT (account_id) DO UPDATE
+      SET role = EXCLUDED.role,
+          granted_by = EXCLUDED.granted_by,
+          updated_at = NOW()
+    RETURNING account_id::text AS account_id, role, granted_by::text AS granted_by, granted_at, updated_at
+  `, [String(accountId), role, grantedBy ? String(grantedBy) : null]);
+  return rows[0];
+}
+
+async function removeAdminRole(accountId) {
+  if (!accountId) return false;
+  const p = getPool();
+  const { rowCount } = await p.query(
+    'DELETE FROM admin_roles WHERE account_id = $1',
+    [String(accountId)]
+  );
+  return rowCount > 0;
+}
+
 module.exports = {
   init,
   initSchema: init,
   getPool,
+  // Steam-linked staff roles
+  getAdminRole,
+  listAdminRoles,
+  setAdminRole,
+  removeAdminRole,
   // Task #451 — mini-games
   getDailyPuzzleRow,
   upsertDailyPuzzle,

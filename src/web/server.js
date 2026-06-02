@@ -1006,25 +1006,41 @@ setInterval(async () => {
   }
 }, 12 * 60 * 60 * 1000);
 
-function authMiddleware(req, res, next) {
-  // Session-based auth: a browser operator who completed /admin/login or /admin/superuser-login
-  // carries their privilege in the signed server session — no credential in the header needed.
-  if (req.session && (req.session.isAdmin || req.session.isSuperuser)) return next();
-
+async function authMiddleware(req, res, next) {
   const uploadKey = process.env.UPLOAD_KEY;
   const superuserPassword = process.env.SUPERUSER_PASSWORD;
+
+  // Header fallback for non-browser clients (bots, scripts, deploy hooks).
+  // Accept either header — upload endpoints send 'x-upload-key', while some
+  // admin endpoints also accept 'x-superuser-key'. These are machine
+  // credentials, deliberately independent of the per-Steam-account role table.
+  const providedKey = req.headers['x-upload-key'] || req.headers['x-superuser-key'];
+  if (providedKey) {
+    const validKey = (uploadKey && providedKey === uploadKey) || (superuserPassword && providedKey === superuserPassword);
+    if (validKey) return next();
+    return res.status(403).json({ error: 'Invalid upload key' });
+  }
+
+  // Browser superuser (OWNER) — carries the flag in the signed server session.
+  if (req.session && req.session.isSuperuser) return next();
+
+  // Browser admin — the cached isAdmin flag is only a hint; re-verify the
+  // grant LIVE against the role table on every request so a revoked admin
+  // loses access immediately instead of riding a stale session flag.
+  if (req.session && req.session.isAdmin && req.session.accountId) {
+    try {
+      const role = await db.getAdminRole(String(req.session.accountId));
+      if (role === 'admin') return next();
+    } catch (err) {
+      console.error('[authMiddleware] live role lookup failed:', err.message);
+      // fail closed — fall through to 403
+    }
+  }
+
   if (!uploadKey && !superuserPassword) {
     return res.status(503).json({ error: 'Admin not configured. Set UPLOAD_KEY or SUPERUSER_PASSWORD.' });
   }
-  // Header fallback for non-browser clients (bots, scripts, deploy hooks).
-  // Accept either header — upload endpoints send 'x-upload-key',
-  // while some admin endpoints also accept 'x-superuser-key'.
-  const providedKey = req.headers['x-upload-key'] || req.headers['x-superuser-key'];
-  const validKey = (uploadKey && providedKey === uploadKey) || (superuserPassword && providedKey === superuserPassword);
-  if (!validKey) {
-    return res.status(403).json({ error: 'Invalid upload key' });
-  }
-  next();
+  return res.status(403).json({ error: 'Forbidden' });
 }
 
 function cleanupFile(filePath) {
@@ -4948,7 +4964,11 @@ function createApiRouter(startupStatus = {}, _app = null) {
     // prompt. Only the caller's own server-set flags are carried forward;
     // nothing client-supplied is trusted here.
     const prevIsSuperuser = !!(req.session && req.session.isSuperuser);
-    const prevIsAdmin     = !!(req.session && req.session.isAdmin);
+    // NOTE: we deliberately do NOT carry a previous isAdmin flag across the
+    // regenerate. Admin status is authoritative from the role table (stamped
+    // below from db.getAdminRole), so a revoked admin can never ride a stale
+    // session flag past the regenerate — the fresh session starts with no
+    // isAdmin and only gets it back if the live role lookup says 'admin'.
 
     req.session.regenerate((regErr) => {
       if (regErr) {
@@ -4959,9 +4979,10 @@ function createApiRouter(startupStatus = {}, _app = null) {
       req.session.steamId64 = steamId64;
       req.session.displayName = displayName;
 
-      // Re-apply privilege flags captured before regeneration.
+      // Re-apply privilege flags captured before regeneration. Superuser is
+      // carried forward (Task #708); admin is NOT — it's re-derived from the
+      // role table below so revocations always take effect.
       if (prevIsSuperuser) req.session.isSuperuser = true;
-      if (prevIsAdmin)     req.session.isAdmin     = true;
       // Task #431 — stamp the hashed IP/UA immediately on the freshly
       // regenerated session so the smurf scorer's fingerprint signal
       // can see it without waiting for a subsequent request.
@@ -4976,14 +4997,27 @@ function createApiRouter(startupStatus = {}, _app = null) {
       db.cancelAccountDeletion(accountId).catch((cancelErr) => {
         console.warn('[Auth Complete] cancelAccountDeletion failed for', accountId, '—', cancelErr?.message || cancelErr);
       });
-      req.session.save((saveErr) => {
-        if (saveErr) {
-          console.error('[Auth Complete] session.save failed:', saveErr);
-          return res.status(500).json({ error: 'session save error' });
-        }
-        console.log('[Auth Complete] session established — accountId:', accountId, 'sid:', (req.sessionID || '').slice(0, 8) + '…');
-        res.json({ accountId, steamId64, displayName });
-      });
+      // Steam-account-linked staff role. Stamp the session so the legacy
+      // isAdmin-gated UI/routes + the upload guard recognise an admin the
+      // moment they sign in. The newer tiered middleware does a LIVE DB
+      // lookup, so a revoked role is denied immediately regardless of this
+      // cached flag. Best-effort: a DB hiccup must not block sign-in.
+      const finishSave = () => {
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error('[Auth Complete] session.save failed:', saveErr);
+            return res.status(500).json({ error: 'session save error' });
+          }
+          console.log('[Auth Complete] session established — accountId:', accountId, 'sid:', (req.sessionID || '').slice(0, 8) + '…');
+          res.json({ accountId, steamId64, displayName });
+        });
+      };
+      db.getAdminRole(String(accountId)).then((role) => {
+        req.session.adminRole = role || null;
+        if (role === 'admin') req.session.isAdmin = true;
+      }).catch((roleErr) => {
+        console.warn('[Auth Complete] getAdminRole failed for', accountId, '—', roleErr?.message || roleErr);
+      }).finally(finishSave);
     });
   });
 
@@ -5247,16 +5281,12 @@ function createApiRouter(startupStatus = {}, _app = null) {
     req.session.destroy(() => res.json({ success: true }));
   });
 
+  // Legacy admin-password login removed — admin/moderator privilege is now
+  // granted per Steam account by the OWNER in the Admin Panel and resolved at
+  // /auth/complete + via live role lookups. Any old client that still POSTs
+  // here gets a clear 410 instead of silently elevating via UPLOAD_KEY.
   router.post('/admin/login', authLimiter, express.json(), (req, res) => {
-    const uploadKey = process.env.UPLOAD_KEY;
-    if (!uploadKey) return res.status(503).json({ error: 'Admin not configured' });
-    const { password } = req.body || {};
-    if (password !== uploadKey) return res.status(401).json({ error: 'Invalid password' });
-    req.session.isAdmin = true;
-    req.session.save((err) => {
-      if (err) return res.status(500).json({ error: 'Session error' });
-      res.json({ success: true });
-    });
+    res.status(410).json({ error: 'Admin password login has been removed. Admin access is granted to your Steam account by the site owner.' });
   });
 
   router.post('/admin/superuser-login', superuserLoginLimiter, express.json(), (req, res) => {
@@ -5273,10 +5303,19 @@ function createApiRouter(startupStatus = {}, _app = null) {
     });
   });
 
-  router.get('/admin/session-status', (req, res) => {
+  router.get('/admin/session-status', async (req, res) => {
+    let role = null;
+    try {
+      role = await getEffectiveRole(req);
+    } catch (_) { role = null; }
     res.json({
-      isAdmin: !!(req.session && req.session.isAdmin),
-      isSuperuser: !!(req.session && req.session.isSuperuser),
+      // isAdmin = admin tier or higher (keeps every existing isAdmin-gated UI
+      // working for admins + superusers). Moderators get role='moderator' and
+      // isAdmin=false, isModerator=true.
+      isAdmin: role === 'admin' || role === 'superuser',
+      isSuperuser: role === 'superuser',
+      isModerator: !!role,
+      role: role || null,
     });
   });
 
@@ -5295,6 +5334,52 @@ function createApiRouter(startupStatus = {}, _app = null) {
       req.session.save(() => res.json({ success: true }));
     } else {
       res.json({ success: true });
+    }
+  });
+
+  // ── Staff role management (OWNER/superuser only) ──────────────────────────
+  // Grant/revoke the admin + moderator tiers per Steam account. The superuser
+  // (OWNER) is resolved via SUPERUSER_PASSWORD and is never stored in the table.
+  router.get('/admin/roles', requireSuperuser, async (req, res) => {
+    try {
+      const roles = await db.listAdminRoles();
+      res.json({ roles });
+    } catch (err) {
+      console.error('[API] list admin roles error:', err.message);
+      res.status(500).json({ error: 'Failed to list roles' });
+    }
+  });
+
+  router.post('/admin/roles', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const { accountId, role } = req.body || {};
+      const acct = parseInt(accountId, 10);
+      if (!Number.isFinite(acct) || acct <= 0) {
+        return res.status(400).json({ error: 'Valid accountId is required' });
+      }
+      if (role !== 'admin' && role !== 'moderator') {
+        return res.status(400).json({ error: "role must be 'admin' or 'moderator'" });
+      }
+      const grantedBy = req.session && req.session.accountId ? String(req.session.accountId) : null;
+      const row = await db.setAdminRole(String(acct), role, grantedBy);
+      res.json({ success: true, role: row });
+    } catch (err) {
+      console.error('[API] set admin role error:', err.message);
+      res.status(500).json({ error: 'Failed to set role' });
+    }
+  });
+
+  router.delete('/admin/roles/:accountId', requireSuperuser, async (req, res) => {
+    try {
+      const acct = parseInt(req.params.accountId, 10);
+      if (!Number.isFinite(acct) || acct <= 0) {
+        return res.status(400).json({ error: 'Valid accountId is required' });
+      }
+      const removed = await db.removeAdminRole(String(acct));
+      res.json({ success: true, removed });
+    } catch (err) {
+      console.error('[API] remove admin role error:', err.message);
+      res.status(500).json({ error: 'Failed to remove role' });
     }
   });
 
@@ -5361,7 +5446,62 @@ function createApiRouter(startupStatus = {}, _app = null) {
     return res.status(403).json({ error: 'Invalid superuser key' });
   }
 
-  router.put('/matches/:matchId/player-stats', express.json(), requireSuperuser, async (req, res) => {
+  // ── Steam-account-linked staff tiers ──────────────────────────────────────
+  // OWNER/superuser (highest) > admin > moderator. Superuser is resolved from
+  // the session flag or the SUPERUSER_PASSWORD header (scripts). The two lower
+  // tiers are looked up LIVE from the admin_roles table keyed by the caller's
+  // Steam accountId, so a superuser revoking a role takes effect immediately
+  // (no waiting for the target's session to expire). Fail-closed: any lookup
+  // error denies access.
+  const ROLE_RANK = { moderator: 1, admin: 2, superuser: 3 };
+  async function getEffectiveRole(req) {
+    if (req.session && req.session.isSuperuser) return 'superuser';
+    const pw = process.env.SUPERUSER_PASSWORD;
+    if (pw && req.headers['x-superuser-key'] === pw) return 'superuser';
+    const acct = req.session && req.session.accountId;
+    if (acct) {
+      try {
+        const role = await db.getAdminRole(String(acct));
+        if (role) return role;
+      } catch (e) {
+        console.warn('[roles] getEffectiveRole lookup failed:', e.message);
+        return null; // fail-closed
+      }
+    }
+    return null;
+  }
+  // Live admin-or-higher check. ALWAYS resolves the role from the DB (via
+  // getEffectiveRole) — never trust a cached req.session.isAdmin flag for an
+  // authorization decision, so a revoked admin loses access immediately.
+  async function isAdminOrHigher(req) {
+    const role = await getEffectiveRole(req);
+    return role === 'admin' || role === 'superuser';
+  }
+  function requireTier(minRole) {
+    return async function (req, res, next) {
+      let role = null;
+      try {
+        role = await getEffectiveRole(req);
+      } catch (e) {
+        console.error('[roles] requireTier error:', e.message);
+        return res.status(403).json({ error: 'Insufficient privileges' });
+      }
+      if (role && ROLE_RANK[role] >= ROLE_RANK[minRole]) {
+        req.effectiveRole = role;
+        return next();
+      }
+      // Mirror requireSuperuser's 401-vs-403 split so the frontend re-auth
+      // wrapper can distinguish an expired session from a real denial.
+      if (!role && !(req.session && req.session.accountId)) {
+        return res.status(401).json({ error: 'Sign in required' });
+      }
+      return res.status(403).json({ error: 'Insufficient privileges' });
+    };
+  }
+  const requireAdmin = requireTier('admin');
+  const requireModerator = requireTier('moderator');
+
+  router.put('/matches/:matchId/player-stats', express.json(), requireAdmin, async (req, res) => {
     try {
       const { players } = req.body;
       if (!Array.isArray(players)) return res.status(400).json({ error: 'players must be an array' });
@@ -5373,7 +5513,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
-  router.put('/matches/:matchId/match-details', express.json(), requireSuperuser, async (req, res) => {
+  router.put('/matches/:matchId/match-details', express.json(), requireAdmin, async (req, res) => {
     try {
       await db.updateMatchDetails(req.params.matchId, req.body);
       res.json({ success: true });
@@ -5412,7 +5552,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
-  router.put('/matches/:matchId/draft', express.json(), requireSuperuser, async (req, res) => {
+  router.put('/matches/:matchId/draft', express.json(), requireAdmin, async (req, res) => {
     try {
       const { entries } = req.body;
       if (!Array.isArray(entries)) return res.status(400).json({ error: 'entries must be an array' });
@@ -5506,7 +5646,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
             flagState = chatFlag.state;
           }
         } catch (_) { flagState = 'off'; }
-        const isStaff = !!(req.session && (req.session.isSuperuser || req.session.isAdmin));
+        const isStaff = await isAdminOrHigher(req);
         const chatVisible = flagState === 'on' || (flagState === 'preview' && isStaff);
         if (!chatVisible && 'chat_log' in match) delete match.chat_log;
         // Only expose the state string to callers who can actually see chat
@@ -5771,7 +5911,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
-  router.post('/nicknames/:accountId', requireSuperuser, async (req, res) => {
+  router.post('/nicknames/:accountId', requireAdmin, async (req, res) => {
     try {
       const { nickname } = req.body;
       const accountId = parseInt(req.params.accountId);
@@ -5785,7 +5925,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
-  router.post('/players/:accountId/discord', requireSuperuser, async (req, res) => {
+  router.post('/players/:accountId/discord', requireAdmin, async (req, res) => {
     try {
       const { discord_id } = req.body;
       const accountId = parseInt(req.params.accountId);
@@ -6950,7 +7090,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
   // Superuser: manually set (or clear) the remote replay_path for a match.
   // If the value looks like a bare filename (no leading slash or path separator),
   // it is resolved against REPLAY_ARCHIVE_DIR so admins can type just the filename.
-  router.post('/admin/matches/:matchId/set-replay-path', requireSuperuser, express.json(), async (req, res) => {
+  router.post('/admin/matches/:matchId/set-replay-path', requireAdmin, express.json(), async (req, res) => {
     try {
       const { matchId } = req.params;
       let { replay_path } = req.body || {};
@@ -7007,8 +7147,10 @@ function createApiRouter(startupStatus = {}, _app = null) {
     try {
       const { matchId } = req.params;
       // Enforce Pro/admin — session-based auth preferred; header fallback for non-browser clients.
+      // Admin entitlement is resolved LIVE from the role table (not the cached
+      // session flag) so a revoked admin can't keep bypassing the paywall/quota.
       const isSu = _isSu(req);
-      const isAdminSession = Boolean(req.session && req.session.isAdmin);
+      const isAdminSession = await isAdminOrHigher(req);
       const uploadKey = process.env.UPLOAD_KEY;
       const providedKey = req.headers['x-upload-key'] || req.headers['x-admin-key'];
       const isAdminKey = Boolean(uploadKey && providedKey === uploadKey);
@@ -12014,7 +12156,7 @@ NOTES
   // Task #714 — Admin mass-DM tool.
   // GET /admin/dm-recipients — list every tracked player with their best
   // display name and a has_discord flag so the UI can render the picker.
-  router.get('/admin/dm-recipients', requireSuperuser, async (req, res) => {
+  router.get('/admin/dm-recipients', requireAdmin, async (req, res) => {
     try {
       const players = await db.getDmReachablePlayers();
       res.json({ players });
@@ -12027,7 +12169,7 @@ NOTES
   // POST /admin/dm-blast — send a plain-text message to a picked set of
   // players via Discord DM. Sends sequentially with a short delay so we
   // don't hammer Discord's rate limit. Returns a per-recipient breakdown.
-  router.post('/admin/dm-blast', requireSuperuser, express.json(), async (req, res) => {
+  router.post('/admin/dm-blast', requireAdmin, express.json(), async (req, res) => {
     const { message, accountIds } = req.body || {};
     if (!message || typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'message is required and must not be empty' });
@@ -13053,7 +13195,7 @@ NOTES
   // having to open psql or cancel-and-recreate the session. Whitelist of
   // fields is narrow on purpose; status / payment / replay / captain
   // assignments stay on their dedicated routes.
-  router.patch('/inhouse/:id/config', requireSuperuser, express.json(), async (req, res) => {
+  router.patch('/inhouse/:id/config', requireAdmin, express.json(), async (req, res) => {
     try {
       const session = await db.getInhouseSession(req.params.id);
       if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -13086,7 +13228,7 @@ NOTES
     }
   });
 
-  router.post('/inhouse', requireSuperuser, express.json(), async (req, res) => {
+  router.post('/inhouse', requireAdmin, express.json(), async (req, res) => {
     try {
       const { captainMode, acceptPhaseSeconds, notes, minPlayers, lobbyFillSeconds, draftPickSeconds, leagueId } = req.body || {};
       const session = await db.createInhouseSession({
@@ -13190,7 +13332,7 @@ NOTES
     }
   });
 
-  router.post('/inhouse/:id/start-accept-phase', requireSuperuser, express.json(), async (req, res) => {
+  router.post('/inhouse/:id/start-accept-phase', requireAdmin, express.json(), async (req, res) => {
     try {
       const seconds = parseInt(req.body?.seconds || '60', 10);
       const cur = await db.getInhouseSession(req.params.id);
@@ -13207,7 +13349,7 @@ NOTES
     }
   });
 
-  router.post('/inhouse/:id/select-captains', requireSuperuser, express.json(), async (req, res) => {
+  router.post('/inhouse/:id/select-captains', requireAdmin, express.json(), async (req, res) => {
     try {
       // Task #136 — pre-flight Discord guild re-verification. We do this
       // BEFORE the atomic flip to 'drafting' so that any player who has left
@@ -13998,7 +14140,7 @@ NOTES
     }
   });
 
-  router.post('/inhouse/:id/server', requireSuperuser, express.json(), async (req, res) => {
+  router.post('/inhouse/:id/server', requireAdmin, express.json(), async (req, res) => {
     try {
       // Task #168 — delegated to the shared helper so the manual admin
       // override and the auto-trigger from /draft-pick (and the recovery
@@ -14039,7 +14181,7 @@ NOTES
   const BOT_ID_BASE = 9000001;
   const BOT_ID_MAX  = 9000010;
 
-  router.post('/admin/inhouse/:id/seed-bots', requireSuperuser, express.json(), async (req, res) => {
+  router.post('/admin/inhouse/:id/seed-bots', requireAdmin, express.json(), async (req, res) => {
     try {
       const session = await db.getInhouseSession(req.params.id);
       if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -14083,7 +14225,7 @@ NOTES
     }
   });
 
-  router.post('/admin/inhouse/:id/clear-bots', requireSuperuser, async (req, res) => {
+  router.post('/admin/inhouse/:id/clear-bots', requireAdmin, async (req, res) => {
     try {
       const session = await db.getInhouseSession(req.params.id);
       if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -14102,7 +14244,7 @@ NOTES
     }
   });
 
-  router.post('/admin/inhouse/:id/auto-draft', requireSuperuser, async (req, res) => {
+  router.post('/admin/inhouse/:id/auto-draft', requireAdmin, async (req, res) => {
     try {
       const session = await db.getInhouseSession(req.params.id);
       if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -14167,7 +14309,7 @@ NOTES
     }
   });
 
-  router.post('/inhouse/:id/cancel', requireSuperuser, async (req, res) => {
+  router.post('/inhouse/:id/cancel', requireModerator, async (req, res) => {
     try {
       const session = await db.updateInhouseSession(req.params.id, {
         status: 'cancelled',
@@ -14179,7 +14321,7 @@ NOTES
     }
   });
 
-  router.post('/inhouse/:id/complete', requireSuperuser, express.json(), async (req, res) => {
+  router.post('/inhouse/:id/complete', requireAdmin, express.json(), async (req, res) => {
     try {
       const matchId = req.body?.matchId || null;
       const session = await db.updateInhouseSession(req.params.id, {

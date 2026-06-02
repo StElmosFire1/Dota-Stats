@@ -1,7 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import SeasonSelector from './components/SeasonSelector';
-import AdminLoginModal from './components/AdminLoginModal';
 import SuperuserLoginModal from './components/SuperuserLoginModal';
 import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
@@ -230,28 +229,20 @@ function HealthDot() {
 }
 
 function AdminButton() {
-  const { isAdmin, logout, setShowModal } = useAdmin();
-  if (isAdmin) {
-    return (
-      <button
-        className="btn btn-small admin-badge"
-        onClick={logout}
-        title="Logged in as admin — click to log out"
-        style={{ marginLeft: 8 }}
-      >
-        &#128274; Admin
-      </button>
-    );
-  }
+  // Admin status is tied to the signed-in Steam account (granted by the owner),
+  // so there's no password login button anymore — just a read-only badge that
+  // reflects the current account's staff tier.
+  const { isAdmin, isModerator, role } = useAdmin();
+  if (!isAdmin && !isModerator) return null;
+  const label = role === 'admin' ? 'Admin' : role === 'moderator' ? 'Mod' : 'Staff';
   return (
-    <button
-      className="btn btn-small"
-      onClick={() => setShowModal(true)}
-      title="Admin login"
-      style={{ marginLeft: 8, opacity: 0.7 }}
+    <span
+      className="btn btn-small admin-badge"
+      title={`Signed in as ${label.toLowerCase()} (granted to your Steam account)`}
+      style={{ marginLeft: 8, cursor: 'default' }}
     >
-      &#128275; Login
-    </button>
+      &#128274; {label}
+    </span>
   );
 }
 
@@ -1342,7 +1333,6 @@ function AppShell() {
       {!isStreamer && <NavbarHeightSync />}
       {!isStreamer && <BroadcastTicker />}
       {!isStreamer && <Nav />}
-      {!isStreamer && <AdminLoginModal />}
       {!isStreamer && <SuperuserLoginModal />}
       {!isStreamer && <WelcomeModal />}
       {!isStreamer && <GlobalOnboardingWizard />}

@@ -2781,3 +2781,20 @@ export const adminDmBlast = (superuserKey, message, accountIds) =>
     body: { message, accountIds },
     superuserKey,
   });
+
+// Staff role management (OWNER/superuser only).
+export const getAdminRoles = (superuserKey) =>
+  superuserJson('/admin/roles', { superuserKey });
+
+export const setAdminRole = (superuserKey, accountId, role) =>
+  superuserJson('/admin/roles', {
+    method: 'POST',
+    body: { accountId, role },
+    superuserKey,
+  });
+
+export const removeAdminRole = (superuserKey, accountId) =>
+  superuserJson(`/admin/roles/${encodeURIComponent(accountId)}`, {
+    method: 'DELETE',
+    superuserKey,
+  });

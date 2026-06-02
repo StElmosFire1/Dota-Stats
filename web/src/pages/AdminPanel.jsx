@@ -2999,6 +2999,200 @@ function ErrorLogViewer({ superuserKey }) {
 // Lets a superuser compose a plain-text message, pick individual recipients
 // from every player who has a Discord ID on file, confirm, and see a
 // per-recipient success/failure breakdown after sending.
+function RolesPanel({ superuserKey }) {
+  const [roles, setRoles] = useState(null);
+  const [players, setPlayers] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [search, setSearch] = useState('');
+  const [pickRole, setPickRole] = useState('moderator');
+  const [busyId, setBusyId] = useState(null);
+  const [actionError, setActionError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true); setLoadError('');
+    try {
+      const [r, p] = await Promise.all([
+        getAdminRoles(superuserKey),
+        getAdminDmRecipients(superuserKey),
+      ]);
+      setRoles(r.roles || []);
+      setPlayers(p.players || []);
+    } catch (e) {
+      setLoadError(e.message || 'Failed to load roles');
+    } finally {
+      setLoading(false);
+    }
+  }, [superuserKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const roleByAccount = new Map((roles || []).map(r => [String(r.account_id), r.role]));
+  const nameByAccount = new Map((players || []).map(p => [String(p.account_id), p.display_name]));
+
+  const filtered = (players || []).filter(p => {
+    const q = search.trim().toLowerCase();
+    if (!q) return false;
+    return p.display_name.toLowerCase().includes(q) || String(p.account_id).includes(q);
+  }).slice(0, 25);
+
+  async function assign(accountId) {
+    setBusyId(accountId); setActionError('');
+    try {
+      await setAdminRole(superuserKey, accountId, pickRole);
+      await load();
+      setSearch('');
+    } catch (e) {
+      setActionError(e.message || 'Failed to assign role');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function revoke(accountId) {
+    setBusyId(accountId); setActionError('');
+    try {
+      await removeAdminRole(superuserKey, accountId);
+      await load();
+    } catch (e) {
+      setActionError(e.message || 'Failed to revoke role');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const inputStyle = {
+    padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)',
+    background: 'var(--bg-input, var(--bg))', color: 'var(--text-primary)', fontSize: 13,
+    width: '100%', boxSizing: 'border-box',
+  };
+
+  const sortedStaff = (roles || []).slice().sort((a, b) => {
+    if (a.role !== b.role) return a.role === 'admin' ? -1 : 1;
+    return 0;
+  });
+
+  return (
+    <section className="admin-section" id="ap-anchor-staff-roles" aria-labelledby="ap-staff-roles-h" style={{ marginTop: 32 }}>
+      <h2 id="ap-staff-roles-h" className="section-title" style={{ marginBottom: 6 }}>
+        🛡️ Staff Roles
+      </h2>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
+        Grant staff tiers to Steam accounts. <strong>Admins</strong> can edit matches, run inhouse
+        lobbies &amp; seasons, manage replays/uploads, send mass DMs, and moderate users.{' '}
+        <strong>Moderators</strong> can control live lobbies (kick/cancel) and do basic content moderation.
+        Only you (the owner) can assign roles or perform financial/destructive actions.
+      </p>
+
+      {loading && <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Loading…</p>}
+      {loadError && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 10 }}>{loadError}</div>}
+
+      {!loading && !loadError && (
+        <div style={{ display: 'grid', gap: 18 }}>
+          {/* Assign new staff */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Assign a role</span>
+              <div role="radiogroup" aria-label="Role to assign" style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+                {['moderator', 'admin'].map(r => (
+                  <button
+                    key={r}
+                    type="button"
+                    role="radio"
+                    aria-checked={pickRole === r}
+                    className="btn"
+                    style={{ fontSize: 11, padding: '3px 10px', background: pickRole === r ? 'var(--accent)' : undefined, color: pickRole === r ? '#fff' : undefined }}
+                    onClick={() => setPickRole(r)}
+                  >
+                    {r === 'admin' ? 'Admin' : 'Moderator'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ padding: '8px 12px', borderBottom: filtered.length ? '1px solid var(--border)' : 'none' }}>
+              <input
+                type="search"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search players by name or account ID…"
+                aria-label="Search players to grant a role"
+                style={inputStyle}
+              />
+            </div>
+            {actionError && <div role="alert" style={{ color: '#ef4444', fontSize: 13, padding: '8px 12px' }}>{actionError}</div>}
+            {search.trim() && (
+              <ul role="list" aria-label="Player search results" style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: 280, overflowY: 'auto' }}>
+                {filtered.map(p => {
+                  const existing = roleByAccount.get(String(p.account_id));
+                  return (
+                    <li key={p.account_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ fontSize: 13, flexGrow: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.display_name}
+                        {existing && <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>(currently {existing})</span>}
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{p.account_id}</span>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ fontSize: 11, padding: '3px 10px', flexShrink: 0 }}
+                        disabled={busyId === p.account_id}
+                        onClick={() => assign(p.account_id)}
+                        aria-label={`Grant ${pickRole} to ${p.display_name}`}
+                      >
+                        {busyId === p.account_id ? '…' : `Make ${pickRole}`}
+                      </button>
+                    </li>
+                  );
+                })}
+                {filtered.length === 0 && (
+                  <li style={{ padding: '12px', fontSize: 13, color: 'var(--text-muted)' }}>No players match your search.</li>
+                )}
+              </ul>
+            )}
+          </div>
+
+          {/* Current staff */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ padding: '10px 12px', borderBottom: sortedStaff.length ? '1px solid var(--border)' : 'none', background: 'var(--bg-card)' }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>
+                Current staff <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({sortedStaff.length})</span>
+              </span>
+            </div>
+            <ul role="list" aria-label="Current staff" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {sortedStaff.map(r => {
+                const acct = String(r.account_id);
+                const name = r.display_name || nameByAccount.get(acct) || `Account ${acct}`;
+                return (
+                  <li key={acct} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: r.role === 'admin' ? 'var(--amber)' : 'var(--brass)', flexShrink: 0, width: 78 }}>
+                      {r.role}
+                    </span>
+                    <span style={{ fontSize: 13, flexGrow: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{acct}</span>
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{ fontSize: 11, padding: '3px 10px', flexShrink: 0 }}
+                      disabled={busyId === acct}
+                      onClick={() => revoke(acct)}
+                      aria-label={`Revoke ${r.role} from ${name}`}
+                    >
+                      {busyId === acct ? '…' : 'Revoke'}
+                    </button>
+                  </li>
+                );
+              })}
+              {sortedStaff.length === 0 && (
+                <li style={{ padding: '12px', fontSize: 13, color: 'var(--text-muted)' }}>No staff assigned yet. Search above to grant a role.</li>
+              )}
+            </ul>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function MassDmPanel({ superuserKey }) {
   const [players, setPlayers] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -7272,6 +7466,7 @@ export default function AdminPanel() {
     { label: 'Test RSVP Registration DM', tab: 'steambot', anchor: 'ap-anchor-test-rsvp-dm', icon: '✉️', kw: 'discord rsvp invite' },
     { label: 'Server Error Log', tab: 'steambot', anchor: 'ap-anchor-error-log', icon: '🚨', kw: 'errors crashes log' },
     { label: 'Mass Discord DM', tab: 'steambot', anchor: 'ap-anchor-mass-dm', icon: '📢', kw: 'mass dm broadcast message players discord bulk announce' },
+    { label: 'Staff Roles', tab: 'users', anchor: 'ap-anchor-staff-roles', icon: '🛡️', kw: 'admin moderator role permission grant revoke staff tier steam account access owner superuser' },
     { label: 'Season Lifecycle', tab: 'seasons', anchor: 'ap-anchor-season-lifecycle', icon: '📅', kw: 'start end activate launch' },
     { label: 'Season Tiers', tab: 'seasons', anchor: 'ap-anchor-season-tiers', icon: '🏆', kw: 'rank divisions ladder' },
     { label: 'Rating System', tab: 'seasons', anchor: 'ap-anchor-rating-system', icon: '⚖️', kw: 'trueskill mmr recompute' },
@@ -7691,6 +7886,9 @@ export default function AdminPanel() {
       </>)}
 
       {activeTab === 'users' && (<>
+      {/* ── Staff Roles — grant admin/moderator tiers to Steam accounts ─ */}
+      <RolesPanel superuserKey={superuserKey} />
+
       {/* ── Discord ID Collisions (Task 114) ─────────────────────────── */}
       <DiscordIdCollisions superuserKey={superuserKey} />
 

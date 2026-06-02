@@ -14,4 +14,5 @@
 - [Lootbox catalog single-source](lootbox-catalog-source.md) — server catalog is the only odds/cosmetic authority; web/src/profileCosmetics.js lootbox metadata is render-only, no server mirror (equip validates against catalog).
 - [Games answer tokens & kinds](games-suite-answer-tokens.md) — endless answerToken is signed-not-secret (daily keeps answer server-side); per-game logic switches on GAME_META.kind; exclude anonymized via player_profiles join.
 - [ffmpeg zoompan -loop explosion](ffmpeg-zoompan-loop-explosion.md) — never pair `-loop 1 -t` with zoompan `d=` on a still (frames×frames hang); feed one image + `-frames:v`. Build clips in stages.
+- [Steam admin roles & live auth](steam-admin-roles-auth.md) — admin is Steam-account role (admin_roles table), no password; NEVER gate on cached req.session.isAdmin — resolve live via isAdminOrHigher/getEffectiveRole.
 - [Hype trailer renderer](trailer-renderer.md) — render-trailer.mjs canvas+ffmpeg; cross-dissolve beats via 2 offscreen canvases (never per-beat fade-to-black); feature beats composite real screenshots/site_*.jpg.
