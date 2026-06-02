@@ -1,0 +1,106 @@
+OCE INHOUSE (oceinhouse.gg) — FULL WEBSITE FEATURE INVENTORY
+Legend: [public] [signed-in] [pro] [admin/superuser]
+
+=== CORE STATS & BROWSING ===
+Home (/) [public] — landing: global stats, activity feed, spotlight, entry points
+How it works (/how-it-works) [public] — onboarding/explainer
+Matches (/matches) [public] — full match history list
+This week (/this-week) [public] — AI-generated weekly recap, top performers, highlights
+Match detail (/match/:id) [public/pro] — scoreboard, PERF breakdowns; deeper insights pro-gated
+Match insights admin (/admin/match-insights/:id) [admin] — operator deep-dive
+Stats editor (/match/:id/edit) [admin] — manually correct parsed match stats
+Leaderboard (/leaderboard) [public] — ranked standings
+Overall stats (/stats) [public] — site-wide meta trends
+Records (/records) [public] — all-time + season records, first blood, greatest comebacks
+Hall of Fame (/hall-of-fame) [public] — single-match records, career rankings, top recruiters
+Multikills (/multikills) [public] — rampage/ultrakill leaderboard, "Rampage King"
+Ward map (/ward-map) [pro] — ward-placement heatmaps
+
+=== PLAYERS ===
+Players directory (/players) [public] — searchable player list
+Player profile (/player/:id) [public/pro] — stats, history, cosmetics; advanced insights pro
+Player growth (/player/:id/growth) [signed-in] — "Growth Coach" PERF trend + tips (own report)
+Wrapped (/wrapped/:season/:id, /wrapped/me/latest) [signed-in] — season recap with share cards
+Player insights / Social / Benchmarks (/insights, /social, /player-network, /benchmarks) [pro] — synergy network, top duos, performance-vs-community benchmarks
+Player tools / Compare / H2H (/player-tools, /compare, /head-to-head, /h2h/:a/:b, /me/h2h/:other) [pro] — side-by-side comparison and head-to-head matchup analysis
+Schedule (/schedule) [public/admin] — upcoming inhouse games, Discord-integrated RSVP; superusers create/cancel
+
+=== HEROES & DRAFT ===
+Heroes (/heroes, /hero-breakdown, /hero-position-meta) [public] — hero list, pick/win rates, per-player breakdowns
+Hero detail (/heroes/:id) [public/pro] — hero deep-dive; matchups pro-gated
+Pudge stats (/pudge-stats) [public] — novelty page: hook accuracy from parsed replays
+Draft / Draft stats (/draft, /draft-stats) [public] — community pick/ban meta
+Draft assistant (/draft-assistant) [pro] — live counter-pick + synergy scoring
+Draft trainer (/heroes/draft-trainer) [signed-in] — practice Captain's Mode vs scoring engine
+Predictions (/predictions) [signed-in] — free match-winner picks + "Season Top-5" game
+
+=== INHOUSE, TEAMS & TOURNAMENTS ===
+Inhouse (/inhouse) [signed-in] — FACEIT-style lobby: register -> accept -> captain draft -> auto-provisioned server
+Inhouse markets (/inhouse/:id/markets) [signed-in] — pari-mutuel coin betting on live matches; admin pause/resume
+Teams (/teams, /teams/new, /teams/:id) [signed-in] — clans, paid registration ($10 AUD), rosters, scrims, transfers
+Leagues (/leagues, /leagues/:id) [public/admin] — round-robin/elimination standings & brackets; superuser controls
+Tournaments (/tournaments, /tournaments/:id) [public/admin] — brackets, self-signup, Stripe Connect prize payouts
+Weekend tournament (/weekend-tournament/:id) [public/admin] — points tournament scored from auto replay analysis
+Join (/join) [public] — intake form for prospective league members
+
+=== BROADCAST / STREAMING ===
+Spectate (/spectate/:id) [public] — live spectator dashboard: draft, kill feed, gold leads
+Replay viewer (/replay/:id) [pro] — 2D replay playback, minimap tracking, teamfight detection, coach annotations
+Pro replay browser (/pro-replays) [pro] — browse/download high-skill replays (feature-flagged)
+Overlays (/overlay/live/:lobby, /overlay/scoreboard/:match, /overlay/ticker/:account) [public] — OBS stream overlays
+
+=== MONETISATION & COSMETICS ===
+Pro (/pro) [public] — subscription marketing/management
+Buy coins (/coins/buy) [signed-in] — purchase in-app currency
+Shop (/shop) [public/signed-in] — voice packs, frames, themes, titles
+Lootbox (/lootbox) [signed-in] — gacha crates with "truthful odds"
+Collection (/collection) [signed-in] — owned-cosmetics inventory
+Season pass (/season-pass) [signed-in] — 50-tier paid progression track
+Challenges (/challenges/:id) [signed-in] — weekly goals for XP/coins
+Pick'em (/pickem) [signed-in] — match-outcome predictions + prop bets, auto-resolved
+Games (/games, /games/:game) [public] — daily minigames (Heroguessr, item-zoom, statline, mystery player)
+Sponsorships (/sponsorships, /sponsorships/inbox) [public/signed-in] — buy ad slots; owners approve, sponsors see CTR telemetry
+Seasons (/seasons, /seasons/:id/summary) [public/admin] — season hub, prize pools, buy-ins, payouts
+
+=== COACHING MARKETPLACE ===
+Coaches (/coaches, /coaches/:id, /coach/:id) [public] — listings + public coach profiles with AI pairing
+Coach onboarding/edit/premium (/coach/onboarding, /coach/edit, /coach/premium) [signed-in] — Stripe Connect onboarding, profile editor
+Bookings (/me/bookings) [signed-in] — student's booking history
+Group sessions (/group-sessions, /me/coaching/group, /coach/group-sessions) [signed-in] — group session signups & management
+VOD reviews (/coaches/:id/vod-review, /me/coaching/vod, /vod-reviews/:id) [signed-in] — request & view async VOD reviews
+Coach earnings (/coach/earnings) [signed-in] — payout dashboard
+
+=== ACCOUNT & DEVELOPER ===
+Settings (/settings/{profile,notifications,account,billing,coaching,api,danger-zone}) [signed-in] — account management incl. danger zone (delete)
+Notifications (/me/notifications) [signed-in] — notification center
+API keys (/settings/api) [signed-in] — create scoped keys, subscribe to webhooks
+API docs / Developers (/api-docs, /developers) [public] — public REST API (v1 + v2) docs, "try it" runner, SDK samples, webhook docs
+Patch notes (/patch-notes) [public] — changelog
+
+=== ADMIN / OPERATOR ===
+Admin panel (/admin) — main console: lockdown toggle, hotlink/AI-traffic reports, coaching tools, coin prices
+Spotlight (/admin/spotlight) — feature players/matches on home
+Ops (/admin/ops) — infra/server monitoring
+Feature health (/admin/feature-health) — live probe dashboard
+Browser smoke (/admin/browser-smoke/:id) — Playwright perceptual-diff runs + baseline approval
+Smoke test (/admin/smoke-test/:id) — additional E2E suite UI
+Smurf watch (/admin/smurf-watch) — multi-account detection scores
+Record match (/admin/record-match) — manual match insert / force scrape
+Upload (/upload) — .dem replay upload + duplicate scanner
+Sandboxes (/admin/draft-sandbox, /admin/profile-sandbox, /admin/profile-demo) — dev preview harnesses
+
+=== BACKEND FEATURES (no dedicated page; surface via Discord, cron, push, API) ===
+Automated match recording — real-time Dota GC lobby monitoring + friend-lobby auto-detection
+Java replay parser pipeline — download -> bunzip2 -> Clarity parse -> stats/warding
+Discord bot — !ping, !perf-backfill, post-match DMs, MVP/hot-streak alerts, announcements
+Notifications engine — web push + Discord + in-app, one-tap HMAC unsubscribe
+Public REST API + outbound webhooks — match.finalized, lobby.full, etc.
+Scheduled jobs — weekly browser-smoke cron, weekly recap generation, season rollovers
+Security middleware — site lockdown, brand-asset hotlink protection, AI-agent blocking, session fingerprinting
+
+=== NOTEWORTHY SYSTEMS (the "wow") ===
+PERF score — 1.0-10.0, position-aware + duration-normalised; feeds back into MMR (winners carried gain less, etc.); capped at 8.5 without rich replay timeline data
+TrueSkill MMR — conservative mu-3sigma estimate; 8-tier medieval ladder (Apprentice -> King)
+Smurf detector — 0-100 from 5 signals incl. Shannon-entropy hero pools + device fingerprinting
+Lootbox "truthful odds" — UI fetches the exact catalog the server rolls from
+Anti-cheat minigames — HMAC image/audio proxying hides answers from the network tab
