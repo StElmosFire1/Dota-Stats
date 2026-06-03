@@ -71,11 +71,16 @@
 }
 
 /* Example animated rank emblem (T001 preview) — the FounderRing fills the
-   rank cell in place of the plain numbered disc on the top ranks. */
+   rank cell in place of the plain numbered disc on the top ranks.
+   Height is capped to match the 30px disc so the row height stays uniform
+   across all ranks; overflow: visible lets the emblem render at full size
+   without expanding the table row. */
 .pb-leaderboard .col-rank .pb-rank-emblem {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  height: 30px;
+  overflow: visible;
 }
 .pb-leaderboard .col-rank .pb-rank-emblem-art {
   display: inline-flex;

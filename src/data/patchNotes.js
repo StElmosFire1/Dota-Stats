@@ -1,5 +1,12 @@
 module.exports = [
   {
+    "version": "9.15",
+    "title": "Leaderboard rows are now a uniform height",
+    "published_at": "2026-06-03",
+    "content": "Fixed an inconsistent row-height jump on the Seasonal Rankings leaderboard. Ranks 1–8 showed a 50px FounderRing emblem while ranks 9+ used a 30px numbered disc — because table rows grow to fit their tallest cell, the top 8 rows were noticeably taller than the rest. Fix: the emblem wrapper is now constrained to 30px height (matching the disc) with overflow: visible, so the decorative emblem renders at full size without inflating the row. Every player row now has the same uniform height from top to bottom.",
+    "author": "System"
+  },
+  {
     "version": "9.14",
     "title": "Admin panel reorganised into clearer tabs",
     "published_at": "2026-06-03",
