@@ -22,13 +22,18 @@ export default function SuperuserLoginModal() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    const result = await login(password);
-    setLoading(false);
-    if (result.success) {
-      setShowModal(false);
-      navigate('/admin');
-    } else {
-      setError(result.error);
+    try {
+      const result = await login(password);
+      if (result.success) {
+        setShowModal(false);
+        navigate('/admin');
+      } else {
+        setError(result.error);
+      }
+    } catch (_) {
+      setError('Login failed unexpectedly — please reload and try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -46,7 +51,8 @@ export default function SuperuserLoginModal() {
         <button className="modal-close" onClick={() => setShowModal(false)} aria-label="Close">&#x2715;</button>
       </div>
       <p style={{ color: '#888', fontSize: '0.85rem', margin: '0 0 12px' }}>
-        Full stats editing access. Requires a separate superuser password.
+        Full stats editing access. Requires a separate superuser password, and
+        you must already be signed in with an authorised Steam account.
       </p>
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <input

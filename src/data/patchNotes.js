@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "9.19",
+    "title": "Superuser login no longer fails silently",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**What.** The crown → Superuser Login modal could appear to do nothing when you entered the password — no error, just the same box. The cause was an unhandled case: when the browser blocks the login request before it ever leaves the page (an ad/privacy blocker that filters '/admin' URLs, a stale service worker, or no network), the request throws and the modal swallowed it silently.",
+      "**Fix.** The login flow now catches a blocked/failed request and shows a clear message — 'Request was blocked before it reached the server. Disable any ad/privacy blocker for this site (or try a private window), then reload and try again.' The submit button always resets instead of getting stuck on 'Checking…'.",
+      "**Clearer requirement.** The modal now states up-front that you must already be signed in with an authorised Steam account (full edition), so the Steam-account binding isn't a surprise.",
+      "**Both editions.** The silent-failure fix is mirrored in the community edition. No paywall changes."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.18",
     "title": "Match History card redesign — story at a glance",
     "published_at": "2026-06-03",

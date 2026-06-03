@@ -22,13 +22,18 @@ export default function SuperuserLoginModal() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    const result = await login(password);
-    setLoading(false);
-    if (result.success) {
-      setShowModal(false);
-      navigate('/admin');
-    } else {
-      setError(result.error);
+    try {
+      const result = await login(password);
+      if (result.success) {
+        setShowModal(false);
+        navigate('/admin');
+      } else {
+        setError(result.error);
+      }
+    } catch (_) {
+      setError('Login failed unexpectedly — please reload and try again.');
+    } finally {
+      setLoading(false);
     }
   };
 

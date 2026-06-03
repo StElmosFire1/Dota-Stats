@@ -38,12 +38,24 @@ export function SuperuserProvider({ children }) {
   }, [resolveReauth]);
 
   const login = async (password) => {
-    const res = await fetch('/api/admin/superuser-login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ password }),
-    });
+    let res;
+    try {
+      res = await fetch('/api/admin/superuser-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ password }),
+      });
+    } catch (_) {
+      // fetch() rejects when the request never reaches the server — almost
+      // always a browser-side block (ad/privacy blocker that kills /admin
+      // URLs, a stale service worker, or no network). Surface it instead of
+      // failing silently so the operator isn't left staring at the same box.
+      return {
+        success: false,
+        error: 'Request was blocked before it reached the server. Disable any ad/privacy blocker for this site (or try a private window), then reload and try again.',
+      };
+    }
     if (res.ok) {
       setIsSuperuser(true);
       setShowModalState(false);
