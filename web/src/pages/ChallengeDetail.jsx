@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getCommunityChallenge } from '../api';
+import { challengeSummary } from '../lib/challengeSummary';
 
 // Task #440 — Full leaderboard view for a single community challenge.
 
@@ -56,6 +57,16 @@ export default function ChallengeDetail() {
           {fmtRange(challenge.starts_at, challenge.ends_at)}
           {challenge.prize_text ? <> · 🏆 {challenge.prize_text}</> : null}
         </div>
+        {challengeSummary(challenge.scoring) && (
+          <div style={{
+            marginTop: 12, padding: '10px 14px', borderRadius: 8,
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            fontSize: 13, color: 'var(--text-secondary)',
+          }}>
+            <span style={{ fontWeight: 700, color: 'var(--brass, #c5a975)' }}>How scoring works:</span>{' '}
+            {challengeSummary(challenge.scoring)}
+          </div>
+        )}
       </header>
 
       {myRank && !inTop && (

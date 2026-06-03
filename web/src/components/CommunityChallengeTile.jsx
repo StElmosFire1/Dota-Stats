@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getActiveCommunityChallenges } from '../api';
+import { challengeSummaryShort } from '../lib/challengeSummary';
 
 // Task #440 — Active community challenge tile for the Home page.
 // Renders the most recent active challenge with top 3 + viewer's rank.
@@ -60,6 +61,12 @@ export default function CommunityChallengeTile() {
           </h3>
           {c.description && (
             <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>{c.description}</p>
+          )}
+          {challengeSummaryShort(c.scoring) && (
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--text-muted)' }}>
+              <span style={{ fontWeight: 700, color: 'var(--brass, #c5a975)' }}>Scoring:</span>{' '}
+              {challengeSummaryShort(c.scoring)}
+            </p>
           )}
         </div>
         <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>

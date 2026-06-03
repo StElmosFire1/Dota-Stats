@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "9.25",
+    "title": "Players can now see how each community challenge is scored, in plain English",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Scoring rule on the Home challenge tile.** The active community-challenge tile now shows a short plain-English scoring line beneath the description (e.g. \"Scoring: best single-match perf rating · pos 4, 5 · wins only\"), so you can tell what's being measured at a glance.",
+      "**Full scoring sentence on the leaderboard page.** Each challenge's leaderboard page now explains exactly how scores are calculated — \"How scoring works: Ranks players by their best single-match perf rating, in positions 4, 5, counting only wins.\" — derived from the same logic the admin builder uses.",
+      "**Single source of truth.** The summary text is generated from the stored scoring rule via a shared helper (`web/src/lib/challengeSummary.js`), so the admin builder, the Home tile, and the leaderboard page always read identically. No schema or API changes.",
+      "**Full edition only.** a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.23",
     "title": "Cosmetics Shop Press Box re-skin · Custom URL sold as a standalone cosmetic",
     "published_at": "2026-06-03",
