@@ -5546,12 +5546,89 @@ function TestCoachPanel({ superuserKey }) {
   );
 }
 
-// Task #440 — Community challenges admin (full edition only).
+// Task #728 — Community challenges admin (full edition only).
+// Replaces the raw scoring DSL JSON textarea with a guided plain-English builder.
+
+const CHALLENGE_METRICS = [
+  { value: 'kills',        label: 'Total kills' },
+  { value: 'wins',         label: 'Wins' },
+  { value: 'matches',      label: 'Matches played' },
+  { value: 'perf',         label: 'PERF rating' },
+  { value: 'kda',          label: 'KDA' },
+  { value: 'assists',      label: 'Assists' },
+  { value: 'deaths',       label: 'Deaths' },
+  { value: 'gpm',          label: 'Gold per minute (GPM)' },
+  { value: 'xpm',          label: 'XP per minute (XPM)' },
+  { value: 'last_hits',    label: 'Last hits' },
+  { value: 'hero_damage',  label: 'Hero damage' },
+  { value: 'tower_damage', label: 'Tower damage' },
+  { value: 'hero_healing', label: 'Hero healing' },
+];
+
+const CHALLENGE_AGGS = [
+  { value: 'sum',   label: 'Add up every match' },
+  { value: 'max',   label: 'Best single match' },
+  { value: 'count', label: 'Count matches played' },
+];
+
+const CHALLENGE_PRESETS = [
+  { label: '⚔️ Most kills',                    metric: 'kills',   agg: 'sum',   filterTeam: '', filterPositions: [], filterWon: false },
+  { label: '🏆 Most wins',                      metric: 'wins',    agg: 'sum',   filterTeam: '', filterPositions: [], filterWon: false },
+  { label: '🌟 Highest single-match PERF',      metric: 'perf',    agg: 'max',   filterTeam: '', filterPositions: [], filterWon: false },
+  { label: '🛡️ Best support assists (pos 4–5)', metric: 'assists', agg: 'sum',   filterTeam: '', filterPositions: [4, 5], filterWon: false },
+  { label: '💰 Highest GPM (wins only)',         metric: 'gpm',     agg: 'max',   filterTeam: '', filterPositions: [], filterWon: true },
+];
+
+function _challengeDslToControls(scoring) {
+  const s = scoring || {};
+  const rawPos = s.filter?.position;
+  const positions = Array.isArray(rawPos) ? rawPos : (rawPos != null ? [rawPos] : []);
+  return {
+    metric: s.metric || 'kills',
+    agg: s.agg || 'sum',
+    filterTeam: s.filter?.team || '',
+    filterPositions: positions.map(Number),
+    filterWon: !!s.filter?.won,
+  };
+}
+
+function _challengeControlsToDsl({ metric, agg, filterTeam, filterPositions, filterWon }) {
+  const dsl = { metric, agg };
+  const filter = {};
+  if (filterTeam) filter.team = filterTeam;
+  if (filterPositions && filterPositions.length > 0) filter.position = [...filterPositions].sort((a, b) => a - b);
+  if (filterWon) filter.won = true;
+  if (Object.keys(filter).length > 0) dsl.filter = filter;
+  return dsl;
+}
+
+function _challengeSummary({ metric, agg, filterTeam, filterPositions, filterWon }) {
+  const mLabel = (CHALLENGE_METRICS.find(m => m.value === metric)?.label || metric).toLowerCase();
+  let phrase;
+  if (agg === 'sum') phrase = `the sum of their ${mLabel} across all matches`;
+  else if (agg === 'max') phrase = `their best single-match ${mLabel}`;
+  else if (agg === 'count') phrase = 'the number of matches they played';
+  else phrase = `their ${mLabel}`;
+  const parts = [];
+  if (filterTeam) parts.push(`playing as ${filterTeam}`);
+  if (filterPositions && filterPositions.length > 0) {
+    const sorted = [...filterPositions].sort((a, b) => a - b);
+    parts.push(`in position${sorted.length > 1 ? 's' : ''} ${sorted.join(', ')}`);
+  }
+  if (filterWon) parts.push('counting only wins');
+  let sentence = `Ranks players by ${phrase}`;
+  if (parts.length) sentence += `, ${parts.join(', ')}`;
+  return sentence + '.';
+}
+
 function CommunityChallengesPanel({ superuserKey }) {
   const [rows, setRows] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [msg, setMsg] = React.useState('');
-  const [editing, setEditing] = React.useState(null); // null | 'new' | {row}
+  const [editing, setEditing] = React.useState(null);
+  const [showRaw, setShowRaw] = React.useState(false);
+  const [rawDraft, setRawDraft] = React.useState('');
+  const [rawError, setRawError] = React.useState('');
 
   const load = React.useCallback(() => {
     if (!superuserKey) return;
@@ -5564,10 +5641,10 @@ function CommunityChallengesPanel({ superuserKey }) {
 
   React.useEffect(() => { load(); }, [load]);
 
-  function startNew() {
+  function _blankEditing(overrides) {
     const now = new Date();
     const end = new Date(Date.now() + 7 * 86400000);
-    setEditing({
+    return {
       id: null,
       title: '',
       description: '',
@@ -5575,11 +5652,22 @@ function CommunityChallengesPanel({ superuserKey }) {
       starts_at: now.toISOString().slice(0, 16),
       ends_at: end.toISOString().slice(0, 16),
       is_active: true,
-      scoring: JSON.stringify({ metric: 'kills', agg: 'sum' }, null, 2),
-    });
+      metric: 'kills',
+      agg: 'sum',
+      filterTeam: '',
+      filterPositions: [],
+      filterWon: false,
+      ...(overrides || {}),
+    };
+  }
+
+  function startNew() {
+    setEditing(_blankEditing());
+    setShowRaw(false); setRawDraft(''); setRawError(''); setMsg('');
   }
 
   function startEdit(row) {
+    const controls = _challengeDslToControls(row.scoring);
     setEditing({
       id: row.id,
       title: row.title || '',
@@ -5588,15 +5676,50 @@ function CommunityChallengesPanel({ superuserKey }) {
       starts_at: row.starts_at ? new Date(row.starts_at).toISOString().slice(0, 16) : '',
       ends_at: row.ends_at ? new Date(row.ends_at).toISOString().slice(0, 16) : '',
       is_active: !!row.is_active,
-      scoring: JSON.stringify(row.scoring || {}, null, 2),
+      ...controls,
     });
+    setShowRaw(false); setRawDraft(''); setRawError(''); setMsg('');
+  }
+
+  function patchEditing(patch) {
+    setEditing(prev => ({ ...prev, ...patch }));
+    setRawError('');
+  }
+
+  function applyPreset(preset) {
+    const { label: _label, ...controls } = preset;
+    setEditing(prev => ({ ...prev, ...controls }));
+    setRawError('');
+  }
+
+  function togglePosition(pos) {
+    const positions = editing.filterPositions.includes(pos)
+      ? editing.filterPositions.filter(p => p !== pos)
+      : [...editing.filterPositions, pos];
+    patchEditing({ filterPositions: positions });
+  }
+
+  function openRaw() {
+    setRawDraft(JSON.stringify(_challengeControlsToDsl(editing), null, 2));
+    setRawError('');
+    setShowRaw(true);
+  }
+
+  function applyRaw() {
+    try {
+      const parsed = JSON.parse(rawDraft);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('Must be a JSON object');
+      const controls = _challengeDslToControls(parsed);
+      setEditing(prev => ({ ...prev, ...controls }));
+      setRawError('');
+      setShowRaw(false);
+    } catch (e) {
+      setRawError('Invalid JSON: ' + e.message);
+    }
   }
 
   async function save() {
     if (!editing) return;
-    let scoringObj;
-    try { scoringObj = JSON.parse(editing.scoring); }
-    catch (e) { setMsg('Scoring JSON invalid: ' + e.message); return; }
     const payload = {
       title: editing.title,
       description: editing.description,
@@ -5604,13 +5727,14 @@ function CommunityChallengesPanel({ superuserKey }) {
       starts_at: editing.starts_at,
       ends_at: editing.ends_at,
       is_active: editing.is_active,
-      scoring: scoringObj,
+      scoring: _challengeControlsToDsl(editing),
     };
     try {
       if (editing.id) await adminUpdateCommunityChallenge(superuserKey, editing.id, payload);
       else await adminCreateCommunityChallenge(superuserKey, payload);
       setMsg('Saved.');
       setEditing(null);
+      setShowRaw(false);
       load();
     } catch (e) {
       setMsg('Save failed: ' + e.message);
@@ -5625,15 +5749,17 @@ function CommunityChallengesPanel({ superuserKey }) {
     } catch (e) { setMsg('Delete failed: ' + e.message); }
   }
 
+  const summary = editing ? _challengeSummary(editing) : '';
+
   return (
     <section className="admin-section" style={{ marginTop: 32 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <h2 style={{ margin: 0 }}>🎯 Community Challenges</h2>
         <button type="button" className="btn btn-primary" onClick={startNew}>+ New challenge</button>
       </div>
-      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
-        Time-boxed leaderboards scored from match data. Scoring DSL:
-        <code style={{ marginLeft: 6 }}>{'{ "metric": "kills|wins|matches|perf|kda|deaths|assists|gpm|xpm|last_hits|hero_damage|tower_damage|hero_healing", "agg": "sum|max|count", "filter": { "team"?: "radiant|dire", "position"?: [1..5], "won"?: true } }'}</code>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0, marginBottom: 16, lineHeight: 1.6 }}>
+        A community challenge is a time-boxed leaderboard scored from match results — players compete to top it during the window.
+        Active challenges appear on the Home page and are scored automatically as matches are recorded.
       </p>
       {msg && <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--text-secondary)' }}>{msg}</div>}
 
@@ -5683,44 +5809,160 @@ function CommunityChallengesPanel({ superuserKey }) {
           borderRadius: 10, background: 'var(--bg-card)',
         }}>
           <h3 style={{ marginTop: 0 }}>{editing.id ? 'Edit challenge' : 'New challenge'}</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+
+          {/* ── Basic info ─────────────────────────────────────────────── */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
             <label style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', fontSize: 12 }}>
               Title
-              <input value={editing.title} onChange={e => setEditing({ ...editing, title: e.target.value })} />
+              <input value={editing.title} onChange={e => patchEditing({ title: e.target.value })} />
             </label>
             <label style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', fontSize: 12 }}>
               Description
-              <textarea rows={2} value={editing.description} onChange={e => setEditing({ ...editing, description: e.target.value })} />
+              <textarea rows={2} value={editing.description} onChange={e => patchEditing({ description: e.target.value })} />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12 }}>
               Starts at
-              <input type="datetime-local" value={editing.starts_at} onChange={e => setEditing({ ...editing, starts_at: e.target.value })} />
+              <input type="datetime-local" value={editing.starts_at} onChange={e => patchEditing({ starts_at: e.target.value })} />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12 }}>
               Ends at
-              <input type="datetime-local" value={editing.ends_at} onChange={e => setEditing({ ...editing, ends_at: e.target.value })} />
+              <input type="datetime-local" value={editing.ends_at} onChange={e => patchEditing({ ends_at: e.target.value })} />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12 }}>
               Prize text (optional)
-              <input value={editing.prize_text} onChange={e => setEditing({ ...editing, prize_text: e.target.value })} placeholder="e.g. 1 month Pro for the winner" />
+              <input value={editing.prize_text} onChange={e => patchEditing({ prize_text: e.target.value })} placeholder="e.g. 1 month Pro for the winner" />
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, alignSelf: 'end' }}>
-              <input type="checkbox" checked={editing.is_active} onChange={e => setEditing({ ...editing, is_active: e.target.checked })} />
-              Active (visible on Home + scored)
-            </label>
-            <label style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', fontSize: 12 }}>
-              Scoring DSL (JSON)
-              <textarea
-                rows={8}
-                style={{ fontFamily: 'monospace', fontSize: 12 }}
-                value={editing.scoring}
-                onChange={e => setEditing({ ...editing, scoring: e.target.value })}
-              />
+              <input type="checkbox" checked={editing.is_active} onChange={e => patchEditing({ is_active: e.target.checked })} />
+              Active — visible on Home and scored automatically
             </label>
           </div>
+
+          {/* ── Scoring builder ────────────────────────────────────────── */}
+          <div style={{
+            padding: 14, borderRadius: 8,
+            background: 'var(--bg-hover)', border: '1px solid var(--border)',
+            marginBottom: 12,
+          }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12, color: 'var(--text-primary)' }}>
+              Scoring rule
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Quick-start presets
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {CHALLENGE_PRESETS.map(p => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    className="btn btn-small"
+                    onClick={() => applyPreset(p)}
+                    style={{ fontSize: 11 }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12 }}>
+                What to score
+                <select value={editing.metric} onChange={e => patchEditing({ metric: e.target.value })}>
+                  {CHALLENGE_METRICS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12 }}>
+                How to combine it
+                <select value={editing.agg} onChange={e => patchEditing({ agg: e.target.value })}>
+                  {CHALLENGE_AGGS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Optional filters (leave unset to count all matches)
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12 }}>
+                Team
+                <select value={editing.filterTeam} onChange={e => patchEditing({ filterTeam: e.target.value })}>
+                  <option value="">Any team</option>
+                  <option value="radiant">Radiant only</option>
+                  <option value="dire">Dire only</option>
+                </select>
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', fontSize: 12 }}>
+                <span style={{ marginBottom: 6 }}>Position</span>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {[1, 2, 3, 4, 5].map(pos => (
+                    <label key={pos} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={editing.filterPositions.includes(pos)}
+                        onChange={() => togglePosition(pos)}
+                      />
+                      {pos}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+              <input type="checkbox" checked={editing.filterWon} onChange={e => patchEditing({ filterWon: e.target.checked })} />
+              Only count winning matches
+            </label>
+
+            <div style={{
+              marginTop: 12, padding: '8px 12px', borderRadius: 6,
+              background: 'rgba(197,169,117,0.1)', border: '1px solid rgba(197,169,117,0.3)',
+              fontSize: 12, color: 'var(--text-secondary)', fontStyle: 'italic',
+            }}>
+              {summary}
+            </div>
+          </div>
+
+          {/* ── Advanced raw JSON escape hatch ─────────────────────────── */}
+          <div style={{ marginBottom: 12 }}>
+            {!showRaw ? (
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={openRaw}
+                aria-expanded={false}
+                style={{ fontSize: 11, color: 'var(--text-muted)' }}
+              >
+                ▸ Advanced: edit raw scoring JSON
+              </button>
+            ) : (
+              <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Raw scoring JSON
+                </div>
+                <textarea
+                  rows={6}
+                  style={{ fontFamily: 'monospace', fontSize: 12, width: '100%', boxSizing: 'border-box' }}
+                  value={rawDraft}
+                  onChange={e => setRawDraft(e.target.value)}
+                  spellCheck={false}
+                  aria-label="Raw scoring JSON"
+                />
+                {rawError && (
+                  <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{rawError}</div>
+                )}
+                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                  <button type="button" className="btn btn-small" onClick={applyRaw}>Apply & close</button>
+                  <button type="button" className="btn btn-small" onClick={() => { setShowRaw(false); setRawError(''); }}>Discard changes</button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
             <button type="button" className="btn btn-primary" onClick={save}>Save</button>
-            <button type="button" className="btn" onClick={() => setEditing(null)}>Cancel</button>
+            <button type="button" className="btn" onClick={() => { setEditing(null); setShowRaw(false); setMsg(''); }}>Cancel</button>
           </div>
         </div>
       )}

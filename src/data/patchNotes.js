@@ -1,5 +1,21 @@
 module.exports = [
   {
+    "version": "9.08",
+    "title": "Guided challenge builder — no more JSON in the admin panel",
+    "published_at": "2026-06-02",
+    "notes": [
+      "**Plain-English challenge creation.** The Community Challenges admin card no longer asks anyone to hand-write a Scoring DSL JSON blob. Creating or editing a challenge now uses labelled dropdowns and checkboxes: pick *What to score* (Total kills, Wins, PERF rating, GPM, and nine other stats) and *How to combine it* (Add up every match / Best single match / Count matches played).",
+      "**Optional filters.** Narrow any challenge to Radiant-only or Dire-only games, to one or more positions (1–5), or to wins only — each control defaults to 'any' / off so simple challenges stay simple.",
+      "**Live rule preview.** A summary sentence updates as you change the controls — e.g. *'Ranks players by the sum of their assists across all matches, in positions 4, 5, counting only wins.'* — so the rule reads exactly as intended before saving.",
+      "**One-click presets.** Five starter presets (Most kills, Most wins, Highest single-match PERF, Best support assists pos 4–5, Highest GPM wins-only) fill all the controls instantly.",
+      "**Editing loads correctly.** Opening an existing challenge pre-populates all controls from its stored scoring rule.",
+      "**Advanced escape hatch.** A collapsed *Advanced: edit raw scoring JSON* section shows the derived DSL; editing it and clicking Apply syncs the changes back into the builder — power users can still reach raw JSON when they need it.",
+      "**Scope.** Admin UI only — the scoring engine, storage schema, and all API routes are unchanged. A11y gate green, build clean."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.07",
     "title": "Admin access is now tied to your Steam account",
     "published_at": "2026-06-02",
