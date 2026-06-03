@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "9.27",
+    "title": "Pro badge no longer crowds the navbar on phones",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Mobile navbar tidy-up.** On narrow viewports the ★ Pro badge used to sit in the always-visible top row alongside the coin pill, search, theme toggle, sign-in and admin controls, making that row cramped. It now drops to its own line grouped with the wrapped nav links, staying full-size and easy to tap.",
+      "**Desktop unchanged.** The badge stays inline in the top bar with no wrapping on wider screens — the new behaviour only applies at the ≤900px breakpoint via a CSS `order` tweak. a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.26",
     "title": "Admin: search and filter the Community Challenges list",
     "published_at": "2026-06-03",

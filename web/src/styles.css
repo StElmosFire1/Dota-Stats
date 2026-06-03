@@ -1531,6 +1531,16 @@ th.col-stat {
   .nav-links .nav-live-badge {
     display: none !important;
   }
+  /* Task #745 — the Pro badge lives outside `.nav-links` (so it can stay
+     inline without forcing a wrap on desktop). At this breakpoint the
+     wrapped `.nav-links` block drops to its own full-width row (order 3),
+     leaving the Pro badge stranded in the always-visible top row alongside
+     the coin pill, search, theme toggle, sign-in and admin controls. Give
+     it the same order so it groups with the nav-links block on its own row
+     below the top bar instead of crowding it — still full-size and tappable. */
+  .nav-pro-badge {
+    order: 3;
+  }
 }
 
 @media (max-width: 768px) {

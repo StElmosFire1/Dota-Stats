@@ -836,7 +836,7 @@ function Nav() {
       </div>
       <Link
         to="/pro"
-        className={isActive('/pro')}
+        className={`${isActive('/pro')} nav-pro-badge`}
         style={{
           background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
           color: '#1a1a1a',
