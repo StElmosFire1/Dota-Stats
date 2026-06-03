@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "9.12",
+    "title": "Target mass DMs with one-click recipient presets",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Preset filters for the Mass DM picker.** A new *Preset filters* dropdown above the recipient list lets admins bulk-select a targeted subset instead of hand-picking from a long flat list: *All with Discord*, *Active this season (≥1 match)*, *Pro members*, any of *Tier 1–8*, or the entrants of a specific *Tournament*.",
+      "**Additive selection.** Choosing a preset checks every matching reachable player on top of whatever you've already selected — stack presets (e.g. Pro members + Tier 1) or mix presets with manual picks. A live message confirms how many recipients each preset added, and the selected count updates immediately.",
+      "**Server-side filtering.** The matching is resolved on the server against live data (season activity, Pro subscription state, season tier placement, tournament entries), so the picker always reflects current status; players with no Discord ID are never added.",
+      "**Scope.** Full edition, superuser only. A11y gate green, build clean."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.11",
     "title": "Superuser access can now be locked to specific Steam accounts",
     "published_at": "2026-06-03",

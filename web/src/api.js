@@ -2772,8 +2772,11 @@ export const setAdminEconomyPrices = (overrides, superuserKey) =>
     superuserKey,
   });
 
-export const getAdminDmRecipients = (superuserKey) =>
-  superuserJson('/admin/dm-recipients', { superuserKey });
+export const getAdminDmRecipients = (superuserKey, filter = null) =>
+  superuserJson(
+    `/admin/dm-recipients${filter ? `?filter=${encodeURIComponent(filter)}` : ''}`,
+    { superuserKey }
+  );
 
 export const adminDmBlast = (superuserKey, message, accountIds) =>
   superuserJson('/admin/dm-blast', {

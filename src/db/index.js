@@ -7080,8 +7080,62 @@ async function getDiscordIdByAccountId(accountId32) {
 // best display name plus a has_discord flag. The discord_id field is
 // intentionally included so the send endpoint can resolve targets server-side
 // without a second round-trip per player.
-async function getDmReachablePlayers() {
+// Task #731 — list players for the mass-DM recipient picker, optionally
+// narrowed to a preset subset. `filter` is one of:
+//   null / 'all'        → every tracked player (default)
+//   'active_season'     → ≥1 match in the active season
+//   'pro'               → live Pro members (same rule as isProMember)
+//   'tier:<1-8>'        → players assigned to that tier in the active season
+//   'tournament:<id>'   → players with a tournament entry for that tournament
+// Unknown / malformed filters fall back to 'all'. The has_discord flag is
+// always returned so the UI can keep showing unreachable players greyed out.
+async function getDmReachablePlayers(filter = null) {
   const p = getPool();
+  let extraClause = '';
+  const params = [];
+
+  const raw = (filter == null ? '' : String(filter)).trim();
+  if (raw && raw !== 'all') {
+    if (raw === 'active_season') {
+      extraClause = `
+        AND n.account_id::text IN (
+          SELECT DISTINCT ps.account_id::text
+          FROM player_stats ps
+          JOIN matches m ON m.match_id = ps.match_id
+          WHERE m.season_id = (SELECT id FROM seasons WHERE active = true LIMIT 1)
+        )`;
+    } else if (raw === 'pro') {
+      extraClause = `
+        AND n.account_id::text IN (
+          SELECT account_id::text FROM pro_subscriptions
+          WHERE status IN ('active','lifetime','past_due')
+            AND (plan_type IS DISTINCT FROM 'comp'
+                 OR (current_period_end IS NOT NULL AND current_period_end > NOW()))
+        )`;
+    } else if (raw.startsWith('tier:')) {
+      const tier = parseInt(raw.slice(5), 10);
+      if (Number.isFinite(tier) && tier >= 1 && tier <= 8) {
+        params.push(tier);
+        extraClause = `
+          AND n.account_id::text IN (
+            SELECT account_id::text FROM season_tier_players
+            WHERE season_id = (SELECT id FROM seasons WHERE active = true LIMIT 1)
+              AND tier_number = $${params.length}
+          )`;
+      }
+    } else if (raw.startsWith('tournament:')) {
+      const tid = parseInt(raw.slice(11), 10);
+      if (Number.isFinite(tid) && tid > 0) {
+        params.push(tid);
+        extraClause = `
+          AND n.account_id::text IN (
+            SELECT account_id::text FROM tournament_entries
+            WHERE tournament_id = $${params.length}
+          )`;
+      }
+    }
+  }
+
   const r = await p.query(`
     SELECT
       n.account_id,
@@ -7089,8 +7143,9 @@ async function getDmReachablePlayers() {
       COALESCE(NULLIF(TRIM(n.discord_id), ''), NULLIF(TRIM(pl.discord_id), '')) AS discord_id
     FROM nicknames n
     LEFT JOIN players pl ON pl.account_id_32 = n.account_id::text
+    WHERE 1 = 1 ${extraClause}
     ORDER BY display_name
-  `);
+  `, params);
   return r.rows.map(row => ({
     account_id: String(row.account_id),
     display_name: row.display_name || String(row.account_id),

@@ -3213,18 +3213,54 @@ function MassDmPanel({ superuserKey }) {
   const [resending, setResending] = useState(false);
   const [resendError, setResendError] = useState('');
   const [resendResult, setResendResult] = useState(null);
+  // Task #731 — preset recipient filters.
+  const [tournaments, setTournaments] = useState([]);
+  const [presetBusy, setPresetBusy] = useState(false);
+  const [presetMsg, setPresetMsg] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError('');
     try {
       const d = await getAdminDmRecipients(superuserKey);
       setPlayers(d.players || []);
+      // Best-effort: load tournaments so the preset dropdown can target a
+      // specific tournament's entrants. A failure here must not block the
+      // recipient picker.
+      try {
+        const ts = await getTournaments();
+        setTournaments(Array.isArray(ts) ? ts : (ts?.tournaments || []));
+      } catch { /* tournaments preset simply won't appear */ }
     } catch (e) {
       setLoadError(e.message || 'Failed to load recipients');
     } finally {
       setLoading(false);
     }
   }, [superuserKey]);
+
+  // Task #731 — fetch the server-side filtered subset for a preset and
+  // additively check every reachable match (existing selections are kept).
+  async function applyPreset(filterValue) {
+    if (!filterValue || presetBusy) return;
+    setPresetBusy(true); setPresetMsg('');
+    try {
+      const d = await getAdminDmRecipients(superuserKey, filterValue);
+      const matched = (d.players || []).filter(p => p.has_discord);
+      setSelected(prev => {
+        const next = new Set(prev);
+        matched.forEach(p => next.add(p.account_id));
+        return next;
+      });
+      setPresetMsg(
+        matched.length
+          ? `Added ${matched.length} reachable recipient(s) from this preset.`
+          : 'No reachable players matched this preset.'
+      );
+    } catch (e) {
+      setPresetMsg(e.message || 'Failed to apply preset');
+    } finally {
+      setPresetBusy(false);
+    }
+  }
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true); setHistoryError('');
@@ -3380,6 +3416,45 @@ function MassDmPanel({ superuserKey }) {
                   Clear all
                 </button>
               </div>
+            </div>
+
+            {/* Task #731 — preset recipient filters. Selecting a preset
+                additively checks every matching reachable player. */}
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label htmlFor="ap-mass-dm-preset" style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>
+                Preset filters
+              </label>
+              <select
+                id="ap-mass-dm-preset"
+                value=""
+                disabled={presetBusy}
+                onChange={e => { const v = e.target.value; e.target.value = ''; applyPreset(v); }}
+                aria-label="Add recipients by preset filter"
+                style={{ ...inputStyle, width: 'auto', flexGrow: 1, minWidth: 200 }}
+              >
+                <option value="" disabled>Add recipients by…</option>
+                <option value="all">All with Discord</option>
+                <option value="active_season">Active this season (≥1 match)</option>
+                <option value="pro">Pro members</option>
+                <optgroup label="By tier">
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map(t => (
+                    <option key={t} value={`tier:${t}`}>Tier {t}</option>
+                  ))}
+                </optgroup>
+                {tournaments.length > 0 && (
+                  <optgroup label="Tournament participants">
+                    {tournaments.map(t => (
+                      <option key={t.id} value={`tournament:${t.id}`}>
+                        {t.name || `Tournament #${t.id}`}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              {presetBusy && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Applying…</span>}
+              {presetMsg && !presetBusy && (
+                <span role="status" style={{ fontSize: 12, color: 'var(--text-muted)' }}>{presetMsg}</span>
+              )}
             </div>
 
             <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>

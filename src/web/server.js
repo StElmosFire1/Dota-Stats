@@ -12266,7 +12266,10 @@ NOTES
   // display name and a has_discord flag so the UI can render the picker.
   router.get('/admin/dm-recipients', requireSuperuser, async (req, res) => {
     try {
-      const players = await db.getDmReachablePlayers();
+      // Task #731 — optional preset filter (all | active_season | pro |
+      // tier:<1-8> | tournament:<id>). Unknown values degrade to "all".
+      const filter = typeof req.query.filter === 'string' ? req.query.filter : null;
+      const players = await db.getDmReachablePlayers(filter);
       res.json({ players });
     } catch (err) {
       console.error('[AdminDmBlast] getDmReachablePlayers error:', err.message);
