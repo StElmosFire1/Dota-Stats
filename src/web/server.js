@@ -28,6 +28,14 @@ function _webPushReady() {
   return Boolean(webpush && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
 }
 
+// Task #732 — concurrency guard for POST /admin/dm-blast. A blast sends up to
+// 500 DMs sequentially at 700 ms each (~6 min). Without a guard a double-click
+// or a second admin would fan out duplicate DMs to the same recipients. This
+// in-process flag lets a second request fail fast with a 409 while one is live.
+// In-process is sufficient: the prod web server is a single PM2 process per
+// edition, and the flag self-clears in a finally so a thrown send can't wedge it.
+let _dmBlastInProgress = null; // null when idle, else { startedAt, sender, recipientCount }
+
 // Task #381 — Expo push fan-out. Posts up to 100 messages per HTTP call
 // to Expo's push service (no SDK needed; thin wrapper around node-fetch).
 // Returns { sent, removed } where `removed` counts tokens we deleted
@@ -12358,64 +12366,91 @@ NOTES
       return res.status(503).json({ error: 'Discord bot is not connected. Try again once the bot is online.' });
     }
 
+    // Task #732 — refuse to start a second blast while one is already running.
+    // A blast can take ~6 minutes, so a double-click or a second admin would
+    // otherwise fan out duplicate DMs to the same recipients.
+    if (_dmBlastInProgress) {
+      const startedAt = _dmBlastInProgress.startedAt;
+      const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+      return res.status(409).json({
+        error: 'A mass DM blast is already in progress. Wait for it to finish before starting another.',
+        inProgress: {
+          startedAt: new Date(startedAt).toISOString(),
+          elapsedSeconds: elapsedSec,
+          recipientCount: _dmBlastInProgress.recipientCount,
+        },
+      });
+    }
+    _dmBlastInProgress = {
+      startedAt: Date.now(),
+      sender: req.session && req.session.accountId ? String(req.session.accountId) : null,
+      recipientCount: accountIds.length,
+    };
+
     const text = message.trim();
     const sent = [];
     const failed = [];
 
-    for (const rawId of accountIds) {
-      const accountId = String(rawId);
-      let discordId = null;
-      try {
-        discordId = await db.getDiscordIdByAccountId(accountId);
-      } catch (e) {
-        failed.push({ account_id: accountId, reason: 'DB lookup error: ' + e.message });
-        continue;
-      }
-      if (!discordId) {
-        failed.push({ account_id: accountId, reason: 'No Discord ID on file' });
-        continue;
-      }
-      try {
-        const user = await bot.client.users.fetch(discordId).catch(() => null);
-        if (!user) {
-          failed.push({ account_id: accountId, discord_id: discordId, reason: 'User not found on Discord' });
+    try {
+      for (const rawId of accountIds) {
+        const accountId = String(rawId);
+        let discordId = null;
+        try {
+          discordId = await db.getDiscordIdByAccountId(accountId);
+        } catch (e) {
+          failed.push({ account_id: accountId, reason: 'DB lookup error: ' + e.message });
           continue;
         }
-        await user.send({ content: text });
-        sent.push({ account_id: accountId, discord_id: discordId });
-      } catch (e) {
-        const reason = e?.message?.includes('Cannot send messages to this user')
-          ? 'DMs are closed (user has DMs disabled)'
-          : (e?.message || 'Send failed');
-        failed.push({ account_id: accountId, discord_id: discordId, reason });
+        if (!discordId) {
+          failed.push({ account_id: accountId, reason: 'No Discord ID on file' });
+          continue;
+        }
+        try {
+          const user = await bot.client.users.fetch(discordId).catch(() => null);
+          if (!user) {
+            failed.push({ account_id: accountId, discord_id: discordId, reason: 'User not found on Discord' });
+            continue;
+          }
+          await user.send({ content: text });
+          sent.push({ account_id: accountId, discord_id: discordId });
+        } catch (e) {
+          const reason = e?.message?.includes('Cannot send messages to this user')
+            ? 'DMs are closed (user has DMs disabled)'
+            : (e?.message || 'Send failed');
+          failed.push({ account_id: accountId, discord_id: discordId, reason });
+        }
+        // 700 ms between sends to respect Discord's DM rate limit.
+        await new Promise(r => setTimeout(r, 700));
       }
-      // 700 ms between sends to respect Discord's DM rate limit.
-      await new Promise(r => setTimeout(r, 700));
-    }
 
-    // Task #730 — persist the blast to the audit trail. Best-effort: a logging
-    // failure must not fail the send (the DMs already went out), so we only warn.
-    try {
-      await db.logAdminDmBlast({
-        senderAccountId: req.session && req.session.accountId ? String(req.session.accountId) : null,
-        senderRole: 'superuser',
-        message: text,
-        recipientCount: accountIds.length,
-        sentCount: sent.length,
-        failedCount: failed.length,
-        results: { sent, failed },
+      // Task #730 — persist the blast to the audit trail. Best-effort: a logging
+      // failure must not fail the send (the DMs already went out), so we only warn.
+      try {
+        await db.logAdminDmBlast({
+          senderAccountId: req.session && req.session.accountId ? String(req.session.accountId) : null,
+          senderRole: 'superuser',
+          message: text,
+          recipientCount: accountIds.length,
+          sentCount: sent.length,
+          failedCount: failed.length,
+          results: { sent, failed },
+        });
+      } catch (e) {
+        console.error('[AdminDmBlast] failed to write audit log:', e.message);
+      }
+
+      res.json({
+        ok: true,
+        sent: sent.length,
+        failed: failed.length,
+        sentList: sent,
+        failedList: failed,
       });
-    } catch (e) {
-      console.error('[AdminDmBlast] failed to write audit log:', e.message);
+    } finally {
+      // Always release the guard, even if the loop throws unexpectedly, so a
+      // single failed blast can't wedge the endpoint shut forever.
+      _dmBlastInProgress = null;
     }
-
-    res.json({
-      ok: true,
-      sent: sent.length,
-      failed: failed.length,
-      sentList: sent,
-      failedList: failed,
-    });
   });
 
   // GET /admin/dm-blasts — audit trail of past mass-DM broadcasts (Task #730).
