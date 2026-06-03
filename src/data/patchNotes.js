@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "9.11",
+    "title": "Superuser access can now be locked to specific Steam accounts",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Two-factor superuser sign-in.** The site owner can now require that unlocking superuser access needs BOTH the superuser password AND being signed in with an approved Steam account — so a leaked password on its own is useless.",
+      "**Opt-in and lockout-proof.** This is off by default: until the owner sets the new allow-list, superuser sign-in works exactly as before. When the allow-list is empty there's no way to accidentally lock yourself out.",
+      "**Clear guidance when blocked.** If the password is right but you're not signed in (or your Steam account isn't on the list), you get a plain-English message telling you to sign in with an approved Steam account rather than a generic failure. The private-preview gate page now also shows a 'Sign in with Steam first' link.",
+      "**Automation untouched.** Server-to-server and deploy scripts that use the superuser key header are unaffected — only the interactive browser sign-in is bound to Steam.",
+      "**Scope.** Full edition only; the community edition is untouched."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.10",
     "title": "See where you're signed in — and sign out any device",
     "published_at": "2026-06-03",

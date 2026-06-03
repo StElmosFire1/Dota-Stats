@@ -1529,6 +1529,8 @@ function createServer(startupStatus = {}) {
     'button{margin-top:12px;width:100%;padding:10px 12px;background:#c5a975;color:#0d1424;border:0;border-radius:6px;font-weight:600;cursor:pointer;font-size:0.95rem}',
     'button:disabled{opacity:0.6;cursor:wait}',
     '.err{color:#ef4444;font-size:0.82rem;margin-top:10px;min-height:1em}',
+    '.steam{display:block;margin-top:16px;color:#8a93a8;font-size:0.8rem;text-align:center;text-decoration:none}',
+    '.steam:hover,.steam:focus{color:#c5a975;text-decoration:underline}',
     '</style>',
     '</head>',
     '<body>',
@@ -1541,6 +1543,7 @@ function createServer(startupStatus = {}) {
     '<button id="b" type="submit">Continue</button>',
     '<div class="err" id="e" aria-live="polite"></div>',
     '</form>',
+    '<a class="steam" href="/auth/steam">Sign in with Steam first</a>',
     '</main>',
     '<script>',
     'var f=document.getElementById("f"),p=document.getElementById("p"),b=document.getElementById("b"),e=document.getElementById("e");',
@@ -5364,6 +5367,17 @@ function createApiRouter(startupStatus = {}, _app = null) {
     res.status(410).json({ error: 'Admin password login has been removed. Admin access is granted to your Steam account by the site owner.' });
   });
 
+  // Task #749 — parse the SUPERUSER_STEAM_IDS allow-list into a Set of string
+  // Steam account ids (the 32-bit accountId stored on req.session.accountId).
+  // Comma/space/newline separated; blank entries ignored. Returns an empty Set
+  // when unset/empty, which the caller treats as "binding disabled".
+  function parseSuperuserSteamIds() {
+    const raw = process.env.SUPERUSER_STEAM_IDS || '';
+    return new Set(
+      raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
+    );
+  }
+
   router.post('/admin/superuser-login', superuserLoginLimiter, express.json(), (req, res) => {
     const superuserPassword = process.env.SUPERUSER_PASSWORD;
     if (!superuserPassword) {
@@ -5371,6 +5385,25 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
     const { password } = req.body || {};
     if (password !== superuserPassword) return res.status(401).json({ error: 'Invalid password' });
+
+    // Task #749 — bind interactive superuser elevation to an allow-listed Steam
+    // account, so a leaked SUPERUSER_PASSWORD alone is useless: the caller must
+    // ALSO be signed in with a Steam account whose id is on the allow-list.
+    // SUPERUSER_STEAM_IDS unset/empty → binding disabled (password-only, exactly
+    // as before): the safe default that can NEVER lock the owner out. The
+    // machine-key header path (x-superuser-key, used by scripts/deploy hooks) is
+    // deliberately untouched — only this interactive browser elevation is bound.
+    const allowedSteamIds = parseSuperuserSteamIds();
+    if (allowedSteamIds.size > 0) {
+      const acct = req.session && req.session.accountId ? String(req.session.accountId) : null;
+      if (!acct) {
+        return res.status(403).json({ error: 'Sign in with Steam first — superuser access is restricted to specific Steam accounts.' });
+      }
+      if (!allowedSteamIds.has(acct)) {
+        return res.status(403).json({ error: 'This Steam account is not permitted to use superuser access.' });
+      }
+    }
+
     req.session.isSuperuser = true;
     req.session.save((err) => {
       if (err) return res.status(500).json({ error: 'Session error' });
