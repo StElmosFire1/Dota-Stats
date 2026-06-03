@@ -5281,6 +5281,81 @@ function createApiRouter(startupStatus = {}, _app = null) {
     req.session.destroy(() => res.json({ success: true }));
   });
 
+  // Task #748 — Session visibility & revocation.
+  //
+  // Lets a signed-in user see where their account is logged in and kill
+  // individual sessions or every session at once, so a stolen or lingering
+  // cookie can be revoked without rotating SESSION_SECRET (which would log
+  // out the entire site). All three routes are scoped to the caller's own
+  // accountId — that predicate is the authorization boundary, never the sid.
+  router.get('/me/sessions', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const rows = await db.listSessionsForAccount(accountId);
+      const currentSid = req.sessionID;
+      // Best-effort ISO conversion — a single malformed timestamp on one
+      // row must never turn the whole list into a 500.
+      const toIso = (v) => {
+        if (v == null) return null;
+        const d = new Date(typeof v === 'number' || /^\d+$/.test(String(v)) ? Number(v) : v);
+        return Number.isNaN(d.getTime()) ? null : d.toISOString();
+      };
+      const sessions = rows
+        .map((s) => ({
+          id: s.sid,
+          device: s.device || 'Unknown device',
+          lastSeenAt: toIso(s.lastSeenAt),
+          expiresAt: toIso(s.expire),
+          isCurrent: s.sid === currentSid,
+          isSuperuser: !!s.isSuperuser,
+        }))
+        .sort((a, b) => {
+          // Current session first, then most-recently-active.
+          if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+          return (b.lastSeenAt || '').localeCompare(a.lastSeenAt || '');
+        });
+      res.json({ sessions });
+    } catch (err) {
+      console.error('[API] me/sessions GET:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/me/sessions/revoke', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const sid = (req.body && req.body.sid ? String(req.body.sid) : '').trim();
+      if (!sid) return res.status(400).json({ error: 'sid required' });
+      const isCurrent = sid === req.sessionID;
+      const revoked = await db.revokeSessionById(accountId, sid);
+      if (isCurrent) {
+        // Revoking the current device also ends this session locally.
+        return req.session.destroy(() => res.json({ ok: true, revoked, signed_out: true }));
+      }
+      res.json({ ok: true, revoked });
+    } catch (err) {
+      console.error('[API] me/sessions/revoke POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/me/sessions/revoke-all', async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      const revoked = await db.revokeAllSessionsForAccount(accountId).catch(() => 0);
+      console.log('[Sessions] sign-out-everywhere — accountId:', accountId, 'sessions_revoked:', revoked);
+      // The account-wide revoke already deleted the current row; destroying
+      // the session here just clears this browser's cookie.
+      req.session.destroy(() => res.json({ ok: true, revoked, signed_out: true }));
+    } catch (err) {
+      console.error('[API] me/sessions/revoke-all POST:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Legacy admin-password login removed — admin/moderator privilege is now
   // granted per Steam account by the OWNER in the Admin Panel and resolved at
   // /auth/complete + via live role lookups. Any old client that still POSTs

@@ -137,6 +137,7 @@ const SettingsBilling = lazy(() => import('./pages/SettingsBilling'));
 const Settings = lazy(() => import('./pages/Settings'));
 const SettingsAccount = lazy(() => import('./pages/SettingsAccount'));
 const SettingsDangerZone = lazy(() => import('./pages/SettingsDangerZone'));
+const SettingsSessions = lazy(() => import('./pages/SettingsSessions'));
 const SettingsApi = lazy(() => import('./pages/SettingsApi'));
 const ApiDocs = lazy(() => import('./pages/ApiDocs'));
 const Developers = lazy(() => import('./pages/Developers'));
@@ -1449,6 +1450,7 @@ function AppRoutes() {
                   <Route path="billing" element={<SettingsBilling />} />
                   <Route path="coaching" element={<CoachEdit />} />
                   <Route path="api" element={<SettingsApi />} />
+                  <Route path="sessions" element={<SettingsSessions />} />
                   <Route path="danger-zone" element={<SettingsDangerZone />} />
                 </Route>
                 <Route path="/api-docs" element={<ApiDocs />} />

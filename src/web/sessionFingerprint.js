@@ -58,6 +58,31 @@ function _extractUa(req) {
   return String(ua).slice(0, 256);
 }
 
+// Task #748 — coarse, non-identifying device label for the user-facing
+// "active sessions" list (e.g. "Chrome on Windows"). This is deliberately
+// low-resolution: only the browser + OS *family*, never the raw UA string,
+// version numbers, or anything device-unique. It does not weaken the
+// hash-only privacy posture above — the raw UA still never hits the DB.
+function _parseDevice(uaRaw) {
+  if (!uaRaw) return 'Unknown device';
+  const ua = String(uaRaw);
+  let os = 'Unknown OS';
+  if (/Windows NT/i.test(ua)) os = 'Windows';
+  else if (/iPhone|iPad|iPod/i.test(ua)) os = 'iOS';
+  else if (/Mac OS X|Macintosh/i.test(ua)) os = 'macOS';
+  else if (/Android/i.test(ua)) os = 'Android';
+  else if (/CrOS/i.test(ua)) os = 'ChromeOS';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+  let br = 'Browser';
+  if (/Edg\//i.test(ua)) br = 'Edge';
+  else if (/OPR\/|Opera/i.test(ua)) br = 'Opera';
+  else if (/Firefox\//i.test(ua)) br = 'Firefox';
+  else if (/Chromium\//i.test(ua)) br = 'Chromium';
+  else if (/Chrome\//i.test(ua)) br = 'Chrome';
+  else if (/Safari\//i.test(ua) && /Version\//i.test(ua)) br = 'Safari';
+  return `${br} on ${os}`;
+}
+
 // Compute the print pair for a request. Exported so the auth-complete
 // handler can stamp immediately on session creation.
 function computePrints(req) {
@@ -75,10 +100,16 @@ function stampSession(req) {
   if (!ip && !ua) return false;
   const now = Date.now();
   const last = Number(req.session.fpStampedAt || 0);
-  const changed = req.session.ip !== ip || req.session.ua !== ua;
+  const device = _parseDevice(_extractUa(req));
+  const changed = req.session.ip !== ip || req.session.ua !== ua || req.session.device !== device;
   if (!changed && (now - last) < REFRESH_MS) return false;
   req.session.ip = ip;
   req.session.ua = ua;
+  // Task #748 — coarse device label + last-active marker for the user's
+  // "active sessions" list. Updated on the same ≤15-min cadence as the
+  // fingerprint so the session-store write rate stays sane.
+  req.session.device = device;
+  req.session.lastSeenAt = now;
   req.session.fpStampedAt = now;
   return true;
 }

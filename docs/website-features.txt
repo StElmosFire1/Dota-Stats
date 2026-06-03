@@ -75,7 +75,7 @@ VOD reviews (/coaches/:id/vod-review, /me/coaching/vod, /vod-reviews/:id) [signe
 Coach earnings (/coach/earnings) [signed-in] — payout dashboard
 
 === ACCOUNT & DEVELOPER ===
-Settings (/settings/{profile,notifications,account,billing,coaching,api,danger-zone}) [signed-in] — account management incl. danger zone (delete)
+Settings (/settings/{profile,notifications,account,billing,coaching,api,sessions,danger-zone}) [signed-in] — account management incl. active sessions + danger zone (delete)
 Notifications (/me/notifications) [signed-in] — notification center
 API keys (/settings/api) [signed-in] — create scoped keys, subscribe to webhooks
 API docs / Developers (/api-docs, /developers) [public] — public REST API (v1 + v2) docs, "try it" runner, SDK samples, webhook docs

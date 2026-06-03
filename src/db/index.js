@@ -16890,6 +16890,56 @@ async function revokeAllSessionsForAccount(accountId) {
   }
 }
 
+// Task #748 — list every active session row for an account, for the
+// user-facing "active sessions" / "sign out everywhere" surface. Returns
+// only the coarse, non-identifying fields stamped by sessionFingerprint
+// (device label + last-active marker) plus the store key (sid) and the
+// row's expiry. Never returns the hashed IP/UA or any raw identifier.
+async function listSessionsForAccount(accountId) {
+  if (!accountId) return [];
+  const p = getPool();
+  try {
+    const r = await p.query(
+      `SELECT sid, sess, expire FROM user_sessions
+        WHERE (sess::jsonb ->> 'accountId') = $1::text
+          AND expire > NOW()`,
+      [String(accountId)]
+    );
+    return r.rows.map((row) => {
+      let s = row.sess;
+      if (typeof s === 'string') { try { s = JSON.parse(s); } catch (_) { s = {}; } }
+      s = s || {};
+      return {
+        sid: row.sid,
+        device: s.device || null,
+        lastSeenAt: s.lastSeenAt || null,
+        isSuperuser: !!s.isSuperuser,
+        expire: row.expire || null,
+      };
+    });
+  } catch (_) {
+    return [];
+  }
+}
+
+// Task #748 — revoke a single session by store key, scoped to the owning
+// account so a user can only ever kill their OWN sessions (the accountId
+// predicate is the authorization boundary — never trust the sid alone).
+async function revokeSessionById(accountId, sid) {
+  if (!accountId || !sid) return 0;
+  const p = getPool();
+  try {
+    const r = await p.query(
+      `DELETE FROM user_sessions
+        WHERE sid = $1 AND (sess::jsonb ->> 'accountId') = $2::text`,
+      [String(sid), String(accountId)]
+    );
+    return r.rowCount || 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
 async function isAccountHidden(accountId) {
   if (!accountId) return false;
   const p = getPool();
@@ -25913,6 +25963,8 @@ module.exports = {
   getOnboardingState,
   isAccountHidden,
   revokeAllSessionsForAccount,
+  listSessionsForAccount,
+  revokeSessionById,
   setOnboardingComplete,
   setOnboardingStep,
   getAccountDeletionStatus,

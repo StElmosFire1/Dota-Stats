@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "9.10",
+    "title": "See where you're signed in — and sign out any device",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Active sessions list.** A new *Active sessions* section in Settings shows every device currently signed in to your account, with a rough device label (e.g. 'Chrome on Windows') and when it was last active. Your current device is clearly marked.",
+      "**Sign out a single device.** Spotted a session you don't recognise, or left yourself logged in on a shared machine? Sign it out individually with one click — that device is logged out immediately.",
+      "**Sign out everywhere.** One button ends every active session on all devices at once (including this one) — the fastest way to lock things down if you think your account may be compromised. You'll just sign in with Steam again afterwards.",
+      "**Privacy-first.** We never store your IP address or full browser string for this — only a coarse device label and a last-active timestamp. Revoking a session takes effect instantly without disrupting anyone else's sign-in.",
+      "**Scope.** Full edition only; the community edition is untouched."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.09",
     "title": "Mass DM broadcasts are now logged to a reviewable audit trail",
     "published_at": "2026-06-03",
