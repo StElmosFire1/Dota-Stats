@@ -9,6 +9,7 @@ import { superuserFetch, getCaptainAutoPickStats } from '../api';
 import LiveQueueWidget from '../components/LiveQueueWidget';
 import MoodFormWidget from '../components/MoodFormWidget';
 import SignInPrompt from '../components/SignInPrompt';
+import SortableTh from '../components/SortableTh';
 import '../styles/pressbox-inhouse.css';
 
 const POSITIONS = [
@@ -429,6 +430,8 @@ export default function Inhouse() {
   const [session, setSession] = useState(null);
   const [players, setPlayers] = useState([]);
   const [pastSessions, setPastSessions] = useState([]);
+  const [pastSortField, setPastSortField] = useState('id');
+  const [pastSortDir, setPastSortDir] = useState(-1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [serverStatus, setServerStatus] = useState(null);
@@ -885,7 +888,7 @@ export default function Inhouse() {
       {/* Task #316 — live queue widget: shows in-progress sessions + queued
           players, falls back to recent matches when the queue is empty. */}
       <LiveQueueWidget emptyMode="recent" />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+      <div className="pb-inhouse-header">
         <div>
           <div className="pb-eyebrow" style={{ marginBottom: 6 }}>Live Lobby</div>
           <h1 className="pb-page-title" style={{ margin: 0, fontSize: '2.1rem' }}>Inhouse Lobby</h1>
@@ -895,7 +898,9 @@ export default function Inhouse() {
               'linear-gradient(to right, var(--pb-brass), transparent 30%) top/100% 2px no-repeat,' +
               'linear-gradient(to right, var(--pb-line), var(--pb-line)) bottom/100% 1px no-repeat',
           }} />
-          <p style={{ color: 'var(--pb-muted)', margin: '8px 0 0' }}>FACEIT-style match accept, captain draft, and direct server connect.</p>
+          <p className="pb-inhouse-subtitle">
+            A private 5v5 Dota 2 match for OCE community members. Sign in, pick your preferred roles, wait for 10 players, then get drafted onto a team and connect to a dedicated server.
+          </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {/* v5.92 — mute toggle for inhouse sound alerts. */}
@@ -918,16 +923,22 @@ export default function Inhouse() {
             <span aria-hidden="true">{muted ? '🔕' : '🔔'}</span>
             {muted ? 'Chime muted' : 'Chime on'}
           </button>
-        {serverStatus && (
-          <div className="pb-card pb-card-sm" style={{ padding: '10px 14px', fontSize: 12 }}>
-            <div className="pb-eyebrow" style={{ marginBottom: 4 }}>Dedicated Server</div>
-            <div style={{ fontFamily: 'var(--font-condensed)' }}>{serverStatus.ip}:{serverStatus.port}</div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-              <span style={{ color: serverStatus.rcon?.ok ? '#4caf50' : '#f44336' }}>● RCON</span>
-              <span style={{ color: serverStatus.ssh?.ok ? '#4caf50' : '#f44336' }}>● SSH</span>
+          {serverStatus && (
+            <div className="pb-card pb-card-sm pb-server-status-card" style={{ padding: '10px 16px' }}>
+              <div className="pb-eyebrow" style={{ marginBottom: 5 }}>Dedicated Server</div>
+              <div style={{ fontFamily: 'var(--font-condensed)', fontWeight: 600, fontSize: 13, marginBottom: 5 }}>
+                {serverStatus.ip}:{serverStatus.port}
+              </div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <span className={`pb-inhouse-srv-pill ${serverStatus.rcon?.ok ? 'is-ok' : 'is-err'}`}>
+                  <span aria-hidden="true">●</span> RCON {serverStatus.rcon?.ok ? 'OK' : 'Down'}
+                </span>
+                <span className={`pb-inhouse-srv-pill ${serverStatus.ssh?.ok ? 'is-ok' : 'is-err'}`}>
+                  <span aria-hidden="true">●</span> SSH {serverStatus.ssh?.ok ? 'OK' : 'Down'}
+                </span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
         </div>
       </div>
 
@@ -1271,58 +1282,77 @@ export default function Inhouse() {
               auto-start ticker the moment we flip into the accept phase.
               Tie / zero-vote → Highest Rank. */}
           {session.status === 'open' && (
-            <div className="pb-card-sm" style={{ marginTop: 14, padding: 14, background: 'var(--pb-surface)', border: '1px solid var(--pb-line)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
-                <div className="pb-eyebrow" style={{ fontSize: 13 }}>👑 Captain Mode — Vote</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  {voteTally.totalVotes} vote{voteTally.totalVotes === 1 ? '' : 's'} · winning: <strong style={{ color: 'var(--text)' }}>{({
-                    highest_rank: 'Highest Rank',
-                    random: 'Random',
-                    auto_balance: 'Auto-balance',
-                    volunteer: 'Volunteer',
-                  })[voteTally.winning] || voteTally.winning}</strong>
+            <div className="pb-card-sm" style={{ marginTop: 14, padding: '16px 18px', background: 'var(--pb-surface)', border: '1px solid var(--pb-line)' }}>
+              <div style={{ marginBottom: 14 }}>
+                <div className="pb-eyebrow" style={{ fontSize: 13, marginBottom: 4 }}>👑 Captain Mode — Vote</div>
+                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                  Players in the lobby vote for how captains are chosen. The leading mode is locked in when the accept phase starts.
+                  {voteTally.totalVotes > 0 && (
+                    <span> Current leader: <strong style={{ color: 'var(--text)', fontFamily: 'var(--font-serif)' }}>{({
+                      highest_rank: 'Highest Rank',
+                      random: 'Random',
+                      auto_balance: 'Auto-balance',
+                      volunteer: 'Volunteer',
+                    })[voteTally.winning] || voteTally.winning}</strong> <span className="pb-num" style={{ color: 'var(--text-muted)', fontSize: 12 }}>({voteTally.totalVotes} vote{voteTally.totalVotes === 1 ? '' : 's'})</span></span>
+                  )}
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: 10 }}>
                 {[
-                  { id: 'highest_rank', label: 'Highest Rank', hint: 'Top 2 by MMR / leaderboard / rank tier' },
-                  { id: 'random',       label: 'Random',       hint: 'Two random captains from accepted players' },
-                  { id: 'auto_balance', label: 'Auto-balance', hint: 'Skill-based 5v5 split with smallest projected MMR delta' },
-                  { id: 'volunteer',    label: 'Volunteer',    hint: 'Self-nominate during accept phase — falls back to Highest Rank if <2 volunteer' },
+                  { id: 'highest_rank', label: 'Highest Rank', hint: 'Top 2 by MMR / leaderboard rank — best for competitive balance.' },
+                  { id: 'random',       label: 'Random',       hint: 'Two random captains from accepted players — keeps it casual.' },
+                  { id: 'auto_balance', label: 'Auto-balance', hint: 'Algorithm splits all 10 players into the most balanced 5v5 possible.' },
+                  { id: 'volunteer',    label: 'Volunteer',    hint: 'Self-nominate during accept phase. Falls back to Highest Rank if fewer than 2 volunteer.' },
                 ].map(opt => {
                   const count = voteTally.tally[opt.id] || 0;
                   const isMine = voteTally.myVote === opt.id;
+                  const isWinning = voteTally.winning === opt.id && voteTally.totalVotes > 0;
                   const disabled = !myAccountId || !isInSession;
                   return (
                     <button
                       key={opt.id}
                       onClick={() => castCaptainVote(opt.id)}
                       disabled={disabled}
-                      title={disabled ? 'Join the lobby to vote' : opt.hint}
+                      title={disabled ? 'Join the lobby to vote' : (isMine ? 'Click again to clear your vote' : opt.hint)}
                       style={{
-                        padding: '10px 12px',
-                        background: isMine ? 'color-mix(in srgb, var(--brass) 18%, transparent)' : 'var(--bg-elevated)',
-                        border: `1px solid ${isMine ? 'var(--brass)' : 'var(--border)'}`,
-                        borderRadius: 6,
+                        padding: '14px 16px',
+                        background: isMine
+                          ? 'color-mix(in srgb, var(--brass) 20%, var(--pb-surface))'
+                          : isWinning
+                            ? 'color-mix(in srgb, var(--pb-brass) 8%, var(--bg-elevated))'
+                            : 'var(--bg-elevated)',
+                        border: `2px solid ${isMine ? 'var(--brass)' : isWinning ? 'color-mix(in srgb, var(--pb-brass) 50%, var(--border))' : 'var(--border)'}`,
+                        borderRadius: 8,
                         cursor: disabled ? 'not-allowed' : 'pointer',
-                        opacity: disabled ? 0.55 : 1,
+                        opacity: disabled ? 0.5 : 1,
                         textAlign: 'left',
                         color: 'var(--text)',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: 4,
+                        gap: 6,
+                        transition: 'border-color 0.15s, background 0.15s',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 700, fontSize: 13 }}>{opt.label}</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                         <span style={{
-                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                          fontWeight: 700, fontSize: 15,
+                          fontFamily: 'var(--font-serif)',
+                          color: isMine ? 'var(--brass)' : 'var(--text)',
+                        }}>{opt.label}</span>
+                        <span className="pb-num" style={{
+                          fontSize: 14, fontWeight: 700, padding: '2px 10px', borderRadius: 999,
                           background: count > 0 ? 'var(--brass)' : 'var(--bg)',
                           color: count > 0 ? '#0d1424' : 'var(--text-muted)',
+                          minWidth: '2ch', textAlign: 'center',
                         }}>{count}</span>
                       </div>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{opt.hint}</span>
-                      {isMine && <span style={{ fontSize: 10, color: 'var(--brass)', fontWeight: 700, letterSpacing: 0.4 }}>YOUR VOTE — click again to clear</span>}
+                      <span style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.4 }}>{opt.hint}</span>
+                      {isMine && (
+                        <span style={{
+                          fontSize: 11, color: 'var(--brass)', fontWeight: 700, letterSpacing: 0.5,
+                          fontFamily: 'var(--font-condensed, var(--font))', textTransform: 'uppercase',
+                        }}>✓ Your vote · click to clear</span>
+                      )}
                     </button>
                   );
                 })}
@@ -1342,14 +1372,33 @@ export default function Inhouse() {
 
           {/* Player accept/decline panel */}
           {myAccountId && (
-            <div style={{ marginTop: 16, padding: 14, background: 'rgba(33,150,243,0.06)', borderRadius: 6, border: '1px solid rgba(33,150,243,0.2)' }}>
+            <div style={{ marginTop: 16, padding: '18px 20px', background: 'rgba(33,150,243,0.06)', borderRadius: 8, border: '1px solid rgba(33,150,243,0.2)' }}>
               {!isInSession && ['open','accepting'].includes(session.status) && (
                 <div>
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Join this inhouse</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                  <div style={{ fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Join this inhouse</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
+                    Pick the positions you're comfortable playing. You can select multiple — captains will see your preferences when drafting.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
                     {POSITIONS.map(p => (
-                      <button key={p.id} onClick={() => setMyPositions(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
-                        style={{ padding: '4px 10px', background: myPositions.includes(p.id) ? '#2196f3' : 'var(--bg)', color: myPositions.includes(p.id) ? '#fff' : 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+                      <button
+                        key={p.id}
+                        onClick={() => setMyPositions(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                        aria-pressed={myPositions.includes(p.id)}
+                        style={{
+                          padding: '8px 16px',
+                          background: myPositions.includes(p.id)
+                            ? 'color-mix(in srgb, #2196f3 22%, var(--bg-elevated))'
+                            : 'var(--bg-elevated)',
+                          color: myPositions.includes(p.id) ? '#60b4f8' : 'var(--text)',
+                          border: `2px solid ${myPositions.includes(p.id) ? '#2196f3' : 'var(--border)'}`,
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                          fontSize: 14,
+                          fontWeight: myPositions.includes(p.id) ? 700 : 400,
+                          transition: 'border-color 0.15s, background 0.15s',
+                        }}
+                      >
                         {p.label}
                       </button>
                     ))}
@@ -1359,13 +1408,14 @@ export default function Inhouse() {
                     disabled={discordGateBlocked}
                     title={discordGateBlocked ? 'Link your Discord and join the OCE Inhouse server first.' : ''}
                     style={{
-                      padding: '8px 16px',
+                      padding: '11px 28px',
                       background: discordGateBlocked ? 'var(--bg)' : '#4caf50',
                       color: discordGateBlocked ? 'var(--text-muted)' : '#fff',
                       border: discordGateBlocked ? '1px solid var(--border)' : 'none',
-                      borderRadius: 4,
+                      borderRadius: 6,
                       cursor: discordGateBlocked ? 'not-allowed' : 'pointer',
-                      fontWeight: 600,
+                      fontWeight: 700,
+                      fontSize: 15,
                     }}>Join Session</button>
                   <DiscordJoinGate steamUser={steamUser} refreshMe={refreshMe} />
                 </div>
@@ -1428,8 +1478,10 @@ export default function Inhouse() {
               )}
               {isInSession && session.status === 'open' && (
                 <div>
-                  <div style={{ color: '#aaa', marginBottom: 8 }}>Waiting for accept phase to start</div>
-                  <button onClick={leaveSession} style={{ padding: '6px 12px', background: 'transparent', color: '#f44336', border: '1px solid #f44336', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>Leave</button>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
+                    You're in the queue. The accept phase starts automatically once <span className="pb-num">{session.min_players || 10}</span> players have joined.
+                  </div>
+                  <button onClick={leaveSession} style={{ padding: '6px 14px', background: 'transparent', color: '#f44336', border: '1px solid #f44336', borderRadius: 4, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Leave queue</button>
                 </div>
               )}
               {/* Task #168 — auto-provisioning indicator + failure banner.
@@ -1777,42 +1829,124 @@ export default function Inhouse() {
             );
           })() : (
             <div style={{ marginTop: 20 }}>
-              <h3 className="pb-section-title" style={{ marginBottom: 12 }}>Registered Players ({players.length})</h3>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                <h3 className="pb-section-title" style={{ margin: 0 }}>Registered Players</h3>
+                <span className="pb-num" style={{
+                  fontSize: 15, fontWeight: 700,
+                  color: players.length >= (session.min_players || 10) ? '#4caf50' : 'var(--text-muted)',
+                }}>
+                  {players.length} / {session.min_players || 10}
+                </span>
+                {players.length < (session.min_players || 10) && (
+                  <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                    — <span className="pb-num">{(session.min_players || 10) - players.length}</span> more needed to start
+                  </span>
+                )}
+              </div>
               {players.sort((a,b)=>Number(b.trueskill_mmr)-Number(a.trueskill_mmr)).map(p => (
                 <PlayerRow key={p.account_id} player={p} session={session} isCurrentUser={Number(p.account_id) === myAccountId} />
               ))}
-              {players.length === 0 && <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No players yet — sign in to be the first.</div>}
+              {players.length === 0 && (
+                <div style={{
+                  padding: '24px 20px', textAlign: 'center',
+                  background: 'var(--pb-surface)', border: '1px dashed var(--pb-line)', borderRadius: 8,
+                  color: 'var(--text-muted)', fontSize: 14,
+                }}>
+                  No players yet — be the first to join using the panel above.
+                </div>
+              )}
             </div>
           )}
         </div>
         );
       })()}
 
-      {pastSessions.length > 0 && (
-        <div>
-          <h3 className="pb-section-title" style={{ marginBottom: 12 }}>Recent Sessions</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--pb-line)' }}>
-                <th className="pb-eyebrow" style={{ textAlign: 'left', padding: '8px' }}>#</th>
-                <th className="pb-eyebrow" style={{ textAlign: 'left', padding: '8px' }}>Status</th>
-                <th className="pb-eyebrow" style={{ textAlign: 'left', padding: '8px' }}>Match</th>
-                <th className="pb-eyebrow" style={{ textAlign: 'left', padding: '8px' }}>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pastSessions.map(s => (
-                <tr key={s.id} style={{ borderBottom: '1px solid var(--pb-line)' }}>
-                  <td style={{ padding: '8px' }}>{s.id}</td>
-                  <td style={{ padding: '8px' }}>{s.status}</td>
-                  <td style={{ padding: '8px' }}>{s.match_id ? <Link to={`/match/${s.match_id}`}>{s.match_id}</Link> : '—'}</td>
-                  <td style={{ padding: '8px', color: 'var(--text-muted)' }}>{new Date(s.created_at).toLocaleString('en-AU')}</td>
+      {pastSessions.length > 0 && (() => {
+        const PAST_STATUS_BADGE = {
+          completed:   { bg: 'rgba(76,175,80,0.14)',   fg: '#4caf50', label: 'Completed' },
+          cancelled:   { bg: 'rgba(244,67,54,0.14)',   fg: '#f44336', label: 'Cancelled' },
+          in_progress: { bg: 'rgba(197,169,117,0.18)', fg: 'var(--brass)', label: 'In Progress' },
+        };
+        const sortedPast = [...pastSessions].sort((a, b) => {
+          let av = pastSortField === 'id' ? Number(a.id)
+            : pastSortField === 'created_at' ? new Date(a.created_at).getTime()
+            : String(a[pastSortField] ?? '');
+          let bv = pastSortField === 'id' ? Number(b.id)
+            : pastSortField === 'created_at' ? new Date(b.created_at).getTime()
+            : String(b[pastSortField] ?? '');
+          if (av < bv) return pastSortDir;
+          if (av > bv) return -pastSortDir;
+          return 0;
+        });
+        const handlePastSort = (field) => {
+          if (pastSortField === field) setPastSortDir(d => -d);
+          else { setPastSortField(field); setPastSortDir(-1); }
+        };
+        return (
+          <div style={{ marginTop: 28 }}>
+            <h3 className="pb-section-title" style={{ marginBottom: 14 }}>Recent Sessions</h3>
+            <table className="pb-inhouse-past-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--pb-line)' }}>
+                  <SortableTh
+                    className="pb-eyebrow"
+                    style={{ textAlign: 'left', padding: '8px 10px', width: '5em' }}
+                    active={pastSortField === 'id'}
+                    direction={pastSortDir > 0 ? 'asc' : 'desc'}
+                    onSort={() => handlePastSort('id')}
+                  >#</SortableTh>
+                  <SortableTh
+                    className="pb-eyebrow"
+                    style={{ textAlign: 'left', padding: '8px 10px' }}
+                    active={pastSortField === 'status'}
+                    direction={pastSortDir > 0 ? 'asc' : 'desc'}
+                    onSort={() => handlePastSort('status')}
+                  >Status</SortableTh>
+                  <th className="pb-eyebrow" style={{ textAlign: 'left', padding: '8px 10px' }}>Match</th>
+                  <SortableTh
+                    className="pb-eyebrow"
+                    style={{ textAlign: 'left', padding: '8px 10px' }}
+                    active={pastSortField === 'created_at'}
+                    direction={pastSortDir > 0 ? 'asc' : 'desc'}
+                    onSort={() => handlePastSort('created_at')}
+                  >Created</SortableTh>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {sortedPast.map(s => {
+                  const badge = PAST_STATUS_BADGE[s.status] || { bg: 'rgba(120,120,120,0.14)', fg: 'var(--text-muted)', label: s.status };
+                  return (
+                    <tr key={s.id} style={{ borderBottom: '1px solid var(--pb-line)' }} className="pb-inhouse-past-row">
+                      <td style={{ padding: '10px 10px' }}>
+                        <span className="pb-num" style={{ fontWeight: 600, color: 'var(--text-muted)', fontSize: 13 }}>#{s.id}</span>
+                      </td>
+                      <td style={{ padding: '10px 10px' }}>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '3px 10px', borderRadius: 999,
+                          background: badge.bg, color: badge.fg,
+                          fontSize: 12, fontWeight: 700, letterSpacing: 0.4,
+                          border: `1px solid ${badge.fg === 'var(--text-muted)' ? 'var(--border)' : badge.fg}33`,
+                        }}>
+                          ● {badge.label}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 10px' }}>
+                        {s.match_id
+                          ? <Link to={`/match/${s.match_id}`} style={{ color: 'var(--brass)', fontWeight: 600 }} className="pb-num">{s.match_id}</Link>
+                          : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                      </td>
+                      <td style={{ padding: '10px 10px', color: 'var(--text-muted)', fontSize: 13 }}>
+                        {new Date(s.created_at).toLocaleString('en-AU')}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
     </div>
   );
 }

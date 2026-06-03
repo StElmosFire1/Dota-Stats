@@ -9,6 +9,49 @@
   /* page wrapper — keeps every selector below page-scoped */
 }
 
+/* ---- Page header ---- */
+.pb-inhouse .pb-inhouse-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+/* Descriptive subtitle below the page title. Comfortable reading size,
+   slightly muted, wraps naturally on narrow screens. */
+.pb-inhouse .pb-inhouse-subtitle {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--pb-muted);
+  margin: 10px 0 0;
+  max-width: 540px;
+}
+
+/* ---- Dedicated-server status card status pills ---- */
+.pb-inhouse .pb-server-status-card {
+  min-width: 160px;
+}
+
+.pb-inhouse .pb-inhouse-srv-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  font-family: var(--font-condensed, var(--font));
+}
+
+.pb-inhouse .pb-inhouse-srv-pill.is-ok {
+  color: #4caf50;
+}
+
+.pb-inhouse .pb-inhouse-srv-pill.is-err {
+  color: #f44336;
+}
+
 /* ---- Accept / Ready bar (mirrors the mockup's hero strip) ---- */
 .pb-inhouse .pb-accept-bar {
   position: relative;
@@ -85,4 +128,24 @@
   color: var(--pb-brass);
   flex-shrink: 0;
   text-transform: uppercase;
+}
+
+/* ---- Recent Sessions table ---- */
+.pb-inhouse .pb-inhouse-past-table {
+  border: 1px solid var(--pb-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pb-inhouse .pb-inhouse-past-table thead tr {
+  background: var(--pb-surface);
+}
+
+.pb-inhouse .pb-inhouse-past-row {
+  transition: background 0.12s;
+}
+
+.pb-inhouse .pb-inhouse-past-row:hover,
+.pb-inhouse .pb-inhouse-past-row:focus-within {
+  background: color-mix(in srgb, var(--pb-brass) 5%, transparent);
 }

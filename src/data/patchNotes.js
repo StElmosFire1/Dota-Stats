@@ -4348,5 +4348,12 @@ module.exports = [
       "**Scope.** Full edition only — community edition untouched. A11y gate green."
     ],
     "author": "System"
+  },
+  {
+    "version": "9.16",
+    "title": "Inhouse Lobby — readability and usability polish pass",
+    "published_at": "2026-06-03",
+    "content": "Full-edition /inhouse readability pass (Task #734). No lobby behaviour changed.\n\n**Header.** Plain-English subtitle tells first-time visitors what an inhouse is and how the flow works. Server status card shows labelled 'OK' / 'Down' text alongside the colour dots so state reads without colour alone.\n\n**Captain Mode vote cards.** Larger touch targets (14×16px), Playfair serif label at 15px, hint copy raised to 13px, `.pb-num` tabular vote-count badge at 14px, 2px border with a distinct winning-state highlight. Intro paragraph explains what the vote controls.\n\n**Join / position picker.** Serif 18px heading. Description line explains what position selection does. Buttons are larger (8×16px) with `aria-pressed`, 2px selected border, weight shift. Join CTA is 15px 700-weight.\n\n**Registered Players header.** Count shows as `X / 10` with `.pb-num` and turns green when full. '— N more needed' hint auto-hides. Empty state is a framed dashed box pointing players to the join panel.\n\n**In-queue copy.** Informative sentence with `.pb-num` for the threshold. Button relabelled 'Leave queue' at 13px.\n\n**Recent Sessions table.** Bare `<th>` cells replaced with shared `<SortableTh>` (sorts by #, Status, Created). Status column shows colour-coded pill badges: green Completed, red Cancelled, brass In Progress. Row hover/focus highlight added.\n\n**CSS** in `pressbox-inhouse.css`: `.pb-inhouse-header`, `.pb-inhouse-subtitle`, `.pb-inhouse-srv-pill`, `.pb-inhouse-past-table`, `.pb-inhouse-past-row`. A11y gate green.",
+    "author": "System"
   }
 ];
