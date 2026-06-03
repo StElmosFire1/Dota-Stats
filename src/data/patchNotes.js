@@ -1,5 +1,21 @@
 module.exports = [
   {
+    "version": "9.20",
+    "title": "Pickem page upscaled to Press Box editorial design",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Editorial page header.** The bare `<h2>` is replaced with a brass uppercase Oswald eyebrow (season label inline) above a Playfair Display page title, matching the Inhouse and PlayerProfile header treatment.",
+      "**Section cards.** All five content blocks — Live now, Submit a pick, Wager coins, Your picks, Tipster leaderboard — are wrapped in `pb-card` containers with brass hairline borders, roomy padding, and `pb-section-title` condensed-uppercase headers.",
+      "**Form controls.** Match-ref inputs, winner/side-bet selects, and action buttons adopt the site's styled input/button look (ink-navy surface, brass hairline border, brass CTA buttons). Side-bet selects highlight with a brass tint when a value is chosen. Wager fields use labelled column layout for clean wrapping on mobile.",
+      "**Picks list.** The bare `<ul>` is replaced with a hairline-separated editorial list; winner is shown as a coloured Radiant/Dire pill; side-bet tags render in condensed muted text; points earned appear right-aligned in brass Newsreader numerals.",
+      "**Tipster leaderboard.** Restyled as a full-width editorial table — condensed brass column headers, hairline row dividers, right-aligned `.pb-num` points column, gold accent badge for the #1 rank.",
+      "**Status pills & wager flashes.** Live/Forming/Locked pills use palette tokens (accent-green, pb-brass, pb-faint). Wager success/error flash banners use palette-token colours rather than raw hex.",
+      "**Numerics.** All numeric values (points, coin stakes, pool totals, leaderboard scores, wager counts) now use the `.pb-num` Newsreader tabular-figures treatment.",
+      "**Theme & a11y.** All colours use CSS tokens — dark and light (parchment) themes work without raw hex overrides. A11y gate green; all controls remain keyboard-reachable with existing aria-labels. No behaviour, data flow, or API changes."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.19",
     "title": "Superuser login no longer fails silently",
     "published_at": "2026-06-03",
