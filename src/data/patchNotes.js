@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "9.21",
+    "title": "Superuser access is now password-free — linked to your Steam account",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**No more superuser password.** Admin/superuser access in the web app is now purely linked to your Steam account. If you're signed in with an authorised Steam account (on the server allow-list), you're a superuser automatically — the crown shows '👑 Admin' and takes you straight to the panel. No password to type, nothing to remember.",
+      "**How it's controlled.** The allow-list is the `SUPERUSER_STEAM_IDS` server setting (your 32-bit Steam account id). If it's not set, nobody can elevate in the browser — so it must be set in production. A leaked password is no longer a risk because there's no browser password at all.",
+      "**Automation unaffected.** Deploy scripts and the browser-smoke runner still authenticate server-to-server via the `x-superuser-key` header (optional `SUPERUSER_PASSWORD`); the website never sends that header, so this isn't a user-facing password.",
+      "**Full edition only.** The community edition is unchanged."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.20",
     "title": "Pickem page upscaled to Press Box editorial design",
     "published_at": "2026-06-03",

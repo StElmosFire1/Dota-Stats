@@ -5447,30 +5447,51 @@ function createApiRouter(startupStatus = {}, _app = null) {
     );
   }
 
-  router.post('/admin/superuser-login', superuserLoginLimiter, express.json(), (req, res) => {
-    const superuserPassword = process.env.SUPERUSER_PASSWORD;
-    if (!superuserPassword) {
-      return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
-    }
-    const { password } = req.body || {};
-    if (password !== superuserPassword) return res.status(401).json({ error: 'Invalid password' });
-
-    // Task #749 — bind interactive superuser elevation to an allow-listed Steam
-    // account, so a leaked SUPERUSER_PASSWORD alone is useless: the caller must
-    // ALSO be signed in with a Steam account whose id is on the allow-list.
-    // SUPERUSER_STEAM_IDS unset/empty → binding disabled (password-only, exactly
-    // as before): the safe default that can NEVER lock the owner out. The
-    // machine-key header path (x-superuser-key, used by scripts/deploy hooks) is
-    // deliberately untouched — only this interactive browser elevation is bound.
+  // Superuser is now granted PURELY by Steam account — no password. Returns
+  // true when the caller has an authenticated Steam session whose 32-bit
+  // accountId is on the SUPERUSER_STEAM_IDS allow-list. An empty/unset
+  // allow-list returns false (fail-closed: nobody auto-elevates in the
+  // browser), so SUPERUSER_STEAM_IDS must be set in prod for the owner to get
+  // in. accountId is verified server-side at /auth/complete via Steam OpenID,
+  // so it can't be forged client-side, and the session cookie is signed.
+  function isAllowlistedSteamSuperuser(req) {
     const allowedSteamIds = parseSuperuserSteamIds();
-    if (allowedSteamIds.size > 0) {
-      const acct = req.session && req.session.accountId ? String(req.session.accountId) : null;
-      if (!acct) {
-        return res.status(403).json({ error: 'Sign in with Steam first — superuser access is restricted to specific Steam accounts.' });
-      }
-      if (!allowedSteamIds.has(acct)) {
-        return res.status(403).json({ error: 'This Steam account is not permitted to use superuser access.' });
-      }
+    if (allowedSteamIds.size === 0) return false;
+    const acct = req.session && req.session.accountId ? String(req.session.accountId) : null;
+    return !!acct && allowedSteamIds.has(acct);
+  }
+
+  // Superuser elevation is now PASSWORD-FREE — access is purely linked to the
+  // signed-in Steam account. The caller must be signed in with a Steam account
+  // whose accountId is on SUPERUSER_STEAM_IDS. There is no password field. An
+  // unset/empty allow-list fails closed (nobody can elevate in the browser).
+  // The machine-key header path (x-superuser-key, used by scripts/deploy hooks)
+  // still works when SUPERUSER_PASSWORD is set — see requireSuperuser.
+  router.post('/admin/superuser-login', superuserLoginLimiter, express.json(), (req, res) => {
+    // Automation path (scripts, deploy hooks, the browser-smoke runner): a valid
+    // x-superuser-key header still flips the session flag. This is NOT the
+    // browser path — the web client never sends this header — so it doesn't
+    // reintroduce a user-facing password. Browser elevation is Steam-bound below.
+    const headerKey = process.env.SUPERUSER_PASSWORD;
+    const provided = req.headers['x-superuser-key'];
+    if (headerKey && provided && provided === headerKey) {
+      req.session.isSuperuser = true;
+      return req.session.save((err) => {
+        if (err) return res.status(500).json({ error: 'Session error' });
+        res.json({ success: true });
+      });
+    }
+
+    const allowedSteamIds = parseSuperuserSteamIds();
+    if (allowedSteamIds.size === 0) {
+      return res.status(503).json({ error: "Superuser not configured. Set SUPERUSER_STEAM_IDS to the owner's Steam account id(s)." });
+    }
+    const acct = req.session && req.session.accountId ? String(req.session.accountId) : null;
+    if (!acct) {
+      return res.status(403).json({ error: 'Sign in with Steam first — superuser access is linked to your Steam account.' });
+    }
+    if (!allowedSteamIds.has(acct)) {
+      return res.status(403).json({ error: 'This Steam account is not permitted to use superuser access.' });
     }
 
     req.session.isSuperuser = true;
@@ -5602,15 +5623,20 @@ function createApiRouter(startupStatus = {}, _app = null) {
     // Session-based auth: preferred path for browser operators.
     if (req.session && req.session.isSuperuser) return next();
 
+    // Password-free Steam binding: an allow-listed Steam session IS a superuser,
+    // even if it hasn't explicitly hit /admin/superuser-login this session.
+    if (isAllowlistedSteamSuperuser(req)) return next();
+
     // Header fallback for non-browser clients (scripts, bots).
     // Only SUPERUSER_PASSWORD is accepted — the lower-privilege UPLOAD_KEY
     // must never satisfy superuser checks.
+    // SUPERUSER_PASSWORD is now OPTIONAL (browser superuser is Steam-bound, set
+    // above). When it IS set, the x-superuser-key header still elevates
+    // scripts/bots. When it's unset, skip the header path and fall through to
+    // the normal session 401/403 split instead of a misleading 503.
     const superuserPassword = process.env.SUPERUSER_PASSWORD;
-    if (!superuserPassword) {
-      return res.status(503).json({ error: 'Superuser not configured. Set SUPERUSER_PASSWORD.' });
-    }
     const provided = req.headers['x-superuser-key'];
-    if (provided && provided === superuserPassword) return next();
+    if (superuserPassword && provided && provided === superuserPassword) return next();
     // Split: 401 = no credential / browser session expired (the frontend
     // wrapper in web/src/api.js triggers re-login on 401); 403 = caller
     // explicitly presented a wrong header value (do not auto-reprompt).
@@ -5633,6 +5659,8 @@ function createApiRouter(startupStatus = {}, _app = null) {
   const ROLE_RANK = { moderator: 1, admin: 2, superuser: 3 };
   async function getEffectiveRole(req) {
     if (req.session && req.session.isSuperuser) return 'superuser';
+    // Password-free Steam binding: an allow-listed Steam session is superuser.
+    if (isAllowlistedSteamSuperuser(req)) return 'superuser';
     const pw = process.env.SUPERUSER_PASSWORD;
     if (pw && req.headers['x-superuser-key'] === pw) return 'superuser';
     const acct = req.session && req.session.accountId;

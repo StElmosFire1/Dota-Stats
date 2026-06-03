@@ -37,14 +37,17 @@ export function SuperuserProvider({ children }) {
     setShowModalState(show);
   }, [resolveReauth]);
 
-  const login = async (password) => {
+  // Password-free: superuser access is purely linked to the signed-in Steam
+  // account. This just asks the server to flip the session flag; it succeeds
+  // only when the signed-in Steam account is on the server allow-list.
+  const login = async () => {
     let res;
     try {
       res = await fetch('/api/admin/superuser-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ password }),
+        body: '{}',
       });
     } catch (_) {
       // fetch() rejects when the request never reaches the server — almost
@@ -63,7 +66,7 @@ export function SuperuserProvider({ children }) {
       return { success: true };
     }
     const data = await res.json().catch(() => ({}));
-    return { success: false, error: data.error || 'Invalid password' };
+    return { success: false, error: data.error || 'Superuser access denied for this account.' };
   };
 
   const logout = async () => {
