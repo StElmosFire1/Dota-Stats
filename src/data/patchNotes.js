@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "9.09",
+    "title": "Mass DM broadcasts are now logged to a reviewable audit trail",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Every mass DM is now recorded.** When an admin sends a Discord broadcast from the 📢 Mass Discord DM card, the blast is persisted to a new audit trail: the message text, who sent it (account + staff tier), how many recipients were targeted, totals sent/failed, and a full per-recipient breakdown of who received it and who didn't (and why).",
+      "**Blast history in the Admin Panel.** A new collapsible *Blast history* section under the Mass DM card lists the last 25 broadcasts, newest first. Expand any entry to see the full message, the failures with their reasons, and a delivered-to list — handy when a player insists they never got an announcement.",
+      "**Resend to failures.** Any past blast with failed recipients gets a one-click *Resend to N failed* button — it reuses the original message and just the account IDs that didn't get through (e.g. DMs were temporarily closed, or the player linked Discord later), then logs the retry as its own entry.",
+      "**Best-effort logging.** If writing the audit row ever fails, the DMs still go out and the send result is unaffected; the failure is only logged server-side.",
+      "**Scope.** Full edition, superuser only — the Mass DM tool, its history, and resend are now all gated to the owner/superuser. A11y gate green, build clean."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.08",
     "title": "Guided challenge builder — no more JSON in the admin panel",
     "published_at": "2026-06-02",

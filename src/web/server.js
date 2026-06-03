@@ -12156,7 +12156,7 @@ NOTES
   // Task #714 — Admin mass-DM tool.
   // GET /admin/dm-recipients — list every tracked player with their best
   // display name and a has_discord flag so the UI can render the picker.
-  router.get('/admin/dm-recipients', requireAdmin, async (req, res) => {
+  router.get('/admin/dm-recipients', requireSuperuser, async (req, res) => {
     try {
       const players = await db.getDmReachablePlayers();
       res.json({ players });
@@ -12169,7 +12169,7 @@ NOTES
   // POST /admin/dm-blast — send a plain-text message to a picked set of
   // players via Discord DM. Sends sequentially with a short delay so we
   // don't hammer Discord's rate limit. Returns a per-recipient breakdown.
-  router.post('/admin/dm-blast', requireAdmin, express.json(), async (req, res) => {
+  router.post('/admin/dm-blast', requireSuperuser, express.json(), async (req, res) => {
     const { message, accountIds } = req.body || {};
     if (!message || typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ error: 'message is required and must not be empty' });
@@ -12221,6 +12221,22 @@ NOTES
       await new Promise(r => setTimeout(r, 700));
     }
 
+    // Task #730 — persist the blast to the audit trail. Best-effort: a logging
+    // failure must not fail the send (the DMs already went out), so we only warn.
+    try {
+      await db.logAdminDmBlast({
+        senderAccountId: req.session && req.session.accountId ? String(req.session.accountId) : null,
+        senderRole: 'superuser',
+        message: text,
+        recipientCount: accountIds.length,
+        sentCount: sent.length,
+        failedCount: failed.length,
+        results: { sent, failed },
+      });
+    } catch (e) {
+      console.error('[AdminDmBlast] failed to write audit log:', e.message);
+    }
+
     res.json({
       ok: true,
       sent: sent.length,
@@ -12228,6 +12244,19 @@ NOTES
       sentList: sent,
       failedList: failed,
     });
+  });
+
+  // GET /admin/dm-blasts — audit trail of past mass-DM broadcasts (Task #730).
+  // Newest first, default last 25 (capped at 100 in the DB helper).
+  router.get('/admin/dm-blasts', requireSuperuser, async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit, 10) : 25;
+      const blasts = await db.listAdminDmBlasts(limit);
+      res.json({ blasts });
+    } catch (err) {
+      console.error('[AdminDmBlast] listAdminDmBlasts error:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to load blast history' });
+    }
   });
 
   // Task #699 — background-job run-now center. Each case calls the underlying

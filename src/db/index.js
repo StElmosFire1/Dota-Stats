@@ -3494,6 +3494,25 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_game_results_lb
       ON game_results(game, puzzle_date) WHERE mode = 'daily'`);
 
+    // Task #730 — audit trail for the admin mass-DM tool. Each blast records the
+    // message, who sent it, totals, and a per-recipient JSONB breakdown so past
+    // broadcasts are reviewable (accountability + debugging "I never got it").
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS admin_dm_blasts (
+        id SERIAL PRIMARY KEY,
+        sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        sender_account_id VARCHAR,
+        sender_role VARCHAR,
+        message TEXT NOT NULL,
+        recipient_count INTEGER NOT NULL DEFAULT 0,
+        sent_count INTEGER NOT NULL DEFAULT 0,
+        failed_count INTEGER NOT NULL DEFAULT 0,
+        results JSONB
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_admin_dm_blasts_sent_at
+      ON admin_dm_blasts(sent_at DESC)`);
+
     console.log('[DB] Schema migrations applied.');
     return true;
   } catch (err) {
@@ -7078,6 +7097,47 @@ async function getDmReachablePlayers() {
     discord_id: row.discord_id || null,
     has_discord: !!row.discord_id,
   }));
+}
+
+// Task #730 — persist one mass-DM blast to the audit trail. `results` is the
+// per-recipient breakdown ({ sent: [...], failed: [...] }) stored as JSONB so
+// the AdminPanel history view can show exactly who got the message and who
+// didn't (and why). Returns the inserted row's id. Best-effort: callers should
+// not block the send response on a logging failure.
+async function logAdminDmBlast({ senderAccountId, senderRole, message, recipientCount, sentCount, failedCount, results }) {
+  const p = getPool();
+  const r = await p.query(
+    `INSERT INTO admin_dm_blasts
+       (sender_account_id, sender_role, message, recipient_count, sent_count, failed_count, results)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id`,
+    [
+      senderAccountId ? String(senderAccountId) : null,
+      senderRole ? String(senderRole) : null,
+      String(message),
+      Number.isFinite(recipientCount) ? recipientCount : 0,
+      Number.isFinite(sentCount) ? sentCount : 0,
+      Number.isFinite(failedCount) ? failedCount : 0,
+      results ? JSON.stringify(results) : null,
+    ]
+  );
+  return r.rows[0]?.id || null;
+}
+
+// Task #730 — list the most recent mass-DM blasts for the AdminPanel history
+// view. Defaults to the last 25, capped at 100. Newest first.
+async function listAdminDmBlasts(limit = 25) {
+  const p = getPool();
+  const lim = Math.min(Math.max(parseInt(limit, 10) || 25, 1), 100);
+  const r = await p.query(
+    `SELECT id, sent_at, sender_account_id, sender_role, message,
+            recipient_count, sent_count, failed_count, results
+       FROM admin_dm_blasts
+      ORDER BY sent_at DESC
+      LIMIT $1`,
+    [lim]
+  );
+  return r.rows;
 }
 
 // Task #128 — record a failed `addUserToLeagueGuild` outcome so the next-
@@ -25566,6 +25626,8 @@ module.exports = {
   getNicknameByDiscordId,
   getDiscordIdByAccountId,
   getDmReachablePlayers,
+  logAdminDmBlast,
+  listAdminDmBlasts,
   getSteamByDiscordId,
   findAccountIdsByDiscordId,
   recordDiscordAutoJoinFailure,

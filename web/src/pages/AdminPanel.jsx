@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast, getAdminDmBlasts } from '../api';
 import Dialog from '../components/Dialog';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
@@ -3204,6 +3204,15 @@ function MassDmPanel({ superuserKey }) {
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState(null);
   const [sendError, setSendError] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [expandedBlast, setExpandedBlast] = useState(null);
+  const [resendTarget, setResendTarget] = useState(null);
+  const [resending, setResending] = useState(false);
+  const [resendError, setResendError] = useState('');
+  const [resendResult, setResendResult] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError('');
@@ -3216,6 +3225,47 @@ function MassDmPanel({ superuserKey }) {
       setLoading(false);
     }
   }, [superuserKey]);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true); setHistoryError('');
+    try {
+      const d = await getAdminDmBlasts(superuserKey, 25);
+      setHistory(d.blasts || []);
+    } catch (e) {
+      setHistoryError(e.message || 'Failed to load blast history');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [superuserKey]);
+
+  function toggleHistory() {
+    const next = !historyOpen;
+    setHistoryOpen(next);
+    if (next && history === null && !historyLoading) loadHistory();
+  }
+
+  // Task #730 — resend a past broadcast to just the recipients who failed last
+  // time. Reuses the stored message + failed account IDs and runs the same send
+  // flow, which logs a fresh blast row; refresh history afterwards.
+  async function resendToFailures() {
+    if (!resendTarget) return;
+    const failedIds = (resendTarget.results && Array.isArray(resendTarget.results.failed)
+      ? resendTarget.results.failed
+      : []
+    ).map(f => String(f.account_id)).filter(Boolean);
+    if (failedIds.length === 0) { setResendTarget(null); return; }
+    setResending(true); setResendError(''); setResendResult(null);
+    try {
+      const d = await adminDmBlast(superuserKey, resendTarget.message, failedIds);
+      setResendResult({ blastId: resendTarget.id, sent: d.sent, failed: d.failed });
+      setResendTarget(null);
+      await loadHistory();
+    } catch (e) {
+      setResendError(e.message || 'Resend failed');
+    } finally {
+      setResending(false);
+    }
+  }
 
   const reachable = players ? players.filter(p => p.has_discord) : [];
   const unreachable = players ? players.filter(p => !p.has_discord) : [];
@@ -3487,6 +3537,169 @@ function MassDmPanel({ superuserKey }) {
           )}
         </div>
       )}
+
+      {/* Task #730 — Blast history (audit trail). Collapsible, superuser-only. */}
+      <div style={{ marginTop: 22, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+        <button
+          type="button"
+          className="btn"
+          onClick={toggleHistory}
+          aria-expanded={historyOpen}
+          aria-controls="ap-mass-dm-history"
+          style={{ fontSize: 13 }}
+        >
+          {historyOpen ? '▾' : '▸'} Blast history
+        </button>
+
+        {historyOpen && (
+          <div id="ap-mass-dm-history" style={{ marginTop: 12 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Last 25 broadcasts, newest first.
+              </span>
+              <button
+                type="button"
+                className="btn"
+                onClick={loadHistory}
+                disabled={historyLoading}
+                style={{ fontSize: 11, padding: '3px 8px', marginLeft: 'auto' }}
+                aria-label="Refresh blast history"
+              >
+                {historyLoading ? 'Loading…' : '↻ Refresh'}
+              </button>
+            </div>
+
+            {historyError && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 10 }}>{historyError}</div>}
+            {historyLoading && history === null && <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>Loading history…</p>}
+            {history && history.length === 0 && (
+              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>No broadcasts have been sent yet.</p>
+            )}
+
+            {history && history.length > 0 && (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 }}>
+                {history.map(b => {
+                  const isOpen = expandedBlast === b.id;
+                  const when = b.sent_at ? new Date(b.sent_at).toLocaleString() : '—';
+                  const failedList = b.results && Array.isArray(b.results.failed) ? b.results.failed : [];
+                  const sentList = b.results && Array.isArray(b.results.sent) ? b.results.sent : [];
+                  return (
+                    <li key={b.id} style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedBlast(isOpen ? null : b.id)}
+                        aria-expanded={isOpen}
+                        style={{
+                          width: '100%', textAlign: 'left', cursor: 'pointer',
+                          background: 'var(--bg-card)', border: 'none', color: 'var(--text-primary)',
+                          padding: '10px 12px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
+                        }}
+                      >
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)', minWidth: 0 }}>{when}</span>
+                        <span style={{ fontSize: 13, flexGrow: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {b.message}
+                        </span>
+                        <span style={{ fontSize: 12, flexShrink: 0 }}>
+                          <strong style={{ color: '#22c55e' }}>✓{b.sent_count}</strong>{' '}
+                          <strong style={{ color: b.failed_count > 0 ? '#ef4444' : 'var(--text-muted)' }}>✗{b.failed_count}</strong>
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{isOpen ? '▾' : '▸'}</span>
+                      </button>
+                      {isOpen && (
+                        <div style={{ padding: '12px', borderTop: '1px solid var(--border)' }}>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+                            Sent by {b.sender_account_id || 'unknown'}{b.sender_role ? ` (${b.sender_role})` : ''} · {b.recipient_count} recipient(s) targeted
+                          </div>
+                          <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 12, fontSize: 13, marginBottom: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word', border: '1px solid var(--border)' }}>
+                            {b.message}
+                          </div>
+                          {failedList.length > 0 && (
+                            <>
+                              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Failures ({failedList.length}):</div>
+                              <ul style={{ margin: '0 0 12px', padding: '0 0 0 18px', fontSize: 12, color: '#f87171' }}>
+                                {failedList.map((f, i) => (
+                                  <li key={i}>{f.account_id}{f.discord_id ? ` (${f.discord_id})` : ''} — {f.reason}</li>
+                                ))}
+                              </ul>
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() => { setResendTarget(b); setResendError(''); setResendResult(null); }}
+                                disabled={resending}
+                                style={{ fontSize: 12, marginBottom: 12 }}
+                                aria-label={`Resend this broadcast to ${failedList.length} failed recipient(s)`}
+                              >
+                                📨 Resend to {failedList.length} failed
+                              </button>
+                              {resendResult && resendResult.blastId === b.id && (
+                                <p style={{ fontSize: 12, color: resendResult.failed > 0 ? '#f59e0b' : '#22c55e', margin: '0 0 12px' }}>
+                                  Resent: ✓ {resendResult.sent} delivered, ✗ {resendResult.failed} failed. A new entry was logged above.
+                                </p>
+                              )}
+                            </>
+                          )}
+                          {sentList.length > 0 && (
+                            <details>
+                              <summary style={{ fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer' }}>
+                                Delivered ({sentList.length})
+                              </summary>
+                              <ul style={{ margin: '6px 0 0', padding: '0 0 0 18px', fontSize: 12, color: 'var(--text-muted)' }}>
+                                {sentList.map((s, i) => (
+                                  <li key={i}>{s.account_id}{s.discord_id ? ` (${s.discord_id})` : ''}</li>
+                                ))}
+                              </ul>
+                            </details>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Task #730 — resend-to-failures confirm dialog */}
+      <Dialog
+        open={!!resendTarget}
+        onClose={() => !resending && setResendTarget(null)}
+        labelledBy="ap-mass-dm-resend-title"
+        contentStyle={{ maxWidth: 480, width: '90%', padding: 28 }}
+      >
+        {resendTarget && (() => {
+          const failedCount = (resendTarget.results && Array.isArray(resendTarget.results.failed) ? resendTarget.results.failed : []).length;
+          return (
+            <>
+              <h3 id="ap-mass-dm-resend-title" style={{ margin: '0 0 12px', fontSize: '1.05rem' }}>
+                Resend to failed recipients
+              </h3>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '0 0 12px' }}>
+                Resend the original message to the <strong>{failedCount}</strong> recipient{failedCount !== 1 ? 's' : ''} whose
+                DM failed last time. This logs a new blast entry. It bypasses notification preferences and cannot be undone.
+              </p>
+              <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 12, fontSize: 13, marginBottom: 16, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 140, overflowY: 'auto', border: '1px solid var(--border)' }}>
+                {resendTarget.message}
+              </div>
+              {resendError && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 10 }}>{resendError}</div>}
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button type="button" className="btn" onClick={() => setResendTarget(null)} disabled={resending}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={resendToFailures}
+                  disabled={resending}
+                  aria-label="Confirm and resend to failed recipients"
+                >
+                  {resending ? 'Resending…' : `✅ Confirm & resend to ${failedCount}`}
+                </button>
+              </div>
+            </>
+          );
+        })()}
+      </Dialog>
     </section>
   );
 }

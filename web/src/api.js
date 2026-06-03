@@ -2782,6 +2782,9 @@ export const adminDmBlast = (superuserKey, message, accountIds) =>
     superuserKey,
   });
 
+export const getAdminDmBlasts = (superuserKey, limit = 25) =>
+  superuserJson(`/admin/dm-blasts?limit=${encodeURIComponent(limit)}`, { superuserKey });
+
 // Staff role management (OWNER/superuser only).
 export const getAdminRoles = (superuserKey) =>
   superuserJson('/admin/roles', { superuserKey });
