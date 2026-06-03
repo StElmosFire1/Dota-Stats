@@ -1,0 +1,377 @@
+/* pressbox-settings.css — Press Box editorial re-skin for /settings/profile.
+   Scoped to .pb-settings-shell so it never leaks into other pages. */
+
+/* ── Page layout ──────────────────────────────────────────────────────────── */
+
+.pb-settings-shell {
+  max-width: 1200px;
+  padding: 28px 16px 60px;
+  margin: 0 auto;
+}
+
+/* Two-column grid: form on left, sticky preview rail on right. */
+.pb-settings-layout {
+  display: block;
+  margin-top: 8px;
+}
+
+.pb-settings-form-col {
+  min-width: 0;
+}
+
+.pb-settings-preview-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+@media (min-width: 1100px) {
+  .pb-settings-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    column-gap: 28px;
+    align-items: start;
+  }
+  .pb-settings-form-col {
+    grid-column: 1;
+  }
+  .pb-settings-preview-col {
+    grid-column: 2;
+    grid-row: 1 / span 99;
+    position: sticky;
+    top: 84px;
+    max-height: calc(100vh - 108px);
+    overflow-y: auto;
+    scroll-padding: 12px;
+  }
+}
+
+/* ── Page header ──────────────────────────────────────────────────────────── */
+
+.pb-settings-hd {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.pb-settings-hd-left { flex: 1; min-width: 0; }
+
+.pb-settings-title {
+  font-family: var(--font-serif);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  color: var(--pb-text);
+  margin: 6px 0 0;
+}
+
+.pb-settings-subtitle {
+  font-size: 0.88rem;
+  color: var(--pb-faint);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.pb-settings-hd-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+/* ── Tab list ─────────────────────────────────────────────────────────────── */
+
+.pb-settings-tablist {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--pb-line);
+  margin-bottom: 28px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pb-settings-tablist::-webkit-scrollbar { display: none; }
+
+.pb-settings-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 11px 18px;
+  font-family: var(--font-condensed);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--pb-faint);
+  cursor: pointer;
+  white-space: nowrap;
+  margin-bottom: -1px;
+  transition: color 0.14s, border-color 0.14s;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.pb-settings-tab:hover,
+.pb-settings-tab:focus-visible {
+  color: var(--pb-text);
+  outline: 2px solid var(--pb-brass);
+  outline-offset: -2px;
+  border-radius: 4px 4px 0 0;
+}
+
+.pb-settings-tab[aria-selected="true"] {
+  color: var(--pb-brass);
+  border-bottom-color: var(--pb-brass);
+}
+
+.pb-settings-tab-icon {
+  font-size: 0.9rem;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+/* ── Tab panel ────────────────────────────────────────────────────────────── */
+
+.pb-settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pb-settings-panel:focus {
+  outline: none;
+}
+
+/* ── Section cards ────────────────────────────────────────────────────────── */
+
+.pb-settings-card {
+  padding: 20px 22px;
+}
+
+.pb-settings-card-head {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--pb-line-soft);
+}
+
+.pb-settings-card-title {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--pb-text);
+  margin: 5px 0 0;
+  line-height: 1.2;
+}
+
+.pb-settings-card-desc {
+  font-size: 0.82rem;
+  color: var(--pb-faint);
+  margin-top: 5px;
+  line-height: 1.55;
+}
+
+/* ── Field rows ───────────────────────────────────────────────────────────── */
+
+.pb-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pb-settings-field-label {
+  font-family: var(--font-condensed);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--pb-faint);
+}
+
+/* Inputs inside settings cards — inherit the pb token system. */
+.pb-settings-card input[type="text"],
+.pb-settings-card input[type="url"],
+.pb-settings-card input[type="number"],
+.pb-settings-card textarea,
+.pb-settings-card select {
+  background: var(--pb-bg);
+  border: 1px solid var(--pb-line);
+  border-radius: 8px;
+  color: var(--pb-text);
+  font-family: var(--font);
+  font-size: 14px;
+  padding: 8px 11px;
+  width: 100%;
+  transition: border-color 0.14s;
+  box-sizing: border-box;
+}
+
+.pb-settings-card input[type="text"]:focus,
+.pb-settings-card input[type="url"]:focus,
+.pb-settings-card input[type="number"]:focus,
+.pb-settings-card textarea:focus,
+.pb-settings-card select:focus {
+  outline: none;
+  border-color: var(--pb-brass);
+}
+
+.pb-settings-card input[type="text"]::placeholder,
+.pb-settings-card input[type="url"]::placeholder,
+.pb-settings-card textarea::placeholder {
+  color: var(--pb-faint);
+}
+
+/* Read-only URL inputs (streamer section) */
+.pb-settings-card input[type="text"][readonly] {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--pb-muted);
+  cursor: text;
+}
+
+/* ── Checkbox / radio rows ────────────────────────────────────────────────── */
+
+.pb-settings-check-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--pb-text);
+}
+
+.pb-settings-check-row input[type="checkbox"],
+.pb-settings-check-row input[type="radio"] {
+  accent-color: var(--pb-brass);
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  cursor: inherit;
+}
+
+/* ── Save bar ─────────────────────────────────────────────────────────────── */
+
+.pb-settings-save-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0 0;
+  margin-top: 4px;
+  border-top: 1px solid var(--pb-line-soft);
+}
+
+.pb-settings-save-btn {
+  background: var(--pb-brass);
+  color: #0d1424;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 24px;
+  font-family: var(--font-condensed);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  cursor: pointer;
+  transition: opacity 0.14s, background 0.14s;
+}
+
+.pb-settings-save-btn:hover {
+  background: var(--pb-brass-bright);
+}
+
+.pb-settings-save-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.pb-settings-save-msg {
+  font-size: 0.82rem;
+  color: var(--pb-radiant);
+}
+
+.pb-settings-save-err {
+  font-size: 0.82rem;
+  color: var(--pb-dire);
+}
+
+/* ── Preview rail ─────────────────────────────────────────────────────────── */
+
+.pb-settings-preview-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pb-settings-preview-label {
+  font-family: var(--font-condensed);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--pb-faint);
+  margin-bottom: 4px;
+}
+
+/* Push the preview below the form on mobile */
+@media (max-width: 1099px) {
+  .pb-settings-layout {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 24px;
+  }
+  .pb-settings-preview-col {
+    order: -1;
+  }
+}
+
+/* ── Inline option-button grids (themes, frames, etc.) ───────────────────── */
+
+.pb-settings-option-grid {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pb-settings-option-btn {
+  text-align: left;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--pb-surface);
+  border: 1px solid var(--pb-line);
+  color: var(--pb-muted);
+  transition: background 0.13s, border-color 0.13s, color 0.13s;
+  min-width: 130px;
+}
+
+.pb-settings-option-btn:hover:not(:disabled) {
+  background: var(--pb-surface-2);
+  color: var(--pb-text);
+}
+
+.pb-settings-option-btn[aria-pressed="true"],
+.pb-settings-option-btn.is-selected {
+  background: rgba(197, 169, 117, 0.14);
+  border: 2px solid var(--pb-brass);
+  color: var(--pb-brass);
+}
+
+.pb-settings-option-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.pb-settings-option-sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--pb-faint);
+  margin-top: 2px;
+}

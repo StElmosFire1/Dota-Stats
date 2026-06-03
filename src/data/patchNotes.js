@@ -4445,6 +4445,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "9.24",
+    "title": "Edit Profile — tabbed Press Box layout",
+    "published_at": "2026-06-03",
+    "content": "Overhauled /settings/profile (Task #741). No backend changes.\n\n**Tabbed layout.** The single-scroll ~1860-line page is now split into four focused tabs — Identity (bio, title, vanity URL), Appearance (accent colour, cover theme, frame, cover FX, voice pack), Showcase (pinned hero + caption + border, pinned match, achievement pins, flair, display toggles), and Connections (Discord, social links, Twitch live hub, share card, streamer setup, Twitch extension). Every existing control is preserved; only the grouping changed.\n\n**Press Box styling.** Page header uses `pb-eyebrow` + Playfair serif `pb-settings-title`. Section cards use `pb-card` with condensed-font eyebrow labels, serif card titles, and `--pb-*` token inputs. Tab bar uses `role=tablist` / `role=tab` / `aria-selected` / `aria-controls` with brass underline on the active tab.\n\n**Preview rail.** Sticky right column (≥1100px) keeps the live MagazineCover + ProfileCard always visible while scrolling through any tab. Mobile stacks the preview above the form.\n\n**Save button.** Appears in the page header (quick access) and in a save bar below the active tab panel.\n\n**Scope.** Full edition only — community edition untouched. A11y gate green.",
+    "author": "System"
+  },
+  {
     "version": "9.16",
     "title": "Inhouse Lobby — readability and usability polish pass",
     "published_at": "2026-06-03",
