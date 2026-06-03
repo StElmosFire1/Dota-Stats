@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "9.17",
+    "title": "Hall of Fame sub-tabs styled as branded pills",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**What.** The four sub-tabs inside the Hall of Fame view (Match Records, Career Rankings, Achievement Hunters, Top Recruiters) previously rendered as plain white browser-default buttons. They now appear as dark branded pills consistent with the site palette — ink-navy background, brass accent border, muted text inactive; brass fill with ink-navy text when active.",
+      "**Hover & focus.** Hover brightens the background and highlights the border. Keyboard focus renders a 2px brass outline ring, satisfying the a11y house rule for visible focus states.",
+      "**Mobile.** The existing mobile override (smaller font-size and tighter padding) continues to apply so the row wraps neatly on narrow screens.",
+      "**Scope.** Full edition only — community edition untouched. A11y gate green, build clean."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.15",
     "title": "Leaderboard rows are now a uniform height",
     "published_at": "2026-06-03",
