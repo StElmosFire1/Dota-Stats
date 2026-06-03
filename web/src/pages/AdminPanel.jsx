@@ -9224,6 +9224,12 @@ const ECON_PRICE_GROUPS = [
     ],
   },
   {
+    label: 'Custom URL (Stripe)',
+    fields: [
+      { key: 'vanity_url_cents', label: 'Custom Profile URL (Stripe one-off)', unit: 'AUD cents', note: 'Default $12.00 AUD (1200 cents). Any signed-in player can buy.' },
+    ],
+  },
+  {
     label: 'Coin Cosmetic Prices',
     fields: [
       { key: 'coin_voice_pack_cents',            label: 'Voice Packs (all 5 SKUs)',               unit: 'coins', note: 'Default 800 🪙.' },
@@ -9231,6 +9237,7 @@ const ECON_PRICE_GROUPS = [
       { key: 'coin_frame_cents',                 label: 'Premium Frames (Neon Blue, Cosmic, Fire)', unit: 'coins', note: 'Default 2500 🪙.' },
       { key: 'coin_founder_ring_static_cents',   label: 'Static Founder Rings (Classic, Laurel)',  unit: 'coins', note: 'Default 1200 🪙.' },
       { key: 'coin_founder_ring_animated_cents', label: 'Animated Founder Rings (all others)',     unit: 'coins', note: 'Default 2000 🪙.' },
+      { key: 'coin_vanity_url_cents',            label: 'Custom Profile URL (coin path)',          unit: 'coins', note: 'Default 2500 🪙. Alternative to Stripe for Custom URL.' },
     ],
   },
   {

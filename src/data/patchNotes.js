@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "9.23",
+    "title": "Cosmetics Shop Press Box re-skin · Custom URL sold as a standalone cosmetic",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Custom URL is now a purchasable cosmetic — Pro no longer bundles it.** Any signed-in player can claim a permanent `/p/<slug>` profile URL by paying $12.00 AUD via Stripe one-off checkout or spending 2 500 🪙 coins. Existing slug holders (grandfathered from when it was bundled with Pro) keep their slug and retain full management rights — claim, change, or release — with no purchase required.",
+      "**Dedicated shop endpoints.** `POST /shop/vanity-url/stripe-checkout` creates a Stripe Checkout session at the admin-editable economy price (`vanity_url_cents`, default 1 200 cents). `GET /shop/vanity-url/price` returns the current Stripe + coin prices. The coin path routes through `/coins/spend` with the new `cosmetic:vanity_url` SKU (`coin_vanity_url_cents`, default 2 500).",
+      "**Vanity-slug routes corrected.** `GET /me/vanity-slug` returns `has_perk` and `can_claim = hasPerk || hasExistingSlug`. `POST` and `DELETE` enforce the same rule server-side — no `isPro` bypass.",
+      "**Economy price admin controls.** Two new rows in Admin Panel → Economy Pricing: \"Custom URL (Stripe)\" (`vanity_url_cents`) and \"Custom Profile URL (coin path)\" (`coin_vanity_url_cents`).",
+      "**Press Box editorial shop re-skin.** Cosmetics Shop now uses the Press Box design system: brass-rule hero header with Playfair Display title, condensed section headers with icon columns, `pb-shop-card` grid tiles, `pb-shop-btn-*` variants (amber, brass, coin), and `pb-pill-*` tokens.",
+      "**VanitySlugPicker updated.** When locked, the picker shows inline Stripe + coin buy buttons (prices fetched lazily) and a 'View in Shop →' link — no 'go Pro →' fallback. When access is granted (perk or grandfathered), the full claim/change/release UI is shown. a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.22",
     "title": "Fix: owner locked out by the private-preview gate after the password removal",
     "published_at": "2026-06-03",

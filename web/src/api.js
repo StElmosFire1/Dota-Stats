@@ -2601,6 +2601,16 @@ export const buyFoundersRingCheckout = () =>
 export const getMyVanitySlug = () => _getJson('/me/vanity-slug');
 export const checkVanitySlugAvailability = (slug) =>
   _getJson(`/vanity-slug/availability?slug=${encodeURIComponent(slug)}`);
+export const getVanityUrlPrice = () => _getJson('/shop/vanity-url/price').catch(() => null);
+export const purchaseVanityUrlStripe = () =>
+  fetch(BASE + '/shop/vanity-url/stripe-checkout', {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+  }).then(async (r) => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `Request failed: ${r.status}`);
+    return d;
+  });
 export const claimMyVanitySlug = (slug) =>
   fetch(BASE + '/me/vanity-slug', {
     method: 'POST', credentials: 'same-origin',

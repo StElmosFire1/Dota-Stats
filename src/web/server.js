@@ -211,11 +211,13 @@ const ECONOMY_DEFAULTS = Object.freeze({
   frame_neon_blue_cents:            299,
   frame_cosmic_cents:               399,
   frame_fire_cents:                 399,
+  vanity_url_cents:                 1200,
   coin_voice_pack_cents:            800,
   coin_layout_theme_cents:          1200,
   coin_frame_cents:                 2500,
   coin_founder_ring_static_cents:   1200,
   coin_founder_ring_animated_cents: 2000,
+  coin_vanity_url_cents:            2500,
   coin_pack_starter_coins:          500,
   coin_pack_starter_cents:          499,
   coin_pack_standard_coins:         1200,
@@ -259,6 +261,7 @@ async function _getEffectiveCoinPrices() {
   const fr  = _econInt(o, 'coin_frame_cents');
   const frs = _econInt(o, 'coin_founder_ring_static_cents');
   const fra = _econInt(o, 'coin_founder_ring_animated_cents');
+  const vu  = _econInt(o, 'coin_vanity_url_cents');
   return {
     'voice_pack:captain': vp, 'voice_pack:hype': vp, 'voice_pack:calm': vp,
     'voice_pack:roast': vp,   'voice_pack:cinematic': vp,
@@ -269,6 +272,7 @@ async function _getEffectiveCoinPrices() {
     'founder_ring:beveled': fra,  'founder_ring:phoenix': fra, 'founder_ring:twin': fra,
     'founder_ring:astrolabe': fra, 'founder_ring:eclipse': fra, 'founder_ring:forge': fra,
     'founder_ring:storm': fra,    'founder_ring:starmap': fra,
+    'cosmetic:vanity_url': vu,
   };
 }
 
@@ -15759,21 +15763,40 @@ NOTES
     }
   });
 
+  // Task #740 — helper: account has vanity URL access via Stripe perk OR coin purchase.
+  async function _hasVanityUrlPerk(accountId) {
+    if (!accountId) return false;
+    const [fromStripe, fromCoins] = await Promise.all([
+      db.magV3.hasOneOffPerk(accountId, 'cosmetic:vanity_url'),
+      db.hasCoinCosmetic(accountId, 'cosmetic', 'vanity_url'),
+    ]);
+    return fromStripe || fromCoins;
+  }
+
   router.get('/me/vanity-slug', async (req, res) => {
     try {
       const accountId = req.session?.accountId;
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
-      const cur = await db.getVanitySlugByAccount(accountId);
-      const isPro = await _isProAccount(accountId);
-      // Grandfathering: a non-Pro account that *currently* owns a slug keeps
-      // it (read-only — they cannot change to a different slug or re-claim
-      // after release without Pro). Surface that state to the UI.
-      const can_claim = isPro;
-      const grandfathered = !!(!isPro && cur && cur.slug);
+      const [cur, hasPerk] = await Promise.all([
+        db.getVanitySlugByAccount(accountId),
+        _hasVanityUrlPerk(accountId),
+      ]);
+      // Task #740: Custom URL is a paid cosmetic — Pro no longer bundles it.
+      // Access tiers:
+      //   1. Purchased perk (Stripe or coins) → full access, can claim/change/release.
+      //   2. Existing slug (grandfathered from the era it was bundled with Pro)
+      //      → full management of that slug (claim new value, release); purchasing
+      //      the add-on is optional. Cannot claim a brand-new slug from scratch
+      //      without purchasing — but since they already hold one, claiming a new
+      //      value is effectively a "change", which is allowed.
+      //   3. No perk, no slug → must purchase.
+      const hasSlug = !!(cur?.slug && !cur?.released_at);
+      const can_claim = hasPerk || hasSlug;
+      const grandfathered = hasSlug && !hasPerk;
       res.json({
         slug: cur?.slug || null,
         released_at: cur?.released_at || null,
-        is_pro: isPro,
+        has_perk: hasPerk,
         can_claim,
         grandfathered,
         cooldown_days: 30,
@@ -15788,8 +15811,14 @@ NOTES
     try {
       const accountId = req.session?.accountId;
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
-      const isPro = await _isProAccount(accountId);
-      if (!isPro) return res.status(403).json({ error: 'Vanity slugs require Pro' });
+      const [cur, hasPerk] = await Promise.all([
+        db.getVanitySlugByAccount(accountId),
+        _hasVanityUrlPerk(accountId),
+      ]);
+      const hasSlug = !!(cur?.slug && !cur?.released_at);
+      if (!hasPerk && !hasSlug) {
+        return res.status(403).json({ error: 'Custom URL requires the Custom URL add-on. Buy it in the shop.' });
+      }
       const slug = String(req.body?.slug || '').trim().toLowerCase();
       if (!db.isWellFormedVanitySlug(slug)) {
         return res.status(400).json({ error: 'Invalid slug. 3–24 chars, lowercase a–z, 0–9, hyphen.' });
@@ -15815,17 +15844,84 @@ NOTES
     try {
       const accountId = req.session?.accountId;
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
-      // Grandfathered non-Pro accounts are read-only on their slug — they
-      // keep what they have but cannot release it (releasing would let
-      // them re-claim only after Pro, and an accidental click would lose
-      // them the slug forever once a stranger claims it post-cooldown).
-      const isPro = await _isProAccount(accountId);
-      if (!isPro) return res.status(403).json({ error: 'Releasing a vanity slug requires Pro' });
+      const [cur, hasPerk] = await Promise.all([
+        db.getVanitySlugByAccount(accountId),
+        _hasVanityUrlPerk(accountId),
+      ]);
+      // Both purchased-perk holders and grandfathered holders can release.
+      // (If you have no slug there is nothing to release anyway.)
+      const hasSlug = !!(cur?.slug && !cur?.released_at);
+      if (!hasPerk && !hasSlug) {
+        return res.status(403).json({ error: 'No active slug to release.' });
+      }
       const r = await db.releaseVanitySlug(accountId);
       res.json({ ok: true, ...r });
     } catch (err) {
       console.error('[API] me/vanity-slug DELETE:', err.message);
       res.status(500).json({ error: 'Failed to release slug' });
+    }
+  });
+
+  // Task #740 — Shop: Custom URL Stripe checkout. Uses the admin-editable
+  // economy price (vanity_url_cents) and the existing one-off perk webhook.
+  router.post('/shop/vanity-url/stripe-checkout', express.json(), async (req, res) => {
+    try {
+      const accountId = req.session?.accountId;
+      if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+      if (await _hasVanityUrlPerk(accountId)) {
+        return res.status(409).json({ error: 'You already own the Custom URL add-on.' });
+      }
+      if (!stripe) return res.status(503).json({ error: 'Payments are not configured.' });
+      const overrides = await _getEconOverrides();
+      const priceCents = _econInt(overrides, 'vanity_url_cents');
+      const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+      const host = req.headers['x-forwarded-host'] || req.headers.host;
+      const baseUrl = `${proto}://${host}`;
+      const session = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'aud',
+            product_data: { name: 'Custom Profile URL — OCE Inhouse' },
+            unit_amount: priceCents,
+          },
+          quantity: 1,
+        }],
+        success_url: `${baseUrl}/shop?vanity_success=1`,
+        cancel_url: `${baseUrl}/shop`,
+        metadata: {
+          purpose: 'one_off_perk',
+          account_id: String(accountId),
+          perk_key: 'cosmetic:vanity_url',
+        },
+      });
+      await db.magV3.createOneOffPerkPending({
+        accountId,
+        perkKey: 'cosmetic:vanity_url',
+        stripeSessionId: session.id,
+        amountCents: priceCents,
+        currency: 'aud',
+        metadata: { name: 'Custom Profile URL — OCE Inhouse' },
+      });
+      res.json({ url: session.url });
+    } catch (err) {
+      console.error('[API] shop/vanity-url/stripe-checkout:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to create checkout' });
+    }
+  });
+
+  // Task #740 — effective prices for the Custom URL shop card (public read).
+  router.get('/shop/vanity-url/price', async (req, res) => {
+    try {
+      const overrides = await _getEconOverrides();
+      const coinPrices = await _getEffectiveCoinPrices();
+      res.json({
+        stripe_cents: _econInt(overrides, 'vanity_url_cents'),
+        coin_price: coinPrices['cosmetic:vanity_url'],
+      });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to load prices' });
     }
   });
 
