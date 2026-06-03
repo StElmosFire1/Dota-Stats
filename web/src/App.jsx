@@ -832,23 +832,24 @@ function Nav() {
           {accountId && <DropdownItem to="/collection">My Collection</DropdownItem>}
         </DropdownMenu>
         <NavHelpMenu />
-        <Link
-          to="/pro"
-          className={isActive('/pro')}
-          style={{
-            background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
-            color: '#1a1a1a',
-            fontWeight: 700,
-            padding: '6px 14px',
-            borderRadius: 6,
-            letterSpacing: 0.3,
-            boxShadow: '0 2px 8px rgba(245,158,11,0.25)',
-          }}
-          title="Pro Membership — unlocks all advanced analytics"
-        >
-          ★ Pro
-        </Link>
       </div>
+      <Link
+        to="/pro"
+        className={isActive('/pro')}
+        style={{
+          background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
+          color: '#1a1a1a',
+          fontWeight: 700,
+          padding: '6px 14px',
+          borderRadius: 6,
+          letterSpacing: 0.3,
+          boxShadow: '0 2px 8px rgba(245,158,11,0.25)',
+          flexShrink: 0,
+        }}
+        title="Pro Membership — unlocks all advanced analytics"
+      >
+        ★ Pro
+      </Link>
       <GlobalSearch />
       <SeasonSelector />
       <ThemeToggle />
