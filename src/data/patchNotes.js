@@ -1,5 +1,22 @@
 module.exports = [
   {
+    "version": "9.18",
+    "title": "Match History card redesign — story at a glance",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Visual hierarchy overhaul.** Each match card now leads with a dominant scoreline headline (Radiant kill count vs Dire kill count) in large Newsreader numerals. The winning side's number is bigger and full-brightness; the losing side is dimmed — the result reads in a single glance without hunting for the 'Victory' text.",
+      "**Winner accent bar.** A 4 px left border in Radiant green or Dire red immediately signals which team won before you read a word. The border persists on hover so the signal is never lost.",
+      "**Story pills.** At-a-glance narrative cues computed purely from existing list data: a decisiveness label ('Stomp' / 'Decisive' / 'Close Game' / 'Neck and Neck' derived from kill margin + duration) and an 'Upset' badge when the lower-rated side wins (based on live MMR averages — the existing caveat is preserved in the tooltip). Duration and player count are shown as lightweight pills, demoting metadata that was previously competing with the headline.",
+      "**Two-column hero lineup.** Radiant heroes flush-left, Dire heroes flush-right, with a dim 'VS' pivot in the centre. The winning column is rendered at full opacity; the losing column is muted. Each column shows the side label, avg MMR badge (with the live-rating caveat), 5 hero icons, and the top player's name + K/D/A.",
+      "**Polished MVP block.** The match MVP is presented in a distinct branded strip (gold border, trophy icon, Playfair-adjacent gold label, hero icon, player name, hero name, PERF) rather than a plain text row.",
+      "**Brand typography.** Faction labels use Oswald condensed; scoreline numerals use Newsreader (.pb-num tabular figures); the victory fallback (no parsed kill data) uses Playfair serif.",
+      "**Superuser affordances unchanged.** Inline season editor, '+ season', '✎' edit indicator, and bulk-select checkbox all work identically — only their visual placement shifted to accommodate the new structure. Checkbox moved to top-right to stay clear of the new scoreline.",
+      "**Community edition mirrored.** Same redesign applied to community-edition/web/src/pages/MatchList.jsx and community-edition/web/src/styles.css. No Pro/paywall gating introduced — community edition remains paywall-free.",
+      "**A11y gate green.** All six passes pass. Both edition builds clean."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.17",
     "title": "Hall of Fame sub-tabs styled as branded pills",
     "published_at": "2026-06-03",

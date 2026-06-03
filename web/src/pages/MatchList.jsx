@@ -23,17 +23,16 @@ function formatDate(dateStr) {
   });
 }
 
-// Compact preview of who played and on what hero, rendered between the
-// "Radiant/Dire Victory · 40:50 · 10 players" body line and the badge
-// footer on each match card. Two rows (Radiant / Dire) with up to 5
-// hero icons + the top fragger's name per side. Avoids opening the
-// match detail page just to remember "wait, was Hoodini in this one?".
-// Defensive against the data shape: if `players` is missing (older
-// rows where the JOIN returned null, or a match with zero parsed
-// players) we render nothing — the rest of the card stays valid.
-// Average of a side's *current* stored MMR (joined from `ratings` server-side).
-// Players with no rating row (mmr null/0) are skipped so a couple of unranked
-// smurfs don't drag the average to zero. Returns null when nobody is ranked.
+function formatTime(dateStr) {
+  if (!dateStr) return '';
+  return new Date(dateStr).toLocaleTimeString('en-AU', {
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'Australia/Sydney',
+  });
+}
+
+// Average of a side's current stored MMR. Skips unranked (mmr null/0) players.
+// Returns null when nobody on the side is ranked.
 function avgSideMmr(side) {
   const vals = side
     .map(p => Number(p.mmr))
@@ -42,23 +41,34 @@ function avgSideMmr(side) {
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
-function MatchPlayersStrip({ players, radiantWin }) {
-  if (!Array.isArray(players) || players.length === 0) return null;
+// Split players into Radiant / Dire arrays.
+function splitTeams(players) {
+  if (!Array.isArray(players)) return { radiant: [], dire: [] };
   const radiant = players.filter(p => p.team === 'radiant' || p.team === 0 || p.team === '0');
   const dire    = players.filter(p => p.team === 'dire'    || p.team === 1 || p.team === '1');
+  return { radiant, dire };
+}
+
+function sumKills(side) {
+  return side.reduce((s, p) => s + (Number(p.kills) || 0), 0);
+}
+
+// Derive a one-word "story" label from kill margin + duration.
+function storyLabel(killMargin, durationMins) {
+  if (killMargin >= 20 || (killMargin >= 15 && durationMins > 0 && durationMins < 30)) return 'Stomp';
+  if (killMargin >= 10) return 'Decisive';
+  if (killMargin <= 3 && durationMins > 40) return 'Neck and Neck';
+  if (killMargin <= 5) return 'Close Game';
+  return null;
+}
+
+// Hero lineup + MVP strip. radiantMmr / direMmr are pre-computed and passed down.
+function MatchPlayersStrip({ players, radiantWin, radiantMmr, direMmr }) {
+  if (!Array.isArray(players) || players.length === 0) return null;
+  const { radiant, dire } = splitTeams(players);
   if (radiant.length === 0 && dire.length === 0) return null;
 
-  // Kill score per side (e.g. "Radiant 31 – 24 Dire").
-  const sumKills = (side) => side.reduce((s, p) => s + (Number(p.kills) || 0), 0);
-  const radiantKills = sumKills(radiant);
-  const direKills = sumKills(dire);
-
-  const radiantMmr = avgSideMmr(radiant);
-  const direMmr = avgSideMmr(dire);
-
-  // Match MVP — highest PERF score across both sides (PERF is 1.0–10.0,
-  // position-aware + duration-normalised, so it's the fairest single "best
-  // player" signal we already store). Ties resolve to the first encountered.
+  // MVP — highest PERF score across both sides.
   let mvp = null;
   let mvpPerf = -Infinity;
   for (const p of players) {
@@ -66,101 +76,64 @@ function MatchPlayersStrip({ players, radiantWin }) {
     if (Number.isFinite(perf) && perf > mvpPerf) { mvpPerf = perf; mvp = p; }
   }
 
-  const renderSide = (side, label, isWinner, sideKills, sideMmr) => {
-    if (side.length === 0) return null;
-    const top = side[0]; // already sorted kills DESC server-side
+  const renderCol = (side, label, isWinner, sideMmr) => {
+    if (side.length === 0) return <div className="mc-lineup-col" />;
+    const top = side[0]; // server sorts kills DESC
     const topName = top ? resolvePlayerDisplayName(top) : null;
-    const sideColor = label === 'Radiant' ? 'var(--radiant-color)' : 'var(--dire-color)';
+    const isDire = label === 'Dire';
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
-        <span style={{
-          color: sideColor, fontSize: '0.72rem', fontWeight: 700,
-          letterSpacing: 0.4, width: 52, flexShrink: 0,
-          opacity: isWinner ? 1 : 0.7,
-        }}>
-          {label.toUpperCase()}
-        </span>
-        <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+      <div className={`mc-lineup-col${isWinner ? ' mc-lineup-col--winner' : ''}${isDire ? ' mc-lineup-col--dire' : ''}`}>
+        <div className={`mc-lineup-label mc-lineup-label--${isDire ? 'dire' : 'radiant'}`}>
+          {!isDire && <span>{label}</span>}
+          {sideMmr != null && (
+            <span
+              className="mc-lineup-mmr"
+              title="Average of these players' current MMR (live rating, not a per-match snapshot)"
+            >
+              <MmrBadge mmr={sideMmr} size="sm" />
+            </span>
+          )}
+          {isDire && <span>{label}</span>}
+        </div>
+        <div className="mc-hero-row">
           {side.slice(0, 5).map((p, i) => (
             <HeroIcon key={`${p.account_id || 'a'}-${i}`} heroId={p.hero_id} heroName={p.hero} size="sm" />
           ))}
         </div>
-        {sideMmr != null && (
-          <span
-            title="Average of these players' current MMR (live rating, not a per-match snapshot)"
-            style={{ flexShrink: 0 }}
-          >
-            <MmrBadge mmr={sideMmr} size="sm" />
-          </span>
-        )}
         {topName && (
-          <span style={{
-            fontSize: '0.78rem', color: 'var(--text-muted)',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            minWidth: 0,
-          }}>
-            top: <span style={{ color: 'var(--text-secondary)' }}>{topName}</span>
+          <div className="mc-top-player">
+            <span className="mc-top-name">{topName}</span>
             {Number.isFinite(Number(top?.kills)) && (
-              <> · {top.kills}/{top.deaths ?? '-'}/{top.assists ?? '-'}</>
+              <span className="mc-top-kda pb-num">{top.kills}/{top.deaths ?? '-'}/{top.assists ?? '-'}</span>
             )}
-          </span>
+          </div>
         )}
       </div>
     );
   };
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 4,
-      marginTop: '0.6rem',
-    }}>
-      {/* Kill score per side */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        fontFamily: 'var(--font-num)', fontSize: '0.82rem', fontWeight: 700,
-        letterSpacing: 0.2,
-      }}>
-        <span style={{ color: 'var(--radiant-color)' }}>Radiant</span>
-        <span className="pb-num" style={{ color: 'var(--text-primary)' }}>{radiantKills}</span>
-        <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>–</span>
-        <span className="pb-num" style={{ color: 'var(--text-primary)' }}>{direKills}</span>
-        <span style={{ color: 'var(--dire-color)' }}>Dire</span>
+    <div className="mc-lineups">
+      <div className="mc-lineups-grid">
+        {renderCol(radiant, 'Radiant', radiantWin,  radiantMmr)}
+        <div className="mc-lineups-vs" aria-hidden="true">VS</div>
+        {renderCol(dire,    'Dire',    !radiantWin, direMmr)}
       </div>
-      {renderSide(radiant, 'Radiant', radiantWin, radiantKills, radiantMmr)}
-      {renderSide(dire,    'Dire',    !radiantWin, direKills, direMmr)}
-      {/* Match MVP — best PERF + their hero */}
       {mvp && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 6, minWidth: 0,
-          fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 1,
-        }}>
-          <span aria-hidden="true">🏆</span>
-          <span style={{ color: 'var(--gold)', fontWeight: 700, letterSpacing: 0.3 }}>MVP</span>
+        <div className="mc-mvp">
+          <span className="mc-mvp-trophy" aria-hidden="true">🏆</span>
+          <span className="mc-mvp-label">MVP</span>
           <HeroIcon heroId={mvp.hero_id} heroName={mvp.hero} size="sm" />
-          <span style={{
-            color: 'var(--text-secondary)', fontWeight: 600,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0,
-          }}>
-            {resolvePlayerDisplayName(mvp)}
-          </span>
-          <span style={{ color: 'var(--text-muted)' }}>· {getHeroName(mvp.hero_id, mvp.hero)}</span>
+          <span className="mc-mvp-name">{resolvePlayerDisplayName(mvp)}</span>
+          <span className="mc-mvp-sep" aria-hidden="true">·</span>
+          <span className="mc-mvp-hero">{getHeroName(mvp.hero_id, mvp.hero)}</span>
           {Number.isFinite(Number(mvp.perf)) && (
-            <span className="pb-num" style={{ color: 'var(--text-muted)', opacity: 0.85 }}>
-              · {Number(mvp.perf).toFixed(1)} PERF
-            </span>
+            <span className="mc-mvp-perf pb-num">{Number(mvp.perf).toFixed(1)} PERF</span>
           )}
         </div>
       )}
     </div>
   );
-}
-
-function formatTime(dateStr) {
-  if (!dateStr) return '';
-  return new Date(dateStr).toLocaleTimeString('en-AU', {
-    hour: '2-digit', minute: '2-digit',
-    timeZone: 'Australia/Sydney',
-  });
 }
 
 export default function MatchList() {
@@ -172,7 +145,7 @@ export default function MatchList() {
   const limit = 20;
 
   // Inline season editing state
-  const [editingSeason, setEditingSeason] = useState(null); // matchId being edited
+  const [editingSeason, setEditingSeason] = useState(null);
   const [seasonInput, setSeasonInput] = useState('');
   const [savingSeason, setSavingSeason] = useState(null);
 
@@ -321,29 +294,88 @@ export default function MatchList() {
               const isEditing = editingSeason === match.match_id;
               const isSelected = selected.has(match.match_id);
 
+              // Derive story cues from existing list data
+              const { radiant, dire } = splitTeams(match.players);
+              const rKills = sumKills(radiant);
+              const dKills = sumKills(dire);
+              const hasKills = (match.players || []).length > 0;
+              const killMargin = Math.abs(rKills - dKills);
+              const durationMins = match.duration ? match.duration / 60 : 0;
+              const story = hasKills ? storyLabel(killMargin, durationMins) : null;
+
+              const rMmr = avgSideMmr(radiant);
+              const dMmr = avgSideMmr(dire);
+              const upset = rMmr != null && dMmr != null && (
+                (match.radiant_win && dMmr > rMmr + 150) ||
+                (!match.radiant_win && rMmr > dMmr + 150)
+              );
+
+              const winnerSide = match.radiant_win ? 'radiant' : 'dire';
+
               return (
                 <div key={match.match_id} style={{ position: 'relative' }}>
                   <Link
                     to={`/match/${match.match_id}`}
-                    className="match-card"
+                    className={`match-card match-card--${winnerSide}`}
                     style={{ display: 'block', textDecoration: 'none' }}
                   >
-                    <div className="match-card-header">
-                      <span className="match-id">#{match.match_id}</span>
-                      <span className="match-date" style={{ textAlign: 'right', paddingRight: isSuperuser ? 28 : 0 }}>
-                        <div>{formatDate(match.date)}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 1 }}>{formatTime(match.date)}</div>
+                    {/* 1. Meta row: match ID + date/time */}
+                    <div className="mc-meta-row">
+                      <span className="mc-match-id">#{match.match_id}</span>
+                      <span className="mc-date" style={{ paddingRight: isSuperuser ? 28 : 0 }}>
+                        {formatDate(match.date)}
+                        {match.date && <span className="mc-time"> · {formatTime(match.date)}</span>}
                       </span>
                     </div>
-                    <div className="match-card-body">
-                      <span className={`match-winner ${match.radiant_win ? 'radiant' : 'dire'}`}>
-                        {match.radiant_win ? 'Radiant' : 'Dire'} Victory
-                      </span>
-                      <span className="match-duration">{formatDuration(match.duration)}</span>
-                      <span className="match-players">{match.player_count || '?'} players</span>
+
+                    {/* 2. Headline: scoreline + faction labels + story pills */}
+                    <div className="mc-headline">
+                      <div className={`mc-faction mc-faction--radiant${match.radiant_win ? ' mc-faction--winner' : ''}`}>
+                        Radiant
+                      </div>
+                      {hasKills ? (
+                        <div className="mc-scoreline">
+                          <span className={`mc-score pb-num${match.radiant_win ? ' mc-score--winner' : ''}`}>{rKills}</span>
+                          <span className="mc-score-sep" aria-hidden="true">–</span>
+                          <span className={`mc-score pb-num${!match.radiant_win ? ' mc-score--winner' : ''}`}>{dKills}</span>
+                        </div>
+                      ) : (
+                        <div className="mc-victory-text">
+                          {match.radiant_win ? 'Radiant' : 'Dire'} Victory
+                        </div>
+                      )}
+                      <div className={`mc-faction mc-faction--dire${!match.radiant_win ? ' mc-faction--winner' : ''}`}>
+                        Dire
+                      </div>
+                      <div className="mc-story-pills">
+                        {story && <span className="mc-pill mc-pill--story">{story}</span>}
+                        {upset && (
+                          <span
+                            className="mc-pill mc-pill--upset"
+                            title="The lower-rated side won (based on live MMR averages, not a per-match snapshot)"
+                          >
+                            Upset
+                          </span>
+                        )}
+                        {match.duration > 0 && (
+                          <span className="mc-pill mc-pill--duration">{formatDuration(match.duration)}</span>
+                        )}
+                        {match.player_count > 0 && (
+                          <span className="mc-pill mc-pill--players">{match.player_count} players</span>
+                        )}
+                      </div>
                     </div>
-                    <MatchPlayersStrip players={match.players} radiantWin={match.radiant_win} />
-                    {(match.patch || match.season_id || isSuperuser) && (
+
+                    {/* 3. Hero lineups + MVP */}
+                    <MatchPlayersStrip
+                      players={match.players}
+                      radiantWin={match.radiant_win}
+                      radiantMmr={rMmr}
+                      direMmr={dMmr}
+                    />
+
+                    {/* 4. Footer: patch, lobby, season editor — behaviour unchanged */}
+                    {(match.patch || match.season_id || match.lobby_name || isSuperuser) && (
                       <div className="match-card-footer" style={{ alignItems: 'center' }}>
                         {match.lobby_name && <span className="lobby-name">{match.lobby_name}</span>}
                         {match.patch && <span className="patch-badge">Patch {match.patch}</span>}
@@ -403,7 +435,7 @@ export default function MatchList() {
                     )}
                   </Link>
 
-                  {/* Checkbox in bottom-right corner so it doesn't overlap the date */}
+                  {/* Bulk-select checkbox — behaviour unchanged */}
                   {isSuperuser && (
                     <div
                       role="checkbox"
@@ -413,7 +445,7 @@ export default function MatchList() {
                       onClick={e => toggleSelect(e, match.match_id)}
                       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSelect(e, match.match_id); } }}
                       style={{
-                        position: 'absolute', bottom: 10, right: 10, zIndex: 2,
+                        position: 'absolute', top: 10, right: 10, zIndex: 2,
                         width: 18, height: 18, borderRadius: 4,
                         border: `2px solid ${isSelected ? '#3b82f6' : '#475569'}`,
                         background: isSelected ? '#3b82f6' : 'transparent',
