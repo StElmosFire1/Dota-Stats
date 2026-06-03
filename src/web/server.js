@@ -1213,8 +1213,69 @@ async function logEnvForcedLockdownOnBoot() {
 function createServer(startupStatus = {}) {
   const app = express();
 
+  // Task #750 — Content-Security-Policy (full edition only; community
+  // edition untouched). Defence-in-depth against XSS: even if an injection
+  // slips through, the browser refuses to run inline/3rd-party script that
+  // isn't on the allow-list. A per-request nonce authorises the handful of
+  // server-rendered inline scripts (the FULL_SITE_LOCKDOWN gate page); the
+  // built SPA ships only external module scripts so `'self'` covers it.
+  //
+  // Rollout safety: set CSP_REPORT_ONLY=1 to emit the policy as
+  // Content-Security-Policy-Report-Only (surfaces violations in the console
+  // without blocking anything) for a production soak before enforcing.
+  // Optionally set CSP_REPORT_URI to collect violation reports.
+  app.use((req, res, next) => {
+    res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+    next();
+  });
+  const CSP_REPORT_ONLY = /^(1|true|yes|on)$/i.test(String(process.env.CSP_REPORT_ONLY || ''));
+  const cspDirectives = {
+    defaultSrc: ["'self'"],
+    baseUri: ["'self'"],
+    objectSrc: ["'none'"],
+    // No inline scripts except nonce-tagged server-rendered ones; the SPA is
+    // all external modules. Inline event-handler attributes stay blocked.
+    scriptSrc: ["'self'", (req, res) => `'nonce-${res.locals.cspNonce}'`],
+    scriptSrcAttr: ["'none'"],
+    // React renders via style attributes, so 'unsafe-inline' is required for
+    // styles; Google Fonts stylesheet is the only external stylesheet origin.
+    styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+    fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+    // Images come from Steam/OpenDota/Twitch CDNs plus arbitrary user-supplied
+    // coach/sponsor logo URLs; images can't execute, so allow any https origin
+    // (+ data:/blob: for canvas-rendered scoreboards).
+    imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+    // Same-origin API + EventSource streams; only api.opendota.com is fetched
+    // cross-origin from the browser (hero list on Record Match).
+    connectSrc: ["'self'", 'https://api.opendota.com'],
+    // Audio/video: same-origin walkthrough mp4 + sound/voice-pack clips today;
+    // the tutorial URL is operator-swappable to an external hosted file, so
+    // allow https: (media can't execute) + data:/blob:.
+    mediaSrc: ["'self'", 'data:', 'blob:', 'https:'],
+    // Embeds: Twitch player + chat, YouTube, Vimeo, our own /embed/player,
+    // and Stripe Checkout (harmless even though checkout is a top-level nav).
+    frameSrc: [
+      "'self'",
+      'https://player.twitch.tv',
+      'https://www.twitch.tv',
+      'https://www.youtube.com',
+      'https://www.youtube-nocookie.com',
+      'https://player.vimeo.com',
+      'https://checkout.stripe.com',
+    ],
+    workerSrc: ["'self'"],
+    frameAncestors: ["'self'"],
+    formAction: ["'self'"],
+  };
+  if (process.env.CSP_REPORT_URI) {
+    cspDirectives.reportUri = [String(process.env.CSP_REPORT_URI)];
+  }
   app.use(helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: cspDirectives,
+      reportOnly: CSP_REPORT_ONLY,
+    },
     crossOriginEmbedderPolicy: false,
   }));
 
@@ -1510,7 +1571,7 @@ function createServer(startupStatus = {}) {
     '/robots.txt',                  // crawler policy
     '/favicon.ico',                 // browser default request
   ]);
-  const GATE_HTML = [
+  const gateHtml = (nonce) => [
     '<!doctype html>',
     '<html lang="en">',
     '<head>',
@@ -1545,7 +1606,7 @@ function createServer(startupStatus = {}) {
     '</form>',
     '<a class="steam" href="/auth/steam">Sign in with Steam first</a>',
     '</main>',
-    '<script>',
+    `<script nonce="${nonce}">`,
     'var f=document.getElementById("f"),p=document.getElementById("p"),b=document.getElementById("b"),e=document.getElementById("e");',
     'f.addEventListener("submit",function(ev){ev.preventDefault();e.textContent="";b.disabled=true;',
     'fetch("/api/admin/superuser-login",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({password:p.value})})',
@@ -1612,7 +1673,7 @@ function createServer(startupStatus = {}) {
       });
     } catch (_) { /* logging must not break the gate */ }
     if (isDocumentNav) {
-      return res.status(200).type('html').send(GATE_HTML);
+      return res.status(200).type('html').send(gateHtml(res.locals.cspNonce));
     }
     return res.status(401).type('text/plain').send('');
   }

@@ -1,5 +1,18 @@
 module.exports = [
   {
+    "version": "9.13",
+    "title": "Hardened the site with a Content-Security-Policy",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Browser-level XSS defence.** The full site now serves a Content-Security-Policy — a strict allow-list that tells your browser exactly which scripts, styles, fonts, images, embeds and connections are trusted. If a malicious script ever slipped onto a page, the browser would simply refuse to run it, which is the strongest remaining protection against a hijacked session.",
+      "**Nothing breaks.** The policy was built from a full audit of everything the site legitimately loads — Steam/OpenDota/Twitch images, the Twitch/YouTube/Vimeo embeds, Stripe checkout, web-push service worker, Google Fonts and the live queue streams — so every existing page, embed and payment flow keeps working exactly as before. The embeddable player card keeps its 'embed anywhere' exception.",
+      "**Safe rollout switch.** Operators can set CSP_REPORT_ONLY=1 to run the policy in report-only mode (logs violations without blocking) for a soak before enforcing, with an optional CSP_REPORT_URI to collect any reports.",
+      "**Scope.** Full edition only (oceinhouse.gg); the community edition is untouched."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.12",
     "title": "Target mass DMs with one-click recipient presets",
     "published_at": "2026-06-03",
