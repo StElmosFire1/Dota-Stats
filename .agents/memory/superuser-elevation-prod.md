@@ -27,6 +27,22 @@ password layered on top of the Steam binding; the Steam allow-list alone is the
 trust anchor (accountId is verified server-side via Steam OpenID, session cookie is
 signed), so the extra password added lockout risk without real security gain.
 
+## FULL_SITE_LOCKDOWN gate must honour the Steam allow-list too
+The private-preview gate (`lockdownMiddleware`, in `createServer()`) is a SEPARATE
+check from the admin role — it must independently bypass for an allow-listed Steam
+session, else the owner can sign in but never see the app. Bypass order:
+env/state → `req.session.isSuperuser` → `isAllowlistedSteamSuperuser(req)` →
+`x-superuser-key` header → allowed-paths. `/api/auth/complete` also stamps
+`isSuperuser` on sign-in for allow-listed accounts.
+
+**Sibling-scope trap (cost a full architect FAIL):** `createServer()` and
+`createApiRouter()` are SIBLING functions. Any helper both must call
+(`parseSuperuserSteamIds`, `isAllowlistedSteamSuperuser`) MUST live at module
+scope. Defining them inside `createApiRouter()` makes them invisible to
+`lockdownMiddleware` → `ReferenceError` only on the lockdown path (silent until
+the gate is on). They're now module-scope + exported; unit-tested in
+`tests/superuserSteamAllowlist.test.js`.
+
 ## Decisive diagnostics (do these before guessing)
 - `GET /api/auth/me` in the user's normal browser returns the user JSON with
   `accountId` if the server session is alive, else 401/empty. Single best test —

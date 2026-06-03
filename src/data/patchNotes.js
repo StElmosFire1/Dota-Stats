@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "9.22",
+    "title": "Fix: owner locked out by the private-preview gate after the password removal",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Sign in with Steam now gets you past the site lockdown.** After superuser went password-free, the private-preview gate was still only checking the old password-set flag, so signing in with Steam didn't unlock the site. The gate now recognises an allow-listed Steam account directly — the owner passes straight through on sign-in.",
+      "**Owner is elevated the moment they sign in.** An allow-listed Steam login is now stamped as superuser immediately, so the lockdown gate, admin panel, and every other check stay consistent without any extra step.",
+      "**Cleaned up the gate page.** The dead password box is gone — the private-preview page is now a single 'Sign in with Steam' button.",
+      "**Full edition only.** The community edition is unchanged."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.21",
     "title": "Superuser access is now password-free — linked to your Steam account",
     "published_at": "2026-06-03",

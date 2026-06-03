@@ -1218,6 +1218,33 @@ async function logEnvForcedLockdownOnBoot() {
   }
 }
 
+// Parse the SUPERUSER_STEAM_IDS allow-list into a Set of string Steam account
+// ids (the 32-bit accountId stored on req.session.accountId). Comma/space/
+// newline separated; blank entries ignored. Returns an empty Set when
+// unset/empty, which callers treat as "binding disabled". Module-scoped so both
+// createServer() (lockdown gate) and createApiRouter() (auth/role helpers) share
+// one source of truth.
+function parseSuperuserSteamIds() {
+  const raw = process.env.SUPERUSER_STEAM_IDS || '';
+  return new Set(
+    raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
+  );
+}
+
+// Superuser is granted PURELY by Steam account — no password. Returns true when
+// the caller has an authenticated Steam session whose 32-bit accountId is on the
+// SUPERUSER_STEAM_IDS allow-list. An empty/unset allow-list returns false
+// (fail-closed: nobody auto-elevates in the browser), so SUPERUSER_STEAM_IDS
+// must be set in prod for the owner to get in. accountId is verified server-side
+// at /auth/complete via Steam OpenID, so it can't be forged client-side, and the
+// session cookie is signed.
+function isAllowlistedSteamSuperuser(req) {
+  const allowedSteamIds = parseSuperuserSteamIds();
+  if (allowedSteamIds.size === 0) return false;
+  const acct = req.session && req.session.accountId ? String(req.session.accountId) : null;
+  return !!acct && allowedSteamIds.has(acct);
+}
+
 function createServer(startupStatus = {}) {
   const app = express();
 
@@ -1600,28 +1627,16 @@ function createServer(startupStatus = {}) {
     '.err{color:#ef4444;font-size:0.82rem;margin-top:10px;min-height:1em}',
     '.steam{display:block;margin-top:16px;color:#8a93a8;font-size:0.8rem;text-align:center;text-decoration:none}',
     '.steam:hover,.steam:focus{color:#c5a975;text-decoration:underline}',
+    'a.btn{display:block;box-sizing:border-box;margin-top:8px;padding:11px 12px;background:#c5a975;color:#0d1424;border:0;border-radius:6px;font-weight:600;text-align:center;text-decoration:none;font-size:0.95rem}',
+    'a.btn:hover,a.btn:focus{background:#d4bb8e;outline:none}',
     '</style>',
     '</head>',
     '<body>',
     '<main class="card">',
-    '<h1>Sign in</h1>',
-    '<p class="sub">This site is in private preview.</p>',
-    '<form id="f" autocomplete="off">',
-    '<label for="p" style="display:none">Password</label>',
-    '<input id="p" name="password" type="password" autocomplete="current-password" autofocus required>',
-    '<button id="b" type="submit">Continue</button>',
-    '<div class="err" id="e" aria-live="polite"></div>',
-    '</form>',
-    '<a class="steam" href="/auth/steam">Sign in with Steam first</a>',
+    '<h1>Private preview</h1>',
+    '<p class="sub">Access is limited to the site owner. Sign in with your Steam account to continue — superuser access is linked to your Steam account.</p>',
+    '<a class="btn" href="/auth/steam">Sign in with Steam</a>',
     '</main>',
-    `<script nonce="${nonce}">`,
-    'var f=document.getElementById("f"),p=document.getElementById("p"),b=document.getElementById("b"),e=document.getElementById("e");',
-    'f.addEventListener("submit",function(ev){ev.preventDefault();e.textContent="";b.disabled=true;',
-    'fetch("/api/admin/superuser-login",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({password:p.value})})',
-    '.then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})})',
-    '.then(function(o){if(o.ok){window.location.replace(window.location.pathname+window.location.search+window.location.hash);}else{e.textContent=(o.j&&o.j.error)||"Invalid password";b.disabled=false;p.focus();p.select();}})',
-    '.catch(function(){e.textContent="Network error";b.disabled=false;});});',
-    '</script>',
     '</body>',
     '</html>',
   ].join('\n');
@@ -1638,6 +1653,12 @@ function createServer(startupStatus = {}) {
     if (!envForced && !lockdownState.enabled) return next();
     // Already-authenticated superusers pass straight through.
     if (req.session && req.session.isSuperuser) return next();
+    // Password-free superuser: the owner signed in with an allow-listed Steam
+    // account (SUPERUSER_STEAM_IDS) is a superuser and must pass the gate even
+    // if the session flag was never explicitly stamped (e.g. a session that
+    // predates the stamp at /api/auth/complete). This is THE way the owner gets
+    // past the lockdown now that there is no password step.
+    if (isAllowlistedSteamSuperuser(req)) return next();
     // Header credential for non-browser clients (scripts, deploy hooks).
     const pwd = process.env.SUPERUSER_PASSWORD;
     if (pwd && req.headers['x-superuser-key'] === pwd) return next();
@@ -5055,6 +5076,11 @@ function createApiRouter(startupStatus = {}, _app = null) {
       // carried forward (Task #708); admin is NOT — it's re-derived from the
       // role table below so revocations always take effect.
       if (prevIsSuperuser) req.session.isSuperuser = true;
+      // Password-free superuser: if the freshly-signed-in Steam account is on
+      // the SUPERUSER_STEAM_IDS allow-list, stamp the session flag now so the
+      // owner clears the lockdown gate on the very first navigation and every
+      // isSuperuser-flag check (lockdown, session-status, etc.) is consistent.
+      if (isAllowlistedSteamSuperuser(req)) req.session.isSuperuser = true;
       // Task #431 — stamp the hashed IP/UA immediately on the freshly
       // regenerated session so the smurf scorer's fingerprint signal
       // can see it without waiting for a subsequent request.
@@ -5436,30 +5462,9 @@ function createApiRouter(startupStatus = {}, _app = null) {
     res.status(410).json({ error: 'Admin password login has been removed. Admin access is granted to your Steam account by the site owner.' });
   });
 
-  // Task #749 — parse the SUPERUSER_STEAM_IDS allow-list into a Set of string
-  // Steam account ids (the 32-bit accountId stored on req.session.accountId).
-  // Comma/space/newline separated; blank entries ignored. Returns an empty Set
-  // when unset/empty, which the caller treats as "binding disabled".
-  function parseSuperuserSteamIds() {
-    const raw = process.env.SUPERUSER_STEAM_IDS || '';
-    return new Set(
-      raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
-    );
-  }
-
-  // Superuser is now granted PURELY by Steam account — no password. Returns
-  // true when the caller has an authenticated Steam session whose 32-bit
-  // accountId is on the SUPERUSER_STEAM_IDS allow-list. An empty/unset
-  // allow-list returns false (fail-closed: nobody auto-elevates in the
-  // browser), so SUPERUSER_STEAM_IDS must be set in prod for the owner to get
-  // in. accountId is verified server-side at /auth/complete via Steam OpenID,
-  // so it can't be forged client-side, and the session cookie is signed.
-  function isAllowlistedSteamSuperuser(req) {
-    const allowedSteamIds = parseSuperuserSteamIds();
-    if (allowedSteamIds.size === 0) return false;
-    const acct = req.session && req.session.accountId ? String(req.session.accountId) : null;
-    return !!acct && allowedSteamIds.has(acct);
-  }
+  // parseSuperuserSteamIds() + isAllowlistedSteamSuperuser(req) are defined at
+  // module scope (above createServer) so the lockdown gate in createServer() and
+  // the auth/role helpers here in createApiRouter() share one source of truth.
 
   // Superuser elevation is now PASSWORD-FREE — access is purely linked to the
   // signed-in Steam account. The caller must be signed in with a Steam account
@@ -22627,4 +22632,4 @@ function processReplayInternal(filePath, source, opts = {}) {
   });
 }
 
-module.exports = { createServer, processReplayInternal, createApiRouter, _runCheckinNotifyTick, _runCheckinDqSweepTick, _notifyUnconnectedPayoutWinners, _remindUnconnectedPayoutWinners, _notifyPaidPayoutWinners, _settleTournamentPayouts };
+module.exports = { createServer, processReplayInternal, createApiRouter, parseSuperuserSteamIds, isAllowlistedSteamSuperuser, _runCheckinNotifyTick, _runCheckinDqSweepTick, _notifyUnconnectedPayoutWinners, _remindUnconnectedPayoutWinners, _notifyPaidPayoutWinners, _settleTournamentPayouts };
