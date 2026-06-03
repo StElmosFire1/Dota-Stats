@@ -1,5 +1,19 @@
 module.exports = [
   {
+    "version": "9.14",
+    "title": "Admin panel reorganised into clearer tabs",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Less crowded tabs.** The admin panel's most overloaded tabs were split so related tools live together: the old 'Steam Bot' tab is now a focused 'Steam Bot & Lobbies' tab plus a separate 'Tests & Diagnostics' tab (notification/DM test harnesses, background jobs, error log, broadcasts), and all on-site content tools (banners, tickers, the welcome modal, engagement highlights) moved out of 'Site Settings' into a dedicated 'Content (CMS)' tab.",
+      "**Consistent headers.** Every tab now opens with a clear title and one-line description, and the sidebar groups tabs under labelled sections so it's easier to find the right control.",
+      "**Search keeps up.** The in-panel search now covers more sections — sponsorships, white-label tenants, commission controls, side banners, test-coach promotion and Discord rich presence are all findable — and every result jumps to the right tab.",
+      "**No behaviour change.** This is purely a layout and navigation cleanup: every control works exactly as before, deep-links and your last-used tab are preserved, and a renamed tab can no longer leave the panel blank.",
+      "**Scope.** Full edition only (oceinhouse.gg); the community edition is untouched."
+    ],
+    "author": "System",
+    "major": false
+  },
+  {
     "version": "9.13",
     "title": "Hardened the site with a Content-Security-Policy",
     "published_at": "2026-06-03",

@@ -455,6 +455,39 @@ a:hover {
   color: var(--text-secondary);
 }
 
+/* ── Admin panel: consistent per-tab header ─────────────────────────── */
+.ap-tab-head {
+  margin: 0 0 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+.ap-tab-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 6px;
+  font-family: var(--font-serif, inherit);
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+.ap-tab-desc {
+  margin: 0;
+  max-width: 70ch;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-muted, var(--text-secondary));
+}
+
+/* ── Admin panel: shared section wrapper ────────────────────────────── */
+.admin-section {
+  margin-bottom: 32px;
+}
+.admin-section:last-child {
+  margin-bottom: 0;
+}
+
 .loading {
   text-align: center;
   padding: 4rem;

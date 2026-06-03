@@ -7795,6 +7795,51 @@ function WeeklyRivalsPanel({ superuserKey }) {
   );
 }
 
+// ── Admin tab metadata ───────────────────────────────────────────────────────
+// Single source of truth for every admin tab: icon, sidebar label, and the
+// one-line description shown in the per-tab header. The sidebar nav, the
+// per-tab <TabHeader>, and the stale-tab guard all derive from this so they
+// can never drift out of sync.
+const TAB_META = {
+  overview:    { icon: '📊', label: 'Overview',               desc: 'At-a-glance health, security monitoring, and quick links.' },
+  matches:     { icon: '🎮', label: 'Matches & Replays',      desc: 'Record matches, run maintenance, and manage replays & backups.' },
+  bot:         { icon: '🤖', label: 'Steam Bot & Lobbies',    desc: 'Live Steam bot status, lobby controls, and the draft sandbox.' },
+  diagnostics: { icon: '🧪', label: 'Tests & Diagnostics',    desc: 'Notification & DM test harnesses, background jobs, error log, and broadcasts.' },
+  seasons:     { icon: '🏆', label: 'Seasons & Ratings',      desc: 'Season lifecycle, tiers, the rating engine, hero tiers, and achievements.' },
+  marketplace: { icon: '💰', label: 'Monetisation',           desc: 'Economy & pricing, gifts, coaching, tournaments, sponsorships, and lootboxes.' },
+  content:     { icon: '📝', label: 'Content (CMS)',          desc: 'Banners, tickers, the welcome modal, engagement highlights, and on-site copy.' },
+  config:      { icon: '⚙️', label: 'Site Settings',          desc: 'Infrastructure health, feature flags, integrations, and live ops logs.' },
+  users:       { icon: '👥', label: 'Players & Sign-Ups',     desc: 'Staff roles, ranks, nicknames, duplicates, and sign-up requests.' },
+  challenges:  { icon: '🎯', label: 'Community Challenges',    desc: 'Create and manage community challenges and their leaderboards.' },
+  rivals:      { icon: '⚔️', label: 'Weekly Rivals',          desc: 'Weekly head-to-head rival pairings.' },
+};
+
+// Grouped sidebar layout. Each item is a tab id resolved against TAB_META.
+const ADMIN_NAV_GROUPS = [
+  { label: 'Dashboard',     items: ['overview'] },
+  { label: 'Match Data',    items: ['matches'] },
+  { label: 'Bot & Lobbies', items: ['bot', 'diagnostics'] },
+  { label: 'Seasons & Money', items: ['seasons', 'marketplace'] },
+  { label: 'Site & Content', items: ['content', 'config'] },
+  { label: 'Community',     items: ['users', 'challenges', 'rivals'] },
+];
+
+// Valid tab ids — used to reject a stale localStorage value (e.g. an old
+// 'steambot' key) so a renamed tab never leaves the panel blank.
+const ADMIN_TAB_IDS = Object.keys(TAB_META);
+
+// Consistent header rendered at the top of every tab's content.
+function TabHeader({ id }) {
+  const m = TAB_META[id];
+  if (!m) return null;
+  return (
+    <header className="ap-tab-head">
+      <h2 className="ap-tab-title"><span aria-hidden>{m.icon}</span> {m.label}</h2>
+      <p className="ap-tab-desc">{m.desc}</p>
+    </header>
+  );
+}
+
 export default function AdminPanel() {
   const { isSuperuser, superuserKey, logout } = useSuperuser();
   const { activeSeason } = useSeason();
@@ -7826,7 +7871,12 @@ export default function AdminPanel() {
   const [unregLoading, setUnregLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState(() => {
-    try { return localStorage.getItem('admin_active_tab') || 'overview'; } catch { return 'overview'; }
+    try {
+      const saved = localStorage.getItem('admin_active_tab');
+      // Reject a stale key (e.g. a pre-reorg 'steambot') so a renamed tab
+      // never leaves the panel blank.
+      return ADMIN_TAB_IDS.includes(saved) ? saved : 'overview';
+    } catch { return 'overview'; }
   });
   useEffect(() => {
     try { localStorage.setItem('admin_active_tab', activeTab); } catch {}
@@ -7929,31 +7979,9 @@ export default function AdminPanel() {
     );
   }
 
-  const ADMIN_NAV = [
-    { label: 'Dashboard', items: [
-      { id: 'overview', icon: '📊', label: 'Overview' },
-    ]},
-    { label: 'Match Data', items: [
-      { id: 'matches', icon: '🎮', label: 'Matches & Replays' },
-    ]},
-    { label: 'Bot Tools', items: [
-      { id: 'steambot', icon: '🤖', label: 'Steam Bot & Test DMs' },
-    ]},
-    { label: 'Config', items: [
-      { id: 'seasons', icon: '🏆', label: 'Seasons & Ratings' },
-      { id: 'config', icon: '⚙️', label: 'Site Settings' },
-    ]},
-    { label: 'Users', items: [
-      { id: 'users', icon: '👥', label: 'Players & Sign-Ups', badge: pendingSignupCount > 0 ? pendingSignupCount : null },
-    ]},
-    { label: 'Marketplace', items: [
-      { id: 'marketplace', icon: '💰', label: 'Gifts, Coaching & Tournaments' },
-    ]},
-    { label: 'Engagement', items: [
-      { id: 'challenges', icon: '🎯', label: 'Community Challenges' },
-      { id: 'rivals', icon: '⚔️', label: 'Weekly Rivals' },
-    ]},
-  ];
+  // Sidebar nav is derived from ADMIN_NAV_GROUPS + TAB_META (module scope).
+  // Only the dynamic sign-up badge is resolved here per render.
+  const navBadge = (id) => (id === 'users' && pendingSignupCount > 0 ? pendingSignupCount : null);
 
   // Searchable index of admin features. Each entry deep-links to a tab and
   // optionally scrolls to a specific section anchor within that tab.
@@ -7966,14 +7994,14 @@ export default function AdminPanel() {
     { label: 'Replay Archive (Dedicated Server)', tab: 'matches', anchor: 'ap-anchor-replay-archive', icon: '🗂️', kw: 'dedicated server path' },
     { label: 'Replay Inspector', tab: 'matches', anchor: 'ap-anchor-replay-inspector', icon: '🔍', kw: 'parse debug' },
     { label: 'Database Backups', tab: 'matches', anchor: 'ap-anchor-db-backups', icon: '💾', kw: 'restore snapshot pg_dump nicknames' },
-    { label: 'Test: Provision & Connect', tab: 'steambot', anchor: 'ap-anchor-inhouse-diag', icon: '🔌', kw: 'rcon dedicated server diagnostic steam connect link test' },
-    { label: 'Steam Bot Controls', tab: 'steambot', anchor: 'ap-anchor-steam-bot', icon: '🤖', kw: 'lobby login reconnect status' },
-    { label: 'Notification Test Harness', tab: 'steambot', anchor: 'ap-anchor-notify-test', icon: '🔔', kw: 'notification test send discord dm web push mvp hot streak tier season wrapped tournament checkin payout coaching achievement quest prediction vod anniversary founders ring' },
-    { label: 'Background Job Triggers', tab: 'steambot', anchor: 'ap-anchor-job-run-now', icon: '⚡', kw: 'run now job cron trigger manual sweep puzzle pregen api quota account deletion ops snapshot checkin dq pro match sync payout season rollover weekly report badge expiry background' },
-    { label: 'Test Post-Match DM', tab: 'steambot', anchor: 'ap-anchor-test-dm', icon: '✉️', kw: 'discord direct message debug' },
-    { label: 'Test RSVP Registration DM', tab: 'steambot', anchor: 'ap-anchor-test-rsvp-dm', icon: '✉️', kw: 'discord rsvp invite' },
-    { label: 'Server Error Log', tab: 'steambot', anchor: 'ap-anchor-error-log', icon: '🚨', kw: 'errors crashes log' },
-    { label: 'Mass Discord DM', tab: 'steambot', anchor: 'ap-anchor-mass-dm', icon: '📢', kw: 'mass dm broadcast message players discord bulk announce' },
+    { label: 'Test: Provision & Connect', tab: 'bot', anchor: 'ap-anchor-inhouse-diag', icon: '🔌', kw: 'rcon dedicated server diagnostic steam connect link test' },
+    { label: 'Steam Bot Controls', tab: 'bot', anchor: 'ap-anchor-steam-bot', icon: '🤖', kw: 'lobby login reconnect status' },
+    { label: 'Notification Test Harness', tab: 'diagnostics', anchor: 'ap-anchor-notify-test', icon: '🔔', kw: 'notification test send discord dm web push mvp hot streak tier season wrapped tournament checkin payout coaching achievement quest prediction vod anniversary founders ring' },
+    { label: 'Background Job Triggers', tab: 'diagnostics', anchor: 'ap-anchor-job-run-now', icon: '⚡', kw: 'run now job cron trigger manual sweep puzzle pregen api quota account deletion ops snapshot checkin dq pro match sync payout season rollover weekly report badge expiry background' },
+    { label: 'Test Post-Match DM', tab: 'diagnostics', anchor: 'ap-anchor-test-dm', icon: '✉️', kw: 'discord direct message debug' },
+    { label: 'Test RSVP Registration DM', tab: 'diagnostics', anchor: 'ap-anchor-test-rsvp-dm', icon: '✉️', kw: 'discord rsvp invite' },
+    { label: 'Server Error Log', tab: 'diagnostics', anchor: 'ap-anchor-error-log', icon: '🚨', kw: 'errors crashes log' },
+    { label: 'Mass Discord DM', tab: 'diagnostics', anchor: 'ap-anchor-mass-dm', icon: '📢', kw: 'mass dm broadcast message players discord bulk announce' },
     { label: 'Staff Roles', tab: 'users', anchor: 'ap-anchor-staff-roles', icon: '🛡️', kw: 'admin moderator role permission grant revoke staff tier steam account access owner superuser' },
     { label: 'Season Lifecycle', tab: 'seasons', anchor: 'ap-anchor-season-lifecycle', icon: '📅', kw: 'start end activate launch' },
     { label: 'Season Tiers', tab: 'seasons', anchor: 'ap-anchor-season-tiers', icon: '🏆', kw: 'rank divisions ladder' },
@@ -7981,13 +8009,17 @@ export default function AdminPanel() {
     { label: 'Hero Tier Overrides', tab: 'seasons', anchor: 'ap-anchor-hero-tier', icon: '🏆', kw: 'meta heroes' },
     { label: 'Achievement System', tab: 'seasons', anchor: 'ap-anchor-achievements', icon: '🏅', kw: 'badges unlock' },
     { label: 'Cron Heartbeats', tab: 'config', anchor: 'ap-anchor-cron-heartbeats', icon: '❤️', kw: 'cron job heartbeat health monitor schedule overdue winback' },
-    { label: 'Engagement', tab: 'config', anchor: 'ap-anchor-engagement', icon: '🎯', kw: 'pinned highlights showcase' },
-    { label: 'Broadcast Ticker (CMS)', tab: 'config', anchor: 'ap-anchor-broadcast-ticker', icon: '📢', kw: 'announcement banner' },
-    { label: 'Welcome Modal (CMS)', tab: 'config', anchor: 'ap-anchor-welcome-modal', icon: '📣', kw: 'popup intro onboarding cta' },
-    { label: 'Home Banner (CMS)', tab: 'config', anchor: 'ap-anchor-home-banner', icon: '🪧', kw: 'home banner hero ad announcement dismissable closeable' },
-    { label: 'Tier Ladder Preview', tab: 'config', anchor: 'ap-anchor-tier-ladder', icon: '🎖️', kw: 'rank tier symbol badge ladder reference' },
+    { label: 'Discord Auto-Join Health', tab: 'config', anchor: 'ap-anchor-discord-autojoin', icon: '🔗', kw: 'discord auto join health invite server guild status' },
+    { label: 'Discord Rich Presence', tab: 'config', anchor: 'ap-anchor-discord-rpc', icon: '🎮', kw: 'discord rich presence rpc activity status playing' },
+    { label: 'Test Coach Promotion', tab: 'config', anchor: 'ap-anchor-test-coach', icon: '🎓', kw: 'test coach promote skip stripe connect kyc sandbox' },
+    { label: 'Engagement', tab: 'content', anchor: 'ap-anchor-engagement', icon: '🎯', kw: 'pinned highlights showcase' },
+    { label: 'Broadcast Ticker (CMS)', tab: 'content', anchor: 'ap-anchor-broadcast-ticker', icon: '📢', kw: 'announcement banner' },
+    { label: 'Welcome Modal (CMS)', tab: 'content', anchor: 'ap-anchor-welcome-modal', icon: '📣', kw: 'popup intro onboarding cta' },
+    { label: 'Home Banner (CMS)', tab: 'content', anchor: 'ap-anchor-home-banner', icon: '🪧', kw: 'home banner hero ad announcement dismissable closeable' },
+    { label: 'Side Banners (CMS)', tab: 'content', anchor: 'ap-anchor-side-banners', icon: '🪧', kw: 'side banner ad rail sponsor slot cms' },
+    { label: 'Tier Ladder Preview', tab: 'content', anchor: 'ap-anchor-tier-ladder', icon: '🎖️', kw: 'rank tier symbol badge ladder reference' },
     { label: 'Coaching Marketplace Flag', tab: 'config', anchor: 'ap-anchor-coaching-flag', icon: '🎓', kw: 'coaching marketplace feature flag toggle on off preview kill switch rollback' },
-    { label: 'Draft Sandbox', tab: 'steambot', anchor: 'ap-anchor-draft-sandbox', icon: '🎮', kw: 'draft pick captain test simulator placeholder dummy lobby inhouse' },
+    { label: 'Draft Sandbox', tab: 'bot', anchor: 'ap-anchor-draft-sandbox', icon: '🎮', kw: 'draft pick captain test simulator placeholder dummy lobby inhouse' },
     { label: 'Dota 2 Rank Management', tab: 'users', anchor: 'ap-anchor-rank-management', icon: '🎖️', kw: 'rank tier players' },
     { label: 'Manage Nicknames (Players page)', tab: 'users', anchor: 'ap-anchor-nicknames', icon: '✏️', kw: 'nickname rename alias display name' },
     { label: 'Profile Sandbox', tab: 'users', anchor: 'ap-anchor-profile-preview', icon: '👤', kw: 'profile customization edit bio title accent pin sample dummy sandbox test frame premium pro theme' },
@@ -7998,6 +8030,10 @@ export default function AdminPanel() {
     { label: 'Gift Purchases', tab: 'marketplace', anchor: 'ap-anchor-gifts', icon: '🎁', kw: 'pro gift stripe' },
     { label: 'Founders Pass Refunds', tab: 'marketplace', anchor: 'ap-anchor-founders-refunds', icon: '💍', kw: 'founders ring refund cap race stripe audit failed' },
     { label: 'Coaching Marketplace', tab: 'marketplace', anchor: 'ap-anchor-coaching', icon: '🎓', kw: 'coach payout connect bookings' },
+    { label: 'Commission Controls', tab: 'marketplace', anchor: 'ap-anchor-commission', icon: '💸', kw: 'commission rate fee coach override payout split take' },
+    { label: 'Sponsorships', tab: 'marketplace', anchor: 'ap-anchor-sponsorships', icon: '📣', kw: 'sponsorship sponsor slot order advertiser revenue' },
+    { label: 'White-Label Tenants', tab: 'marketplace', anchor: 'ap-anchor-tenants', icon: '🏷️', kw: 'tenant white label model a partner reseller' },
+    { label: 'Coin Betting Controls', tab: 'marketplace', icon: '🎲', kw: 'betting coin wager odds enable disable match prediction' },
     { label: 'Tournament Brackets', tab: 'marketplace', anchor: 'ap-anchor-tournaments', icon: '🏆', kw: 'tournament prize pool buy-in' },
     { label: 'Community Challenges', tab: 'challenges', icon: '🎯', kw: 'challenge leaderboard scoring quest community event' },
     { label: 'Weekly Rivals', tab: 'rivals', icon: '⚔️', kw: 'rival weekly pairing h2h head to head opponent matchup auto pair' },
@@ -8071,27 +8107,33 @@ export default function AdminPanel() {
               <div className="ap-search-empty">No matches.</div>
             )}
           </div>
-          {ADMIN_NAV.map(group => (
+          {ADMIN_NAV_GROUPS.map(group => (
             <div key={group.label} className="ap-nav-group">
               <div className="ap-nav-group-label">{group.label}</div>
-              {group.items.map(item => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`ap-nav-item ${activeTab === item.id ? 'active' : ''}`}
-                  onClick={() => setActiveTab(item.id)}
-                >
-                  <span className="ap-nav-icon" aria-hidden>{item.icon}</span>
-                  <span className="ap-nav-label">{item.label}</span>
-                  {item.badge ? <span className="ap-nav-badge">{item.badge}</span> : null}
-                </button>
-              ))}
+              {group.items.map(id => {
+                const meta = TAB_META[id];
+                if (!meta) return null;
+                const badge = navBadge(id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`ap-nav-item ${activeTab === id ? 'active' : ''}`}
+                    onClick={() => setActiveTab(id)}
+                  >
+                    <span className="ap-nav-icon" aria-hidden>{meta.icon}</span>
+                    <span className="ap-nav-label">{meta.label}</span>
+                    {badge ? <span className="ap-nav-badge">{badge}</span> : null}
+                  </button>
+                );
+              })}
             </div>
           ))}
         </aside>
         <div className="ap-main">
 
       {activeTab === 'overview' && (<>
+      <TabHeader id="overview" />
       {/* Quick Links */}
       <section id="ap-anchor-quick-links" style={{ marginBottom: 28 }}>
         <h2 style={{ marginBottom: 14 }}>Quick Links</h2>
@@ -8163,15 +8205,10 @@ export default function AdminPanel() {
       {/* Task #491 — Brand-asset hotlink report */}
       <AssetHotlinkCard superuserKey={superuserKey} />
 
-      {/* Task #450 — coin betting controls */}
-      <BettingControlsCard superuserKey={superuserKey} />
-
-      {/* Task #656 — new-visitor tutorial review controls */}
-      <TutorialReviewCard />
-
       </>)}
 
       {activeTab === 'matches' && (<>
+      <TabHeader id="matches" />
       {/* Manual Match Entry — moved to its own page */}
       <section id="ap-anchor-record-match" style={{ marginBottom: 36 }}>
         <h2 style={{ marginBottom: 10 }}>Record a Match</h2>
@@ -8238,9 +8275,28 @@ export default function AdminPanel() {
         </div>
       </section>
 
+      {/* Database Backups */}
+      <DbBackupManager superuserKey={superuserKey} />
+
+      {/* Stored Replays */}
+      <ReplayManager superuserKey={superuserKey} />
+
+      {/* Replay Archive (dedicated server) */}
+      <ReplayArchiveManager superuserKey={superuserKey} />
+
+      {/* Replay Inspector */}
+      <section style={{ marginBottom: 36 }}>
+        <h2 id="ap-anchor-replay-inspector" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🔍 Replay Inspector</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Upload a <code>.dem</code> file to see the raw account IDs extracted by the parser — useful for verifying accounts before committing a replay.
+        </p>
+        <ReplayInspectorPanel superuserKey={superuserKey} />
+      </section>
+
       </>)}
 
-      {activeTab === 'steambot' && (<>
+      {activeTab === 'bot' && (<>
+      <TabHeader id="bot" />
       {/* Task #297 — One-click dedicated server diagnostic */}
       <InhouseDiagPanel superuserKey={superuserKey} />
 
@@ -8265,18 +8321,8 @@ export default function AdminPanel() {
       </section>
       </>)}
 
-      {activeTab === 'matches' && (<>
-      {/* Database Backups */}
-      <DbBackupManager superuserKey={superuserKey} />
-
-      {/* Stored Replays */}
-      <ReplayManager superuserKey={superuserKey} />
-
-      {/* Replay Archive (dedicated server) */}
-      <ReplayArchiveManager superuserKey={superuserKey} />
-      </>)}
-
-      {activeTab === 'steambot' && (<>
+      {activeTab === 'diagnostics' && (<>
+      <TabHeader id="diagnostics" />
       {/* Task #699 — Notification test harness */}
       <NotificationTestPanel superuserKey={superuserKey} />
 
@@ -8297,14 +8343,56 @@ export default function AdminPanel() {
       </>)}
 
       {activeTab === 'seasons' && (<>
+      <TabHeader id="seasons" />
       {/* Season Tiers — 8-tier ladder per season */}
       <SeasonTiersPanel superuserKey={superuserKey} />
 
       {/* Season Lifecycle — end conditions + manual close */}
       <SeasonLifecyclePanel superuserKey={superuserKey} />
+
+      {/* v5.90 — Rating System: read-only status. The V1/V3 toggle and the
+          V3-vs-V1 preview were removed because V3 is now the only supported
+          engine and we're not going back. The DB column / setting key is
+          left in place so historical data and any external scripts keep
+          working unchanged. */}
+      <section>
+        <h2 id="ap-anchor-rating-system" style={{ marginBottom: 6 }}>⚖️ Rating System</h2>
+        <div style={{
+          padding: 12, background: 'var(--surface-2, rgba(255,255,255,0.03))',
+          borderRadius: 8, marginBottom: 16, fontSize: 13,
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+        }}>
+          <span style={{ color: 'var(--text-muted)' }}>Rating engine:</span>
+          <strong style={{ color: 'var(--accent)' }}>TrueSkill V3</strong>
+          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            (per-match Impact-weighted µ updates, σ floored at 2.5, no draw probability)
+          </span>
+        </div>
+      </section>
+      {/* ── V3 Modifier History debug lookup ─────────────────────────── */}
+      <V3ModifierDebugCard />
+
+      {/* Hero Tier Overrides */}
+      <section style={{ marginBottom: 36 }}>
+        <h2 id="ap-anchor-hero-tier" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🏆 Hero Tier Overrides</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Manually set a hero's tier to override the auto-computed tier (based on win rate). Leave blank to revert to auto-computed.
+        </p>
+        <HeroTierOverridesPanel superuserKey={superuserKey} selectedSeason={activeSeason} />
+      </section>
+
+      {/* Achievement System */}
+      <section style={{ marginBottom: 36 }}>
+        <h2 id="ap-anchor-achievements" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🏅 Achievement System</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
+          Achievements are automatically checked after each match. Use this to backfill achievements for all existing matches in the database.
+        </p>
+        <RecomputeAchievementsPanel superuserKey={superuserKey} />
+      </section>
       </>)}
 
       {activeTab === 'marketplace' && (<>
+      <TabHeader id="marketplace" />
       {/* Economy & Pricing — live-editable price overrides (Task #700) */}
       <EconomyPricingPanel superuserKey={superuserKey} />
 
@@ -8330,50 +8418,28 @@ export default function AdminPanel() {
       <TournamentBracketPanel />
       {/* Lootbox seasonal set management (retire / un-retire sets) */}
       <LootboxSetsCard superuserKey={superuserKey} />
-      </>)}
-
-      {activeTab === 'seasons' && (<>
-      {/* v5.90 — Rating System: read-only status. The V1/V3 toggle and the
-          V3-vs-V1 preview were removed because V3 is now the only supported
-          engine and we're not going back. The DB column / setting key is
-          left in place so historical data and any external scripts keep
-          working unchanged. */}
-      <section>
-        <h2 id="ap-anchor-rating-system" style={{ marginBottom: 6 }}>⚖️ Rating System</h2>
-        <div style={{
-          padding: 12, background: 'var(--surface-2, rgba(255,255,255,0.03))',
-          borderRadius: 8, marginBottom: 16, fontSize: 13,
-          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-        }}>
-          <span style={{ color: 'var(--text-muted)' }}>Rating engine:</span>
-          <strong style={{ color: 'var(--accent)' }}>TrueSkill V3</strong>
-          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-            (per-match Impact-weighted µ updates, σ floored at 2.5, no draw probability)
-          </span>
-        </div>
-      </section>
-      {/* ── V3 Modifier History debug lookup ─────────────────────────── */}
-      <V3ModifierDebugCard />
-
+      {/* Task #450 — coin betting controls */}
+      <BettingControlsCard superuserKey={superuserKey} />
       </>)}
 
       {activeTab === 'challenges' && (<>
+      <TabHeader id="challenges" />
       <CommunityChallengesPanel superuserKey={superuserKey} />
       </>)}
 
       {activeTab === 'rivals' && (<>
+      <TabHeader id="rivals" />
       <WeeklyRivalsPanel superuserKey={superuserKey} />
       </>)}
 
       {activeTab === 'config' && (<>
+      <TabHeader id="config" />
       {/* ── Cron heartbeats (Task #361) ──────────────────────────────── */}
       <CronHeartbeatsPanel superuserKey={superuserKey} />
       {/* ── Stripe configuration banner (Task #113) ─────────────────── */}
       <StripeStatusBanner superuserKey={superuserKey} />
       {/* ── Discord auto-join health (Task #127) ─────────────────────── */}
       <DiscordAutoJoinStatusPanel superuserKey={superuserKey} />
-      {/* ── Tier Ladder Preview ──────────────────────────────────────── */}
-      <TierLadderPreview />
       {/* ── Coaching Marketplace flag (v5.93 launch kill-switch) ─────── */}
       <CoachingMarketplaceFlagPanel superuserKey={superuserKey} />
       {/* ── Discord Rich Presence (Task #446) ────────────────────────── */}
@@ -8385,15 +8451,24 @@ export default function AdminPanel() {
       <OpsLogsCard superuserKey={superuserKey} />
       {/* ── Ops History sparklines ────────────────────────────────────── */}
       <OpsHistoryCard superuserKey={superuserKey} />
+      </>)}
+
+      {activeTab === 'content' && (<>
+      <TabHeader id="content" />
+      {/* ── Tier Ladder Preview ──────────────────────────────────────── */}
+      <TierLadderPreview />
       {/* ── Engagement Settings ──────────────────────────────────────── */}
       <EngagementSettingsPanel superuserKey={superuserKey} siteSettings={siteSettings} onSaved={loadSiteSettings} />
       <WelcomeModalPanel superuserKey={superuserKey} />
       <HomeBannerPanel superuserKey={superuserKey} />
       <SideBannerPanel superuserKey={superuserKey} />
       <BroadcastTickerPanel superuserKey={superuserKey} />
+      {/* Task #656 — new-visitor tutorial review controls */}
+      <TutorialReviewCard />
       </>)}
 
       {activeTab === 'users' && (<>
+      <TabHeader id="users" />
       {/* ── Staff Roles — grant admin/moderator tiers to Steam accounts ─ */}
       <RolesPanel superuserKey={superuserKey} />
 
@@ -8778,38 +8853,6 @@ export default function AdminPanel() {
         )}
       </section>
 
-      </>)}
-
-      {activeTab === 'seasons' && (<>
-      <section style={{ marginBottom: 36 }}>
-        <h2 id="ap-anchor-hero-tier" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🏆 Hero Tier Overrides</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-          Manually set a hero's tier to override the auto-computed tier (based on win rate). Leave blank to revert to auto-computed.
-        </p>
-        <HeroTierOverridesPanel superuserKey={superuserKey} selectedSeason={activeSeason} />
-      </section>
-
-      </>)}
-
-      {activeTab === 'matches' && (<>
-      <section style={{ marginBottom: 36 }}>
-        <h2 id="ap-anchor-replay-inspector" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🔍 Replay Inspector</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-          Upload a <code>.dem</code> file to see the raw account IDs extracted by the parser — useful for verifying accounts before committing a replay.
-        </p>
-        <ReplayInspectorPanel superuserKey={superuserKey} />
-      </section>
-
-      </>)}
-
-      {activeTab === 'seasons' && (<>
-      <section style={{ marginBottom: 36 }}>
-        <h2 id="ap-anchor-achievements" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>🏅 Achievement System</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-          Achievements are automatically checked after each match. Use this to backfill achievements for all existing matches in the database.
-        </p>
-        <RecomputeAchievementsPanel superuserKey={superuserKey} />
-      </section>
       </>)}
 
         </div>
