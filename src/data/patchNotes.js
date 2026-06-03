@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "9.26",
+    "title": "Admin: search and filter the Community Challenges list",
+    "published_at": "2026-06-03",
+    "notes": [
+      "**Filter bar above the table.** The Community Challenges admin table now has a filter bar — search by title, filter by status (All / Active / Inactive), and a 'Hide ended' checkbox that hides challenges whose window has already closed.",
+      "**Client-side, instant.** All filtering runs against the already-fetched list — no new API calls. The 'Hide ended' toggle only appears when there are ended challenges, and shows the count.",
+      "**Empty states.** A clear 'No challenges match the current filters' message shows when filters exclude every row, distinct from the original 'No challenges yet.' empty state.",
+      "**Full edition only.** a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.25",
     "title": "Players can now see how each community challenge is scored, in plain English",
     "published_at": "2026-06-03",

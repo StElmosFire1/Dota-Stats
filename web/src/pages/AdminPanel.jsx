@@ -5870,6 +5870,9 @@ function CommunityChallengesPanel({ superuserKey }) {
   const [showRaw, setShowRaw] = React.useState(false);
   const [rawDraft, setRawDraft] = React.useState('');
   const [rawError, setRawError] = React.useState('');
+  const [search, setSearch] = React.useState('');
+  const [statusFilter, setStatusFilter] = React.useState('all'); // all | active | inactive
+  const [hideEnded, setHideEnded] = React.useState(false);
 
   const load = React.useCallback(() => {
     if (!superuserKey) return;
@@ -5992,6 +5995,29 @@ function CommunityChallengesPanel({ superuserKey }) {
 
   const summary = editing ? _challengeSummary(editing) : '';
 
+  const filteredRows = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const now = Date.now();
+    return rows.filter(r => {
+      if (q && !(r.title || '').toLowerCase().includes(q)) return false;
+      if (statusFilter === 'active' && !r.is_active) return false;
+      if (statusFilter === 'inactive' && r.is_active) return false;
+      if (hideEnded) {
+        const ends = r.ends_at ? new Date(r.ends_at).getTime() : null;
+        if (ends != null && !Number.isNaN(ends) && ends < now) return false;
+      }
+      return true;
+    });
+  }, [rows, search, statusFilter, hideEnded]);
+
+  const endedCount = React.useMemo(() => {
+    const now = Date.now();
+    return rows.filter(r => {
+      const ends = r.ends_at ? new Date(r.ends_at).getTime() : null;
+      return ends != null && !Number.isNaN(ends) && ends < now;
+    }).length;
+  }, [rows]);
+
   return (
     <section className="admin-section" style={{ marginTop: 32 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -6003,6 +6029,59 @@ function CommunityChallengesPanel({ superuserKey }) {
         Active challenges appear on the Home page and are scored automatically as matches are recorded.
       </p>
       {msg && <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--text-secondary)' }}>{msg}</div>}
+
+      {!loading && rows.length > 0 && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
+          marginBottom: 14, padding: '10px 12px', borderRadius: 8,
+          background: 'var(--bg-hover)', border: '1px solid var(--border)',
+        }}>
+          <label style={{ display: 'flex', flexDirection: 'column', fontSize: 11, color: 'var(--text-muted)', flex: '1 1 220px' }}>
+            <span style={{ marginBottom: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Search by title</span>
+            <input
+              type="search"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Filter challenges…"
+              aria-label="Search challenges by title"
+              style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13 }}
+            />
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', fontSize: 11, color: 'var(--text-muted)' }}>
+            <span style={{ marginBottom: 4, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</span>
+            <div role="radiogroup" aria-label="Filter by status" style={{ display: 'flex', gap: 6 }}>
+              {[{ value: 'all', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }].map(opt => {
+                const active = statusFilter === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className="btn btn-small"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setStatusFilter(opt.value)}
+                    style={{
+                      fontSize: 12,
+                      borderColor: active ? 'var(--accent)' : 'var(--border)',
+                      background: active ? 'rgba(245,158,11,0.15)' : 'var(--bg-card)',
+                      color: active ? 'var(--accent)' : 'var(--text-primary)',
+                      fontWeight: active ? 700 : 500,
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {endedCount > 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)', alignSelf: 'flex-end', paddingBottom: 4 }}>
+              <input type="checkbox" checked={hideEnded} onChange={e => setHideEnded(e.target.checked)} />
+              Hide ended ({endedCount})
+            </label>
+          )}
+        </div>
+      )}
 
       {loading ? <div>Loading…</div> : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -6018,7 +6097,10 @@ function CommunityChallengesPanel({ superuserKey }) {
             {rows.length === 0 && (
               <tr><td colSpan={4} style={{ padding: 12, color: 'var(--text-muted)' }}>No challenges yet.</td></tr>
             )}
-            {rows.map(r => (
+            {rows.length > 0 && filteredRows.length === 0 && (
+              <tr><td colSpan={4} style={{ padding: 12, color: 'var(--text-muted)' }}>No challenges match the current filters.</td></tr>
+            )}
+            {filteredRows.map(r => (
               <tr key={r.id} style={{ borderTop: '1px solid var(--border)' }}>
                 <td style={{ padding: '8px' }}>
                   <strong>{r.title}</strong>
