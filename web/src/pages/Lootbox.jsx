@@ -34,7 +34,7 @@ const SHAKE_DURATION = { common: 500, rare: 700, epic: 900, legendary: 1100 };
 
 function OutcomeLine({ result }) {
   if (!result) return null;
-  const { outcome, item, refundCoins, proDays } = result;
+  const { outcome, item, refundCoins, proDays, tokenGranted } = result;
   if (outcome === 'pro_time') {
     return <strong style={{ color: rarityColor('legendary') }}>{proDays} days of Pro membership granted!</strong>;
   }
@@ -42,7 +42,8 @@ function OutcomeLine({ result }) {
     return <strong style={{ color: rarityColor(item.rarity) }}>New unlock! Added to your collection.</strong>;
   }
   if (outcome === 'dupe_token') {
-    return <strong style={{ color: rarityColor('legendary') }}>Duplicate Legendary — a wildcard token was minted.</strong>;
+    const n = tokenGranted || 1;
+    return <strong style={{ color: rarityColor('legendary') }}>Duplicate Legendary — {n > 1 ? `${n} wildcard tokens were minted.` : 'a wildcard token was minted.'}</strong>;
   }
   if (outcome === 'dupe_refund') {
     return <span style={{ color: 'var(--text-muted)' }}>Duplicate — refunded {refundCoins} coins.</span>;

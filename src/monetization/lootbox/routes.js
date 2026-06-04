@@ -44,11 +44,15 @@ function mountLootboxRoutes({ router, express, deps }) {
         blurb: b.blurb,
         odds: catalog.publishedOdds(b.id, retired, membership),
       }));
+      // Surface the live (admin-editable) dupe returns so any published copy
+      // reflects what the open transaction actually pays out.
+      const dupe = lb.getDupeReturns ? await lb.getDupeReturns() : null;
       res.json({
         edition: 'full',
         rarities: catalog.RARITY_META,
-        dupeRefundCoins: catalog.DUPE_REFUND_COINS,
-        dupeGrantsToken: catalog.DUPE_GRANTS_TOKEN,
+        dupeRefundCoins: dupe ? dupe.refundCoins : catalog.DUPE_REFUND_COINS,
+        dupeGrantsToken: dupe ? { legendary: dupe.legendaryRewardType === 'token' } : catalog.DUPE_GRANTS_TOKEN,
+        dupeReturns: dupe,
         sets: await lb.listSets(),
         boxes,
       });
@@ -187,6 +191,73 @@ function mountLootboxRoutes({ router, express, deps }) {
     }
   });
 
+  // ---- Admin: dupe returns (coin refunds + Legendary reward) -------------
+  // Task #804 — read/write the admin-editable duplicate payout overrides.
+  router.get('/admin/lootbox/dupe-returns', requireSuperuser, async (req, res) => {
+    try {
+      const cfg = await lb.getDupeReturnsConfig();
+      res.json(cfg);
+    } catch (err) {
+      console.error('[lootbox] admin dupe-returns GET:', err.message);
+      res.status(500).json({ error: 'Failed to load dupe returns' });
+    }
+  });
+
+  router.post('/admin/lootbox/dupe-returns', requireSuperuser, json, async (req, res) => {
+    try {
+      const body = req.body || {};
+      const MAX_COINS = 1_000_000;
+      const MAX_TOKENS = 100;
+      const out = {};
+
+      // Per-rarity coin refunds for common/rare/epic. Blank/omitted → default.
+      const parseCoins = (val, label) => {
+        if (val === '' || val == null) return undefined; // revert to default
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n) || String(val).trim() !== String(n) || n < 0 || n > MAX_COINS) {
+          const e = new Error(`Invalid ${label}: must be a whole number between 0 and ${MAX_COINS}`);
+          e.code = 'BAD_INPUT';
+          throw e;
+        }
+        return n;
+      };
+
+      const common = parseCoins(body.common, 'Common refund');
+      if (common !== undefined) out.common = common;
+      const rare = parseCoins(body.rare, 'Rare refund');
+      if (rare !== undefined) out.rare = rare;
+      const epic = parseCoins(body.epic, 'Epic refund');
+      if (epic !== undefined) out.epic = epic;
+      const legendaryCoins = parseCoins(body.legendaryCoins, 'Legendary coin reward');
+      if (legendaryCoins !== undefined) out.legendaryCoins = legendaryCoins;
+
+      // Legendary reward type: coins | token. Blank/omitted → default.
+      if (body.legendaryRewardType != null && body.legendaryRewardType !== '') {
+        const t = String(body.legendaryRewardType);
+        if (t !== 'coins' && t !== 'token') {
+          return res.status(400).json({ error: 'Legendary reward type must be "coins" or "token"' });
+        }
+        out.legendaryRewardType = t;
+      }
+
+      // Legendary token count (≥ 1). Blank/omitted → default.
+      if (body.legendaryTokens != null && body.legendaryTokens !== '') {
+        const n = parseInt(body.legendaryTokens, 10);
+        if (!Number.isFinite(n) || String(body.legendaryTokens).trim() !== String(n) || n < 1 || n > MAX_TOKENS) {
+          return res.status(400).json({ error: `Invalid Legendary token count: must be a whole number between 1 and ${MAX_TOKENS}` });
+        }
+        out.legendaryTokens = n;
+      }
+
+      const cfg = await lb.saveDupeReturns(out);
+      res.json({ ok: true, ...cfg });
+    } catch (err) {
+      if (err.code === 'BAD_INPUT') return res.status(400).json({ error: err.message });
+      console.error('[lootbox] admin dupe-returns POST:', err.message);
+      res.status(500).json({ error: 'Failed to save dupe returns' });
+    }
+  });
+
   router.post('/admin/lootbox/sets/retire', requireSuperuser, json, async (req, res) => {
     try {
       const setId = String(req.body?.setId || '');
@@ -213,11 +284,13 @@ function mountLootboxRoutes({ router, express, deps }) {
       const membership = lb.getCustomSetMembership ? await lb.getCustomSetMembership() : null;
       const box = catalog.getBox(boxId);
       const odds = catalog.publishedOdds(boxId, retired, membership);
+      const dupe = lb.getDupeReturns ? await lb.getDupeReturns() : null;
       res.json({
         box: { id: box.id, label: box.label, price: box.price, blurb: box.blurb, rarityWeights: box.rarityWeights },
         odds,
-        dupeRefundCoins: catalog.DUPE_REFUND_COINS,
-        dupeGrantsToken: catalog.DUPE_GRANTS_TOKEN,
+        dupeRefundCoins: dupe ? dupe.refundCoins : catalog.DUPE_REFUND_COINS,
+        dupeGrantsToken: dupe ? { legendary: dupe.legendaryRewardType === 'token' } : catalog.DUPE_GRANTS_TOKEN,
+        dupeReturns: dupe,
       });
     } catch (err) {
       console.error('[lootbox] lab inspect:', err.message);

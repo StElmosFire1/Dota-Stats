@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts, getAdminCosmeticsCatalog } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getLootboxDupeReturns, setLootboxDupeReturns, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts, getAdminCosmeticsCatalog } from '../api';
 import CosmeticPreview from '../components/CosmeticPreview';
 import FounderRing from '../components/founderRings/FounderRing';
 import { FRAME_META, LAYOUT_THEME_META, VOICE_PACK_META, COVER_FX_META, avatarRingStyle, bannerStyle, nameplateStyle, recapSkinSwatch } from '../profileCosmetics';
@@ -9376,6 +9376,7 @@ export default function AdminPanel() {
     { label: 'Discord ID Collisions', tab: 'users', anchor: 'ap-anchor-discord-collisions', icon: '🔗', kw: 'discord duplicate merge split collision unique link reconcile' },
     { label: 'Sign-Up Requests', tab: 'users', anchor: 'signup-requests', icon: '📋', kw: 'applications join approve reject pending' },
     { label: 'Economy & Pricing', tab: 'marketplace', anchor: 'ap-anchor-economy-pricing', icon: '💰', kw: 'coin prices packs frame gift pro founders ring economy pricing admin editable live override stripe aud cents monthly lifetime season pass' },
+    { label: 'Lootbox Dupe Returns', tab: 'marketplace', anchor: 'ap-anchor-dupe-returns', icon: '🎁', kw: 'lootbox dupe duplicate returns refund coins rarity common rare epic legendary wildcard token reward admin editable override consolation box open' },
     { label: 'Gift Purchases', tab: 'marketplace', anchor: 'ap-anchor-gifts', icon: '🎁', kw: 'pro gift stripe' },
     { label: 'Founders Pass Refunds', tab: 'marketplace', anchor: 'ap-anchor-founders-refunds', icon: '💍', kw: 'founders ring refund cap race stripe audit failed' },
     { label: 'Coaching Marketplace', tab: 'marketplace', anchor: 'ap-anchor-coaching', icon: '🎓', kw: 'coach payout connect bookings' },
@@ -9746,6 +9747,9 @@ export default function AdminPanel() {
       <TabHeader id="marketplace" />
       {/* Economy & Pricing — live-editable price overrides (Task #700) */}
       <EconomyPricingPanel superuserKey={superuserKey} />
+
+      {/* Lootbox Dupe Returns — live-editable duplicate payouts (Task #804) */}
+      <LootboxDupeReturnsPanel superuserKey={superuserKey} />
 
       {/* Gift Purchases — audit all sent/received gifts */}
       <GiftPurchasesPanel superuserKey={superuserKey} />
@@ -10786,6 +10790,212 @@ function EconomyPricingPanel({ superuserKey }) {
                 </tbody>
               </table>
             </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+// Task #804 — live-editable lootbox duplicate returns (per-rarity coin refunds
+// + the Legendary reward: coins or a wildcard token with a configurable count).
+function LootboxDupeReturnsPanel({ superuserKey }) {
+  const [data, setData] = React.useState(null);
+  const [draft, setDraft] = React.useState({});
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState('');
+  const [open, setOpen] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    if (!superuserKey) return;
+    try {
+      const j = await getLootboxDupeReturns(superuserKey);
+      setData(j);
+      setDraft({});
+      setMsg('');
+    } catch (e) { setMsg(`Load error: ${e.message}`); }
+  }, [superuserKey]);
+
+  React.useEffect(() => { if (open) load(); }, [open, load]);
+
+  const handleChange = (key, val) => setDraft(d => ({ ...d, [key]: val }));
+  const handleReset = (key) => setDraft(d => ({ ...d, [key]: '' }));
+
+  // Effective values (override applied) used to seed selects/displays.
+  const eff = data?.effective || {};
+  const def = data?.defaults || {};
+  const ov = data?.overrides || {};
+
+  // Reward-type select reflects draft → override → effective default.
+  const rewardTypeVal = draft.legendaryRewardType !== undefined
+    ? draft.legendaryRewardType
+    : (ov.legendaryRewardType ?? eff.legendaryRewardType ?? 'token');
+
+  const save = async () => {
+    if (!window.confirm('Save lootbox dupe returns? Empty coin fields revert to the hardcoded default.')) return;
+    setSaving(true); setMsg('');
+    try {
+      // Seed with existing stored overrides so untouched fields persist (the
+      // server replaces the whole blob). Draft '' values revert to default.
+      const payload = { ...ov, ...draft, legendaryRewardType: rewardTypeVal };
+      await setLootboxDupeReturns(payload, superuserKey);
+      setMsg('Dupe returns saved. Cache cleared — effective for new box opens immediately.');
+      load();
+    } catch (e) { setMsg(`Save error: ${e.message}`); }
+    finally { setSaving(false); }
+  };
+
+  const COIN_FIELDS = [
+    { key: 'common',         label: 'Common dupe refund',   defKey: 'common' },
+    { key: 'rare',           label: 'Rare dupe refund',     defKey: 'rare' },
+    { key: 'epic',           label: 'Epic dupe refund',     defKey: 'epic' },
+  ];
+
+  const isErr = msg.startsWith('Save error') || msg.startsWith('Load error');
+
+  return (
+    <section style={{ marginBottom: 36 }} aria-labelledby="ap-anchor-dupe-returns">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+        <h2 id="ap-anchor-dupe-returns" style={{ margin: 0 }}>🎁 Lootbox Dupe Returns</h2>
+        <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
+          style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer' }}>
+          {open ? 'Collapse ▲' : 'Expand ▼'}
+        </button>
+      </div>
+      {!open && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+          Tune what a duplicate cosmetic pays back — coin refunds per rarity, and the Legendary reward (coins or a Wildcard Token). Click Expand to edit.
+        </p>
+      )}
+      {open && (
+        <>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0, marginBottom: 12 }}>
+            When a box rolls a cosmetic the player already owns, they get a consolation return. Set the coin refund for Common/Rare/Epic dupes, and choose the Legendary reward. Leave a coin field blank to use the hardcoded default. Changes take effect immediately for new opens (30 s TTL cache, cleared on save).
+          </p>
+          {msg && (
+            <div style={{ marginBottom: 12, padding: '8px 12px', borderRadius: 6, background: isErr ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)', color: isErr ? '#ef4444' : 'var(--accent-green)', fontSize: 13 }}>
+              {msg}
+            </div>
+          )}
+          {!data && !msg && <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading…</p>}
+          {data && (
+            <>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 20 }}>
+                <thead>
+                  <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                    <th style={{ padding: '4px 10px 4px 0', fontWeight: 500, minWidth: 200 }}>Dupe outcome</th>
+                    <th style={{ padding: '4px 10px', fontWeight: 500 }}>Default</th>
+                    <th style={{ padding: '4px 10px', fontWeight: 500 }}>Current effective</th>
+                    <th style={{ padding: '4px 0', fontWeight: 500 }}>Override (coins)</th>
+                    <th style={{ padding: '4px 0 4px 8px', fontWeight: 500, width: 70 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {COIN_FIELDS.map(f => {
+                    const dflt = def.refundCoins?.[f.defKey];
+                    const effVal = eff.refundCoins?.[f.defKey];
+                    const overridden = ov[f.key] != null;
+                    const draftVal = draft[f.key];
+                    const displayVal = draftVal !== undefined ? draftVal : (ov[f.key] != null ? String(ov[f.key]) : '');
+                    const isDirty = draftVal !== undefined;
+                    return (
+                      <tr key={f.key} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td style={{ padding: '7px 10px 7px 0', fontWeight: overridden ? 600 : 400 }}>{f.label}</td>
+                        <td style={{ padding: '7px 10px', color: 'var(--text-muted)' }}>{dflt} 🪙</td>
+                        <td style={{ padding: '7px 10px', color: overridden ? 'var(--accent)' : 'var(--text-muted)', fontWeight: overridden ? 600 : 400 }}>
+                          {effVal} 🪙{overridden && <span style={{ fontSize: 10, marginLeft: 4, color: 'var(--accent)' }}>overridden</span>}
+                        </td>
+                        <td style={{ padding: '7px 10px 7px 0' }}>
+                          <input
+                            type="number" min="0" step="1"
+                            value={displayVal}
+                            placeholder={String(dflt)}
+                            aria-label={`Override coins for ${f.label}`}
+                            onChange={e => handleChange(f.key, e.target.value)}
+                            style={{ width: 100, padding: '4px 8px', borderRadius: 5, border: `1px solid ${isDirty ? 'var(--accent)' : 'var(--border)'}`, background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13 }}
+                          />
+                        </td>
+                        <td style={{ padding: '7px 0 7px 8px' }}>
+                          {(overridden || (isDirty && displayVal !== '')) && (
+                            <button type="button" onClick={() => handleReset(f.key)}
+                              aria-label={`Reset ${f.label} to default`}
+                              style={{ fontSize: 11, padding: '4px 8px', borderRadius: 4, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                              ↩ Reset
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 14, marginBottom: 16 }}>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 4px' }}>
+                  Legendary dupe reward
+                </h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 0, marginBottom: 10 }}>
+                  Default: {def.legendaryRewardType === 'token' ? `Wildcard Token ×${def.legendaryTokens}` : `${def.refundCoins?.legendary ?? 0} 🪙`}.
+                </p>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                    Reward type
+                    <select
+                      value={rewardTypeVal}
+                      aria-label="Legendary dupe reward type"
+                      onChange={e => handleChange('legendaryRewardType', e.target.value)}
+                      style={{ padding: '5px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13, minWidth: 160 }}>
+                      <option value="token">Wildcard Token</option>
+                      <option value="coins">Coins</option>
+                    </select>
+                  </label>
+
+                  {rewardTypeVal === 'token' ? (
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                      Token count (≥ 1)
+                      <input
+                        type="number" min="1" step="1"
+                        value={draft.legendaryTokens !== undefined ? draft.legendaryTokens : (ov.legendaryTokens != null ? String(ov.legendaryTokens) : '')}
+                        placeholder={String(def.legendaryTokens ?? 1)}
+                        aria-label="Legendary wildcard token count"
+                        onChange={e => handleChange('legendaryTokens', e.target.value)}
+                        style={{ width: 110, padding: '5px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13 }}
+                      />
+                    </label>
+                  ) : (
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--text-muted)' }}>
+                      Coin refund
+                      <input
+                        type="number" min="0" step="1"
+                        value={draft.legendaryCoins !== undefined ? draft.legendaryCoins : (ov.legendaryCoins != null ? String(ov.legendaryCoins) : '')}
+                        placeholder={String(def.refundCoins?.legendary ?? 0)}
+                        aria-label="Legendary dupe coin refund"
+                        onChange={e => handleChange('legendaryCoins', e.target.value)}
+                        style={{ width: 110, padding: '5px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13 }}
+                      />
+                    </label>
+                  )}
+
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Current: {eff.legendaryRewardType === 'token' ? `Wildcard Token ×${eff.legendaryTokens}` : `${eff.refundCoins?.legendary ?? 0} 🪙`}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button type="button" onClick={save} disabled={saving}
+                  style={{ padding: '7px 20px', borderRadius: 6, background: 'var(--accent-blue)', color: '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
+                  {saving ? 'Saving…' : '💾 Save dupe returns'}
+                </button>
+                <button type="button" onClick={load}
+                  style={{ padding: '7px 14px', borderRadius: 6, background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 13 }}>
+                  Refresh
+                </button>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  Blank coin fields revert to the hardcoded default on save.
+                </span>
+              </div>
+            </>
           )}
         </>
       )}

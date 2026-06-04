@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.42",
+    "title": "Lootbox duplicate returns are now admin-editable",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**New 'Lootbox Dupe Returns' card** in the Admin Panel (Monetisation tab, superuser-only). Tune exactly what a duplicate cosmetic pays back: the coin refund for Common/Rare/Epic dupes, and the Legendary reward — either a coin refund or a configurable number of Wildcard Tokens. Previously these were hardcoded in the catalog.",
+      "**Override layer mirrors the economy-pricing pattern.** Values are stored as a site-settings override with a short TTL cache that clears on save, so changes take effect for new box opens immediately. Leave a field blank to fall back to the hardcoded default — defaults stay identical (Common 25 / Rare 90 / Epic 220 coins, Legendary → 1 Wildcard Token). Input is strictly validated server-side (coins 0–1,000,000; token count 1–100).",
+      "**The reveal UI shows the live values.** The box-opening screen now reads dupe refunds and the Legendary token count straight from the server, so the consolation message always matches what was actually granted. Full edition only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.41",
     "title": "New admin Cosmetics Catalog — audit every cosmetic in one place",
     "published_at": "2026-06-04",

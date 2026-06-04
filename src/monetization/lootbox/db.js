@@ -116,6 +116,101 @@ function createLootboxDb({ getPool }) {
     return r.rows.map((x) => x.set_id);
   }
 
+  // ── Admin-editable dupe returns (Task #804) ───────────────────────────────
+  // Duplicate payouts (per-rarity coin refund + the Legendary reward) default
+  // to the hardcoded catalog values but can be overridden live from the Admin
+  // Panel. Overrides are a JSON blob in site_settings under DUPE_RETURNS_KEY.
+  // Mirrors the economy-override accessor: 30 s TTL cache, cleared on save so a
+  // change takes effect for new opens within seconds (no redeploy).
+  const DUPE_RETURNS_KEY = 'lootbox_dupe_returns';
+  let _dupeCache = { data: null, expiresAt: 0 };
+
+  function _dupeDefaults() {
+    return {
+      refundCoins: {
+        common: catalog.DUPE_REFUND_COINS.common || 0,
+        rare: catalog.DUPE_REFUND_COINS.rare || 0,
+        epic: catalog.DUPE_REFUND_COINS.epic || 0,
+        legendary: catalog.DUPE_REFUND_COINS.legendary || 0,
+      },
+      legendaryRewardType: catalog.DUPE_GRANTS_TOKEN.legendary ? 'token' : 'coins',
+      legendaryTokens: 1,
+    };
+  }
+
+  async function _getRawDupeOverrides() {
+    const now = Date.now();
+    if (_dupeCache.data !== null && now < _dupeCache.expiresAt) return _dupeCache.data;
+    let data = {};
+    try {
+      const p = getPool();
+      const r = await p.query('SELECT value FROM site_settings WHERE key = $1', [DUPE_RETURNS_KEY]);
+      const raw = r.rows[0]?.value ?? null;
+      const parsed = raw ? JSON.parse(raw) : {};
+      data = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    } catch (_) {
+      data = {};
+    }
+    _dupeCache = { data, expiresAt: now + 30_000 };
+    return data;
+  }
+
+  function _clearDupeCache() { _dupeCache = { data: null, expiresAt: 0 }; }
+
+  // Merge a (possibly partial) override blob over the catalog defaults, coercing
+  // every value to a sane shape. Bad/missing values fall back to the default.
+  function _mergeDupeReturns(overrides) {
+    const def = _dupeDefaults();
+    const o = (overrides && typeof overrides === 'object') ? overrides : {};
+    const intOr = (v, fallback) => {
+      if (v == null || v === '') return fallback;
+      const n = parseInt(v, 10);
+      return (Number.isFinite(n) && n >= 0) ? n : fallback;
+    };
+    const refundCoins = {
+      common: intOr(o.common, def.refundCoins.common),
+      rare: intOr(o.rare, def.refundCoins.rare),
+      epic: intOr(o.epic, def.refundCoins.epic),
+      legendary: intOr(o.legendaryCoins, def.refundCoins.legendary),
+    };
+    const legendaryRewardType = (o.legendaryRewardType === 'coins' || o.legendaryRewardType === 'token')
+      ? o.legendaryRewardType
+      : def.legendaryRewardType;
+    const tokensRaw = parseInt(o.legendaryTokens, 10);
+    const legendaryTokens = (Number.isFinite(tokensRaw) && tokensRaw >= 1) ? tokensRaw : def.legendaryTokens;
+    return { refundCoins, legendaryRewardType, legendaryTokens };
+  }
+
+  // Effective (merged) dupe returns — the values the open engine actually uses.
+  async function getDupeReturns() {
+    return _mergeDupeReturns(await _getRawDupeOverrides());
+  }
+
+  // Admin GET payload: defaults + raw stored overrides + effective merged view.
+  async function getDupeReturnsConfig() {
+    const overrides = await _getRawDupeOverrides();
+    return {
+      defaults: _dupeDefaults(),
+      overrides,
+      effective: _mergeDupeReturns(overrides),
+    };
+  }
+
+  // Persist a validated override blob (plain object). An empty object reverts
+  // every field to its catalog default. Clears the cache so it takes effect.
+  async function saveDupeReturns(overrides) {
+    const clean = (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) ? overrides : {};
+    const p = getPool();
+    await p.query(
+      `INSERT INTO site_settings (key, value, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [DUPE_RETURNS_KEY, JSON.stringify(clean)]
+    );
+    _clearDupeCache();
+    return getDupeReturnsConfig();
+  }
+
   // Per-set retirement metadata (id -> { retired, retired_at }).
   async function _retiredMeta() {
     const p = getPool();
@@ -359,6 +454,9 @@ function createLootboxDb({ getPool }) {
       const membership = await getCustomSetMembership();
       const item = catalog.rollDrop(free ? 'free' : boxId, retired, rng, ownedSkus, membership);
 
+      // Resolve the live (admin-editable) dupe returns once per open.
+      const dupeReturns = await getDupeReturns();
+
       let outcome = 'new';
       let isNew = false;
       let refundCoins = 0;
@@ -375,19 +473,23 @@ function createLootboxDb({ getPool }) {
            ON CONFLICT (account_id, kind, value) DO NOTHING RETURNING id`,
           [accountId, item.kind, item.value]
         );
+        // Legendary dupes mint wildcard token(s) only when the admin-configured
+        // reward type is 'token'; otherwise (and for all other rarities) they
+        // pay a coin refund. Token count + coin amounts are all live-editable.
+        const grantsToken = item.rarity === 'legendary' && dupeReturns.legendaryRewardType === 'token';
         if (claim.rowCount > 0) {
           isNew = true;
           outcome = 'new';
-        } else if (catalog.DUPE_GRANTS_TOKEN[item.rarity]) {
-          tokenGranted = 1;
+        } else if (grantsToken) {
+          tokenGranted = dupeReturns.legendaryTokens || 1;
           await client.query(
-            `INSERT INTO lootbox_wildcard_tokens (account_id, balance) VALUES ($1, 1)
-             ON CONFLICT (account_id) DO UPDATE SET balance = lootbox_wildcard_tokens.balance + 1, updated_at = NOW()`,
-            [accountId]
+            `INSERT INTO lootbox_wildcard_tokens (account_id, balance) VALUES ($1, $2)
+             ON CONFLICT (account_id) DO UPDATE SET balance = lootbox_wildcard_tokens.balance + $2, updated_at = NOW()`,
+            [accountId, tokenGranted]
           );
           outcome = 'dupe_token';
         } else {
-          refundCoins = catalog.DUPE_REFUND_COINS[item.rarity] || 0;
+          refundCoins = dupeReturns.refundCoins[item.rarity] || 0;
           if (refundCoins > 0) {
             await client.query(
               `INSERT INTO coin_transactions (account_id, delta, reason, ref_match_id) VALUES ($1, $2, $3, NULL)`,
@@ -596,6 +698,9 @@ function createLootboxDb({ getPool }) {
     getRetiredSetIds,
     getCustomSets,
     getCustomSetMembership,
+    getDupeReturns,
+    getDupeReturnsConfig,
+    saveDupeReturns,
     listSets,
     createSet,
     setRetired,

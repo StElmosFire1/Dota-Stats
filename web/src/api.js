@@ -2844,6 +2844,16 @@ export const adminRunJob = (superuserKey, job, opts = {}) =>
     superuserKey,
   });
 
+export const getLootboxDupeReturns = (superuserKey) =>
+  superuserJson('/admin/lootbox/dupe-returns', { superuserKey });
+
+export const setLootboxDupeReturns = (overrides, superuserKey) =>
+  superuserJson('/admin/lootbox/dupe-returns', {
+    method: 'POST',
+    body: overrides,
+    superuserKey,
+  });
+
 export const getAdminEconomyPrices = (superuserKey) =>
   superuserJson('/admin/economy/prices', { superuserKey });
 
