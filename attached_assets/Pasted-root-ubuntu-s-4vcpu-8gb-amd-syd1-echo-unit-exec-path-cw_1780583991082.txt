@@ -1,0 +1,39 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# echo "=== unit exec path + cwd ==="
+systemctl cat dota-server.service | grep -E 'ExecStart|WorkingDirectory'
+echo
+echo "=== start_server.sh ==="
+cat /opt/dota2/start_server.sh
+echo
+echo "=== steam.inf on disk now ==="
+grep -E 'ClientVersion|ServerVersion|VersionDate' /opt/dota2/game/dota/steam.inf
+echo
+echo "=== clean restart ==="
+systemctl restart dota-server.service
+sleep 30
+echo "service: $(systemctl is-active dota-server.service)"
+echo "=== fresh logs (last 35s) ==="
+journalctl -u dota-server.service --since "35 sec ago" --no-pager | grep -iE 'out of date|GC wants|server_version|build_version|Connection to Steam|ready' | tail -12
+=== unit exec path + cwd ===
+WorkingDirectory=/opt/dota2
+ExecStart=/opt/dota2/start_server.sh
+
+=== start_server.sh ===
+#!/bin/bash
+exec /opt/dota2/run -- /opt/dota2/game/bin/linuxsteamrt64/dota2 -dedicated -ip 0.0.0.0 -usercon +sv_hibernate_when_empty 0 +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6 +rcon_password "b4d5ceb0dc95e2f47e409e177e574f83" +sv_lan 0 +sv_cheats 0 +tv_enable 1 +tv_autorecord 1 +dota_force_gamemode 1 +map dota
+
+=== steam.inf on disk now ===
+ClientVersion=6797
+ServerVersion=6797
+VersionDate=Jun 01 2026
+
+=== clean restart ===
+service: active
+=== fresh logs (last 35s) ===
+Jun 04 14:39:03 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407549]: Version out of date (GC wants 6797, we are 6775)!
+Jun 04 14:39:03 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407549]: Version out of date (GC wants 6797, we are 6775)!
+Jun 04 14:39:03 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407549]: server_version: 6775
+Jun 04 14:39:03 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407549]: build_version: 6775
+Jun 04 14:39:03 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407549]: Version out of date (GC wants 6797, we are 6775)!
+Jun 04 14:39:12 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407756]: SV:  Connection to Steam servers successful.
+Jun 04 14:39:12 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407756]: server_version: 6797
+Jun 04 14:39:12 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407756]: build_version: 6797
