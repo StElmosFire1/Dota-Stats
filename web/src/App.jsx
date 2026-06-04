@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import SeasonSelector from './components/SeasonSelector';
 import SuperuserLoginModal from './components/SuperuserLoginModal';
 import { SeasonProvider } from './context/SeasonContext';
@@ -229,26 +229,10 @@ function HealthDot() {
   );
 }
 
-function AdminButton() {
-  // Admin status is tied to the signed-in Steam account (granted by the owner),
-  // so there's no password login button anymore — just a read-only badge that
-  // reflects the current account's staff tier.
-  const { isAdmin, isModerator, role } = useAdmin();
-  if (!isAdmin && !isModerator) return null;
-  const label = role === 'admin' ? 'Admin' : role === 'moderator' ? 'Mod' : 'Staff';
-  return (
-    <span
-      className="btn btn-small admin-badge"
-      title={`Signed in as ${label.toLowerCase()} (granted to your Steam account)`}
-      style={{ marginLeft: 8, cursor: 'default' }}
-    >
-      &#128274; {label}
-    </span>
-  );
-}
-
 function SteamButton() {
   const { steamUser, loading, signIn, logout } = useSteamAuth();
+  const { isAdmin, isModerator } = useAdmin();
+  const { isSuperuser } = useSuperuser();
   const [open, setOpen] = useState(false);
   const wrapRef = React.useRef(null);
   const location = useLocation();
@@ -375,6 +359,19 @@ function SteamButton() {
                 <span aria-hidden="true">⚔️</span> Compare H2H vs…
               </Link>
             )}
+            {/* Task #801 — Admin Panel link, consolidated into the account
+                dropdown. Visible to any elevated role (admin, moderator/staff,
+                or superuser); server-side authorization for /admin and the
+                admin APIs is unchanged. */}
+            {(isAdmin || isModerator || isSuperuser) && (
+              <>
+                <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+                <Link to="/admin" role="menuitem" style={itemStyle}
+                  onMouseEnter={(e) => onItemHover(e, true)} onMouseLeave={(e) => onItemHover(e, false)}>
+                  <span aria-hidden="true">🛡️</span> Admin Panel
+                </Link>
+              </>
+            )}
             <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
             <button
               type="button"
@@ -434,33 +431,6 @@ function SteamButton() {
         title="Password stays with Valve — click for details"
       />
     </span>
-  );
-}
-
-function SuperuserButton() {
-  const { isSuperuser, setShowModal } = useSuperuser();
-  const navigate = useNavigate();
-  if (isSuperuser) {
-    return (
-      <button
-        className="btn btn-small"
-        onClick={() => navigate('/admin')}
-        title="Go to Admin Panel"
-        style={{ marginLeft: 4, background: '#7b3f00', borderColor: '#ff9800', color: '#ff9800' }}
-      >
-        &#128081; Admin
-      </button>
-    );
-  }
-  return (
-    <button
-      className="btn btn-small"
-      onClick={() => setShowModal(true)}
-      title="Superuser login"
-      style={{ marginLeft: 4, opacity: 0.5 }}
-    >
-      &#128081;
-    </button>
   );
 }
 
@@ -769,8 +739,6 @@ function Nav() {
           /leaderboard, a player profile, etc. can still jump straight
           into the spectator stream without bouncing back to home. */}
       <WatchLiveBadge variant="nav" />
-      {/* Task #313 / v6.79 — coin balance pill, signed-in only. */}
-      <NavCoinPill accountId={accountId} />
       {/* Task #629 — consolidated hub navigation. The previous flat list of
           nine top-level links plus a 16-item catch-all "More" dropdown buried
           most of the site (ward maps, benchmarks, pick'em, wrapped, draft
@@ -855,9 +823,11 @@ function Nav() {
       <SeasonSelector />
       <ThemeToggle />
       <NotificationBell />
+      {/* Task #313 / v6.79 — coin balance pill, signed-in only. Task #801
+          moved it here so a player's account controls (coins + Steam login)
+          are grouped together on the right side of the nav. */}
+      <NavCoinPill accountId={accountId} />
       <SteamButton />
-      <AdminButton />
-      <SuperuserButton />
       <HealthDot />
     </nav>
   );
