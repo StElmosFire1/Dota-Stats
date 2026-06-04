@@ -15,8 +15,15 @@ Superuser is now **password-free and purely linked to the signed-in Steam accoun
   authenticated Steam session whose accountId is on that list — so an allow-listed
   owner is superuser **automatically on sign-in** (crown shows "👑 Admin", no modal,
   no password). The password-free `/admin/superuser-login` just flips the session flag.
-- **Fail-closed:** an empty/unset allow-list means *nobody* can elevate via the browser.
-  `SUPERUSER_STEAM_IDS` MUST be set in prod or the owner is locked out of the panel.
+- **Owner can never be locked out by a missing env var:** `parseSuperuserSteamIds()`
+  always adds a hardcoded `DEFAULT_OWNER_STEAM_ACCOUNT_ID` (the owner's public
+  32-bit accountId) on top of whatever `SUPERUSER_STEAM_IDS` lists — mirroring the
+  `OWNER_DISCORD_ID || '<default>'` fallback in `src/discord/bot.js`. So the owner
+  bypasses the lockdown gate + gets superuser even when `SUPERUSER_STEAM_IDS` is
+  unset/typo'd. **Why:** an unset env var on the self-managed VPS repeatedly hard-locked
+  the owner out with no web recovery; the hardcoded default removes that single point of
+  failure. **Everyone else still fails closed** — non-owners not on `SUPERUSER_STEAM_IDS`
+  get no elevation. Set the env var only to add co-owners.
 - **`SUPERUSER_PASSWORD` is optional and automation-only:** when set, the
   `x-superuser-key: <password>` header still elevates scripts / deploy hooks / the
   browser-smoke runner. The web client never sends that header, so it isn't a

@@ -39,10 +39,16 @@ test('helpers are exported from module scope (so the lockdown gate can call them
   assert.equal(typeof isAllowlistedSteamSuperuser, 'function');
 });
 
-test('parseSuperuserSteamIds: unset/empty/whitespace → empty set', () => {
-  withEnv(undefined, () => assert.equal(parseSuperuserSteamIds().size, 0));
-  withEnv('', () => assert.equal(parseSuperuserSteamIds().size, 0));
-  withEnv('   \n\t ', () => assert.equal(parseSuperuserSteamIds().size, 0));
+test('parseSuperuserSteamIds: unset/empty/whitespace → just the owner default', () => {
+  // The owner default is ALWAYS included so a missed env var can't lock the
+  // owner out (mirrors the OWNER_DISCORD_ID fallback).
+  for (const v of [undefined, '', '   \n\t ']) {
+    withEnv(v, () => {
+      const s = parseSuperuserSteamIds();
+      assert.equal(s.size, 1);
+      assert.ok(s.has('35944021'));
+    });
+  }
 });
 
 test('parseSuperuserSteamIds: comma/space/newline separated, trims + drops blanks', () => {
@@ -80,11 +86,23 @@ test('isAllowlistedSteamSuperuser: no session / no accountId → false', () => {
   });
 });
 
-test('isAllowlistedSteamSuperuser: empty/unset allow-list fails closed even for a matching-looking session', () => {
+test('isAllowlistedSteamSuperuser: non-owner with empty/unset allow-list → false (fail closed for everyone but the owner)', () => {
   withEnv('', () => {
-    assert.equal(isAllowlistedSteamSuperuser({ session: { accountId: 35944021 } }), false);
+    assert.equal(isAllowlistedSteamSuperuser({ session: { accountId: 777 } }), false);
   });
   withEnv(undefined, () => {
-    assert.equal(isAllowlistedSteamSuperuser({ session: { accountId: 35944021 } }), false);
+    assert.equal(isAllowlistedSteamSuperuser({ session: { accountId: '99999999' } }), false);
+  });
+});
+
+test('isAllowlistedSteamSuperuser: owner is allowed even when SUPERUSER_STEAM_IDS is empty/unset', () => {
+  // This is the regression that locked the owner out: an unset env var must NOT
+  // bar the owner from the lockdown gate / admin panel.
+  withEnv('', () => {
+    assert.equal(isAllowlistedSteamSuperuser({ session: { accountId: 35944021 } }), true);
+    assert.equal(isAllowlistedSteamSuperuser({ session: { accountId: '35944021' } }), true);
+  });
+  withEnv(undefined, () => {
+    assert.equal(isAllowlistedSteamSuperuser({ session: { accountId: 35944021 } }), true);
   });
 });

@@ -1224,22 +1224,36 @@ async function logEnvForcedLockdownOnBoot() {
 
 // Parse the SUPERUSER_STEAM_IDS allow-list into a Set of string Steam account
 // ids (the 32-bit accountId stored on req.session.accountId). Comma/space/
-// newline separated; blank entries ignored. Returns an empty Set when
-// unset/empty, which callers treat as "binding disabled". Module-scoped so both
-// createServer() (lockdown gate) and createApiRouter() (auth/role helpers) share
-// one source of truth.
+// newline separated; blank entries ignored. The owner default below is always
+// added, so the Set is never empty. Module-scoped so both createServer()
+// (lockdown gate) and createApiRouter() (auth/role helpers) share one source of
+// truth.
+// The historical/default owner Steam 32-bit account id (the value stored on
+// req.session.accountId). Mirrors the OWNER_DISCORD_ID fallback in
+// src/discord/bot.js so a missing / mistyped SUPERUSER_STEAM_IDS on a prod host
+// can never hard-lock the owner out of the admin panel or the FULL_SITE_LOCKDOWN
+// gate. Co-owners are added via SUPERUSER_STEAM_IDS — this default is always
+// included on top of whatever the env var lists. Not a secret: it's the owner's
+// public 32-bit account id (the number in their /profile URL), and access still
+// requires actually being signed in as that Steam account (verified server-side
+// via Steam OpenID, signed session cookie).
+const DEFAULT_OWNER_STEAM_ACCOUNT_ID = '35944021';
+
 function parseSuperuserSteamIds() {
   const raw = process.env.SUPERUSER_STEAM_IDS || '';
-  return new Set(
+  const ids = new Set(
     raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
   );
+  // Always allow-list the owner so a missed env var can't lock them out.
+  ids.add(DEFAULT_OWNER_STEAM_ACCOUNT_ID);
+  return ids;
 }
 
 // Superuser is granted PURELY by Steam account — no password. Returns true when
 // the caller has an authenticated Steam session whose 32-bit accountId is on the
-// SUPERUSER_STEAM_IDS allow-list. An empty/unset allow-list returns false
-// (fail-closed: nobody auto-elevates in the browser), so SUPERUSER_STEAM_IDS
-// must be set in prod for the owner to get in. accountId is verified server-side
+// allow-list (SUPERUSER_STEAM_IDS plus the always-included owner default). The
+// owner is therefore granted even when SUPERUSER_STEAM_IDS is unset, so a missed
+// env var on a prod host can't lock them out. accountId is verified server-side
 // at /auth/complete via Steam OpenID, so it can't be forged client-side, and the
 // session cookie is signed.
 function isAllowlistedSteamSuperuser(req) {

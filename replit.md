@@ -140,7 +140,7 @@ Full per-variable reference lives in **`docs/env-vars.md`** (moved out to keep t
 - `SESSION_FINGERPRINT_SALT` — smurf-detector session fingerprint salt; falls back to `SESSION_SECRET`.
 - `SESSION_COOKIE_DOMAIN` / `CANONICAL_HOST` — apex↔www session persistence (full edition).
 - `BRAND_ASSET_REFERER_ALLOWLIST` — brand-asset hotlink protection (full edition).
-- `SUPERUSER_STEAM_IDS` — password-free, Steam-account-bound superuser allow-list (full edition); MUST be set in prod or the owner is locked out. `SUPERUSER_PASSWORD` is optional/automation-only.
+- `SUPERUSER_STEAM_IDS` — password-free, Steam-account-bound superuser allow-list (full edition). The owner's account id is hardcoded as an always-included default (mirrors `OWNER_DISCORD_ID`), so a missing/typo'd env var can no longer lock the owner out; set this only to add co-owners. `SUPERUSER_PASSWORD` is optional/automation-only.
 - `BLOCK_AI_AGENTS` — AI scraper / clone-builder hardening; observability-only unless set to `1`.
 - `CSP_REPORT_ONLY` / `CSP_REPORT_URI` — Content-Security-Policy (full edition); enforcing by default, report-only is the instant rollback.
 

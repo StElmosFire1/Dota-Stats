@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.29",
+    "title": "Owner can no longer be locked out of the site lockdown gate",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**Steam sign-in always gets the owner in.** The owner's Steam account is now a hardcoded, always-included entry on the superuser allow-list (mirroring the existing `OWNER_DISCORD_ID` fallback). Previously, if `SUPERUSER_STEAM_IDS` was unset or mistyped on the server, the allow-list was empty and *fail-closed* — which locked the owner out of the private-preview lockdown gate and the admin panel with no web recovery.",
+      "**Superuser is automatic on sign-in.** Signing in with the owner's Steam account now reliably bypasses the `FULL_SITE_LOCKDOWN` gate and grants superuser/admin, regardless of the server's env-var configuration. Co-owners can still be added via `SUPERUSER_STEAM_IDS`.",
+      "**Everyone else still fails closed.** Non-owner accounts that aren't on `SUPERUSER_STEAM_IDS` get no elevation. Full edition only; community edition untouched."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.27",
     "title": "Pro badge no longer crowds the navbar on phones",
     "published_at": "2026-06-03",
