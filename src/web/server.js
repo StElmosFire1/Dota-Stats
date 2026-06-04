@@ -14497,6 +14497,127 @@ NOTES
     }
   });
 
+  // ──────────────────────────────────────────────────────────────────────
+  // POST /api/admin/inhouse/rcon-push-password
+  //   Lightweight "just push a password over RCON" for the case where a
+  //   match is about to start and the operator needs to (re-)set the
+  //   server's sv_password WITHOUT spinning up a synthetic diagnostic
+  //   session (which creates a row that then needs Cleanup). Useful when
+  //   the auto RCON push at draft-complete failed and a real session is
+  //   stuck in `server_failed`.
+  //
+  //   Body: { sessionId?, password? }
+  //     - `sessionId` present → re-push the REAL session's stored
+  //       match_password (or, if a `password` is also supplied, override it
+  //       and persist the new value onto that session).
+  //     - `password` present (no sessionId) → push that custom password.
+  //     - neither → generate a fresh test password and push it.
+  //
+  //   Unlike diag-provision this NEVER inserts a row, never touches Discord
+  //   or voice, and never flips any session status — it only sets
+  //   sv_password and (when re-pushing for a real session) keeps that
+  //   session's stored password in sync. Returns the same live-RCON
+  //   `serverStatus` readout the diag-provision route returns.
+  // ──────────────────────────────────────────────────────────────────────
+  router.post('/admin/inhouse/rcon-push-password', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const cfg = require('../config').config;
+      const cfgFailures = [];
+      if (!cfg.dota?.dedicatedServer?.ip) {
+        cfgFailures.push('No dedicated server IP configured (DEDICATED_SERVER_IP).');
+      }
+      if (!cfg.dota?.dedicatedServer?.rconPassword) {
+        cfgFailures.push('RCON password not configured (DEDICATED_SERVER_RCON_PASSWORD).');
+      }
+      if (cfgFailures.length) {
+        return res.status(503).json({ error: cfgFailures.join(' '), rcon: null, serverStatus: null });
+      }
+
+      const sessionId = req.body?.sessionId != null && req.body.sessionId !== ''
+        ? Number(req.body.sessionId)
+        : null;
+      if (sessionId != null && !Number.isFinite(sessionId)) {
+        return res.status(400).json({ error: 'Invalid session id' });
+      }
+      const customPwd = (req.body?.password || '').toString().trim();
+      if (customPwd && !/^[A-Za-z0-9_-]{4,32}$/.test(customPwd)) {
+        return res.status(400).json({ error: 'Password must be 4–32 characters: letters, numbers, underscore or hyphen only.' });
+      }
+
+      let session = null;
+      let password = customPwd || null;
+      let source = customPwd ? 'custom' : null;
+
+      if (sessionId != null) {
+        session = await db.getInhouseSession(sessionId).catch(() => null);
+        if (!session) return res.status(404).json({ error: `Session #${sessionId} not found.` });
+        if (!password) {
+          password = session.match_password;
+          if (!password) {
+            return res.status(400).json({ error: `Session #${sessionId} has no match password to re-push. Provide a custom password instead.` });
+          }
+          source = 'session';
+        }
+      }
+
+      if (!password) {
+        const { generateMatchPassword } = require('../services/steamConnectLink');
+        password = generateMatchPassword(8);
+        source = 'generated';
+      }
+
+      let rcon = null;
+      try {
+        const { setMatchPassword } = require('../services/rconClient');
+        await setMatchPassword(password);
+        rcon = { ok: true };
+      } catch (rconErr) {
+        return res.status(502).json({ error: rconErr.message, rcon: { ok: false, error: rconErr.message }, password, source, serverStatus: null });
+      }
+
+      // When we pushed a custom password for a real session, persist it so the
+      // session's stored password stays in sync with what the server now expects.
+      if (sessionId != null && session && customPwd && session.match_password !== password) {
+        try {
+          session = await db.updateInhouseSession(sessionId, { match_password: password });
+        } catch (_) { /* non-fatal — RCON push already succeeded */ }
+      }
+
+      // Live status readout so the operator can confirm the server is up.
+      let serverStatus = null;
+      try {
+        const { pingServer } = require('../services/rconClient');
+        serverStatus = await pingServer();
+      } catch (sErr) {
+        serverStatus = { ok: false, error: sErr.message };
+      }
+
+      const serverIp = session?.server_ip || cfg.dota?.dedicatedServer?.ip || null;
+      const serverPort = session?.server_port || cfg.dota?.dedicatedServer?.port || 27015;
+      const connectLink = (serverIp && password)
+        ? `steam://connect/${serverIp}:${serverPort}/${encodeURIComponent(password)}`
+        : null;
+      const consoleCommand = (serverIp && password)
+        ? `connect ${serverIp}:${serverPort}; password ${password}`
+        : null;
+
+      res.json({
+        ok: true,
+        source,
+        sessionId: sessionId != null ? sessionId : null,
+        password,
+        serverIp,
+        serverPort,
+        connectLink,
+        consoleCommand,
+        rcon,
+        serverStatus,
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.post('/inhouse/:id/server', requireAdmin, express.json(), async (req, res) => {
     try {
       // Task #168 — delegated to the shared helper so the manual admin

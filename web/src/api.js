@@ -288,6 +288,30 @@ export async function cleanupInhouseDiag(sessionId, superuserKey) {
   return d;
 }
 
+// `pushInhouseServerPassword` re-pushes a match password to the dedicated
+// server over RCON WITHOUT creating a synthetic diagnostic session. Pass
+// `{ sessionId }` to re-push a real session's stored password, `{ password }`
+// to push a custom one, or neither to push a freshly generated test password.
+// Returns the same live-RCON `serverStatus` readout the diag-provision route does.
+export async function pushInhouseServerPassword({ sessionId = null, password = null } = {}, superuserKey) {
+  const body = {};
+  if (sessionId != null) body.sessionId = sessionId;
+  if (password) body.password = password;
+  const r = await superuserFetch('/admin/inhouse/rcon-push-password', {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const err = new Error(d.error || `RCON password push failed: ${r.status}`);
+    err.rcon = d.rcon || null;
+    err.serverStatus = d.serverStatus || null;
+    throw err;
+  }
+  return d;
+}
+
 function _findHeader(headers, name) {
   const lower = name.toLowerCase();
   return Object.keys(headers).some(k => k.toLowerCase() === lower);

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts } from '../api';
 import CosmeticPreview from '../components/CosmeticPreview';
 import Dialog from '../components/Dialog';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
@@ -4464,6 +4464,40 @@ function InhouseDiagPanel({ superuserKey }) {
   const [srvCheckedAt, setSrvCheckedAt] = useState(null);
   // Collapsible operator checklist.
   const [checklistOpen, setChecklistOpen] = useState(false);
+  // Lightweight "re-push password" path (no synthetic diagnostic session).
+  const [activeSession, setActiveSession] = useState(null);
+  const [pushing, setPushing] = useState(false);
+  const [pushResult, setPushResult] = useState(null);
+  const [pushError, setPushError] = useState('');
+  const [customPwd, setCustomPwd] = useState('');
+
+  const loadActiveSession = useCallback(async () => {
+    try {
+      const r = await fetch('/api/inhouse/active', { credentials: 'same-origin' });
+      const d = await r.json().catch(() => ({}));
+      setActiveSession(r.ok ? (d.session || null) : null);
+    } catch (_) {
+      setActiveSession(null);
+    }
+  }, []);
+
+  useEffect(() => { loadActiveSession(); }, [loadActiveSession]);
+
+  async function handlePushPassword({ sessionId = null, password = null } = {}) {
+    setPushing(true);
+    setPushError('');
+    setPushResult(null);
+    try {
+      const r = await pushInhouseServerPassword({ sessionId, password }, superuserKey);
+      setPushResult(r);
+      // A real-session re-push may have updated the stored password — refresh.
+      if (sessionId != null) loadActiveSession();
+    } catch (e) {
+      setPushError(e.message || 'Password push failed.');
+    } finally {
+      setPushing(false);
+    }
+  }
 
   const loadSrvStatus = useCallback(async () => {
     setSrvLoading(true);
@@ -4689,6 +4723,142 @@ function InhouseDiagPanel({ superuserKey }) {
           >
             {cleaningUp ? '⏳ Cleaning up…' : '🧹 Cleanup diagnostic session'}
           </button>
+        )}
+      </div>
+
+      {/* ── Re-push password (no diagnostic session) ──────────────────────── */}
+      <div style={{
+        padding: '12px 16px', borderRadius: 8, background: 'var(--bg-card)',
+        border: '1px solid var(--border)', marginBottom: 14, fontSize: 13,
+      }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>Re-push server password</div>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 10px' }}>
+          Pushes <code>sv_password</code> straight to the dedicated server over RCON
+          <strong> without</strong> creating a synthetic session (nothing to clean up). Use this when a
+          match is about to start and the automatic push failed — e.g. a real lobby is stuck in
+          <code> server_failed</code>.
+        </p>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {activeSession && activeSession.match_password ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => handlePushPassword({ sessionId: activeSession.id })}
+              disabled={pushing}
+            >
+              {pushing ? '⏳ Pushing…' : `🔑 Re-push current password (session #${activeSession.id})`}
+            </button>
+          ) : (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              {activeSession
+                ? `Active session #${activeSession.id} (${activeSession.status}) has no password yet.`
+                : 'No active inhouse session.'}
+            </span>
+          )}
+          <button
+            type="button"
+            className="btn"
+            onClick={() => handlePushPassword({})}
+            disabled={pushing}
+          >
+            {pushing ? '⏳ Pushing…' : '🎲 Push fresh test password'}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+          <label htmlFor="ap-diag-custom-pwd" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Custom password
+          </label>
+          <input
+            id="ap-diag-custom-pwd"
+            type="text"
+            value={customPwd}
+            onChange={(e) => setCustomPwd(e.target.value)}
+            placeholder="4–32 chars: A–Z a–z 0–9 _ -"
+            style={{
+              fontFamily: 'monospace', fontSize: 13, padding: '4px 8px',
+              borderRadius: 4, border: '1px solid var(--border)',
+              background: 'var(--bg)', color: 'var(--text)', minWidth: 200,
+            }}
+          />
+          <button
+            type="button"
+            className="btn"
+            onClick={() => handlePushPassword({
+              sessionId: activeSession && activeSession.match_password ? activeSession.id : null,
+              password: customPwd.trim(),
+            })}
+            disabled={pushing || !customPwd.trim()}
+          >
+            {pushing ? '⏳ Pushing…' : '🔧 Push custom password'}
+          </button>
+        </div>
+
+        {pushError && (
+          <div style={{
+            marginTop: 10, padding: '8px 12px', borderRadius: 6, background: '#450a0a',
+            border: '1px solid #f87171', color: '#fca5a5', fontSize: 13,
+          }}>
+            ⚠ {pushError}
+          </div>
+        )}
+
+        {pushResult && (
+          <div style={{
+            marginTop: 10, padding: 12, borderRadius: 8, background: 'var(--bg)',
+            border: '1px solid var(--border)', fontSize: 13,
+          }}>
+            <div style={{ marginBottom: 8, color: 'var(--text-muted)' }}>
+              ✓ Password pushed over RCON
+              {pushResult.source === 'session' && pushResult.sessionId != null && (
+                <> — re-pushed session <code>#{pushResult.sessionId}</code>&rsquo;s stored password.</>
+              )}
+              {pushResult.source === 'custom' && (
+                <> — custom password set{pushResult.sessionId != null ? <> on session <code>#{pushResult.sessionId}</code></> : null}.</>
+              )}
+              {pushResult.source === 'generated' && <> — fresh test password generated.</>}
+            </div>
+            <div style={{ marginBottom: 8, fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>
+              Server: {pushResult.serverIp}:{pushResult.serverPort} · Password: {pushResult.password}
+            </div>
+            {pushResult.connectLink && (
+              <div style={{ marginBottom: 8 }}>
+                <a
+                  href={pushResult.connectLink}
+                  style={{
+                    display: 'inline-block', padding: '8px 18px',
+                    background: '#171a21', color: '#66c0f4', textDecoration: 'none',
+                    borderRadius: 4, fontWeight: 700, border: '1px solid #66c0f4', fontSize: 13,
+                  }}
+                >
+                  🎮 Connect to Server
+                </a>
+              </div>
+            )}
+            {pushResult.serverStatus && (
+              <details open style={{ marginTop: 4 }}>
+                <summary style={{ fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>
+                  {pushResult.serverStatus.ok ? '✓ Live server status (RCON)' : '⚠ Server status (RCON ping failed)'}
+                </summary>
+                {pushResult.serverStatus.ok ? (
+                  <pre style={{
+                    margin: '6px 0 0', padding: '8px 10px',
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderRadius: 4, color: 'var(--text-muted)', fontFamily: 'monospace',
+                    fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                    maxHeight: 220, overflow: 'auto',
+                  }}>
+                    {pushResult.serverStatus.response}
+                  </pre>
+                ) : (
+                  <div style={{ fontSize: 12, color: '#fca5a5', marginTop: 4 }}>
+                    {pushResult.serverStatus.error}
+                  </div>
+                )}
+              </details>
+            )}
+          </div>
         )}
       </div>
 

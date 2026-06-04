@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.35",
+    "title": "Re-push the server password without spinning up a diagnostic session",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**New 'Re-push server password' card** in Admin Panel → Bot → 🔌 Test: Provision & Connect. When a match is about to start and the automatic RCON push at draft-complete failed (lobby stuck in `server_failed`), a superuser can now push `sv_password` straight to the dedicated server over RCON without creating a synthetic diagnostic session — so there's nothing to clean up afterwards.",
+      "**Three push modes.** *Re-push current password* re-sends the live active session's stored password (and keeps the session row in sync); *Push fresh test password* generates a throwaway one; *Push custom password* sends a value you type (4–32 chars, A–Z a–z 0–9 _ -). Each push returns the same live RCON `status` readout (player count / map) plus a one-click steam:// connect link.",
+      "**Backed by `POST /api/admin/inhouse/rcon-push-password`** (superuser-only). Unlike the diagnostic provision route it never inserts a row, never posts to Discord, and never flips any session status. Full edition only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.34",
     "title": "Dedicated server now auto-recovers when it crashes between matches",
     "published_at": "2026-06-04",
