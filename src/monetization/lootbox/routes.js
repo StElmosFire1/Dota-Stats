@@ -199,6 +199,118 @@ function mountLootboxRoutes({ router, express, deps }) {
       res.status(500).json({ error: 'Failed to update set' });
     }
   });
+
+  // ---- Admin: Lootbox Lab — inspect a box's live catalog -----------------
+  // Returns the full published odds for a box tier (same data the player UI
+  // shows, but also including per-item detail flags). Superuser-only.
+  router.get('/admin/lootbox/lab/inspect', requireSuperuser, async (req, res) => {
+    try {
+      const boxId = String(req.query.boxId || '');
+      if (!catalog.isValidBoxId(boxId)) {
+        return res.status(400).json({ error: 'Unknown box id' });
+      }
+      const retired = await lb.getRetiredSetIds();
+      const membership = lb.getCustomSetMembership ? await lb.getCustomSetMembership() : null;
+      const box = catalog.getBox(boxId);
+      const odds = catalog.publishedOdds(boxId, retired, membership);
+      res.json({
+        box: { id: box.id, label: box.label, price: box.price, blurb: box.blurb, rarityWeights: box.rarityWeights },
+        odds,
+        dupeRefundCoins: catalog.DUPE_REFUND_COINS,
+        dupeGrantsToken: catalog.DUPE_GRANTS_TOKEN,
+      });
+    } catch (err) {
+      console.error('[lootbox] lab inspect:', err.message);
+      res.status(500).json({ error: 'Failed to inspect box' });
+    }
+  });
+
+  // ---- Admin: Lootbox Lab — dry-run simulate opens -----------------------
+  // Rolls the real drop logic N times with zero side effects (no coin debit,
+  // no grant, no event log, no free-claim consumption). Supports:
+  //   boxId      — box tier to simulate
+  //   count      — 1..1000, defaults to 1
+  //   forceRarity — skip the rarity roll and pick from this rarity's pool
+  //   forceSku    — return this specific item without any roll
+  // When forceRarity/forceSku are set and count > 1 the forced item is
+  // returned for every roll (useful to preview an animation for a specific
+  // cosmetic/rarity N times).
+  router.post('/admin/lootbox/lab/simulate', requireSuperuser, json, async (req, res) => {
+    try {
+      const boxId = String(req.body?.boxId || '');
+      if (!catalog.isValidBoxId(boxId)) {
+        return res.status(400).json({ error: 'Unknown box id' });
+      }
+      const rawCount = parseInt(req.body?.count, 10);
+      const count = Number.isFinite(rawCount) && rawCount >= 1 ? Math.min(rawCount, 1000) : 1;
+      const forceRarity = req.body?.forceRarity ? String(req.body.forceRarity) : null;
+      const forceSku = req.body?.forceSku ? String(req.body.forceSku) : null;
+
+      const retired = await lb.getRetiredSetIds();
+      const membership = lb.getCustomSetMembership ? await lb.getCustomSetMembership() : null;
+
+      // Build eligible item pool once.
+      const pool = catalog.eligibleItems(boxId, retired, membership);
+      const byRarity = {};
+      for (const r of catalog.RARITIES) byRarity[r] = [];
+      for (const it of pool) byRarity[it.rarity].push(it);
+
+      // Forced-item validation: check the forced SKU is actually in the pool.
+      let forcedItem = null;
+      if (forceSku) {
+        forcedItem = pool.find(it => it.sku === forceSku) || null;
+        if (!forcedItem) {
+          return res.status(400).json({ error: `Item ${forceSku} is not in the active drop pool for box ${boxId}` });
+        }
+      }
+
+      // Forced-rarity validation.
+      if (forceRarity && !catalog.RARITIES.includes(forceRarity)) {
+        return res.status(400).json({ error: `Unknown rarity: ${forceRarity}` });
+      }
+      if (forceRarity && !forcedItem && byRarity[forceRarity].length === 0) {
+        return res.status(400).json({ error: `No items of rarity ${forceRarity} in the active pool for box ${boxId}` });
+      }
+
+      const rolls = [];
+      const distribution = { common: 0, rare: 0, epic: 0, legendary: 0 };
+
+      for (let i = 0; i < count; i++) {
+        let item;
+        if (forcedItem) {
+          item = forcedItem;
+        } else if (forceRarity) {
+          const bucket = byRarity[forceRarity];
+          item = bucket[Math.floor(Math.random() * bucket.length)];
+        } else {
+          item = catalog.rollDrop(boxId, retired, Math.random, null, membership);
+        }
+        rolls.push({
+          sku: item.sku,
+          kind: item.kind,
+          value: item.value,
+          label: item.label,
+          rarity: item.rarity,
+          boxExclusive: !!item.boxExclusive,
+          set: item.set || null,
+          special: !!item.special,
+          days: item.days || null,
+        });
+        distribution[item.rarity] = (distribution[item.rarity] || 0) + 1;
+      }
+
+      // Compute distribution percentages alongside raw counts.
+      const distPct = {};
+      for (const r of catalog.RARITIES) {
+        distPct[r] = { count: distribution[r] || 0, pct: count > 0 ? +((distribution[r] || 0) / count * 100).toFixed(1) : 0 };
+      }
+
+      res.json({ ok: true, count, rolls, distribution: distPct, forced: !!(forcedItem || forceRarity) });
+    } catch (err) {
+      console.error('[lootbox] lab simulate:', err.message);
+      res.status(500).json({ error: 'Failed to simulate' });
+    }
+  });
 }
 
 module.exports = { mountLootboxRoutes };

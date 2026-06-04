@@ -379,6 +379,17 @@ export async function createLootboxSet(superuserKey, { name, description, itemSk
   });
 }
 
+// Lootbox Lab — superuser-only dry-run tools.
+export async function lootboxLabInspect(superuserKey, boxId) {
+  return superuserJson(`/admin/lootbox/lab/inspect?boxId=${encodeURIComponent(boxId)}`, { superuserKey });
+}
+export async function lootboxLabSimulate(superuserKey, { boxId, count = 1, forceRarity = null, forceSku = null }) {
+  return superuserJson('/admin/lootbox/lab/simulate', {
+    method: 'POST', superuserKey,
+    body: { boxId, count, forceRarity, forceSku },
+  });
+}
+
 // Task #446 — Discord Rich Presence
 export async function getMeDiscordRpc() {
   const res = await fetch(BASE + '/me/discord-rpc', { credentials: 'include' });

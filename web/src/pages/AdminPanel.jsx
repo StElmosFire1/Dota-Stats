@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts } from '../api';
+import CosmeticPreview from '../components/CosmeticPreview';
 import Dialog from '../components/Dialog';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
@@ -7209,6 +7210,447 @@ function V3ModifierDebugCard() {
 // Lists all lootbox sets and lets the operator retire or un-retire each one.
 // Retired sets stop appearing in drop pools and the published odds; anything
 // already owned by players stays in their collection.
+const LAB_BOXES = [
+  { id: 'common',    label: 'Common Crate',    price: 150 },
+  { id: 'rare',      label: 'Rare Cache',       price: 400 },
+  { id: 'legendary', label: 'Legendary Vault',  price: 900 },
+  { id: 'free',      label: 'Weekly Free Box',  price: 0 },
+];
+const LAB_RARITIES = ['common', 'rare', 'epic', 'legendary'];
+const LAB_RARITY_COLORS = { common: '#9ca3af', rare: '#3b82f6', epic: '#a855f7', legendary: '#f59e0b' };
+const LAB_SHAKE_DURATION = { common: 500, rare: 700, epic: 900, legendary: 1100 };
+const labBtnPrimary = {
+  background: 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)',
+  color: '#1a1a1a', fontWeight: 700, border: 'none', borderRadius: 8,
+  padding: '8px 16px', cursor: 'pointer', fontSize: 13,
+};
+const labBtn = {
+  background: 'var(--bg-card)', border: '1px solid var(--border)',
+  color: 'var(--text-primary)', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontSize: 13,
+};
+
+function LootboxLabCard({ superuserKey }) {
+  const [boxId, setBoxId] = React.useState('rare');
+  const [inspect, setInspect] = React.useState(null);
+  const [inspecting, setInspecting] = React.useState(false);
+  const [inspectError, setInspectError] = React.useState('');
+
+  const [simCount, setSimCount] = React.useState(1);
+  const [simForceRarity, setSimForceRarity] = React.useState('');
+  const [simForceSku, setSimForceSku] = React.useState('');
+  const [simResult, setSimResult] = React.useState(null);
+  const [simulating, setSimulating] = React.useState(false);
+  const [simError, setSimError] = React.useState('');
+
+  const [previewItem, setPreviewItem] = React.useState(null);
+  const [previewPhase, setPreviewPhase] = React.useState(null);
+
+  const closeRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (previewPhase !== 'shake' || !previewItem) return;
+    const ms = LAB_SHAKE_DURATION[previewItem.rarity] ?? 700;
+    const t = setTimeout(() => setPreviewPhase('reveal'), ms);
+    return () => clearTimeout(t);
+  }, [previewPhase, previewItem]);
+
+  const loadInspect = React.useCallback(async () => {
+    if (!superuserKey) return;
+    setInspecting(true); setInspectError(''); setSimResult(null);
+    try {
+      const d = await lootboxLabInspect(superuserKey, boxId);
+      setInspect(d);
+      setSimForceSku('');
+    } catch (e) {
+      setInspectError(e.message || 'Failed to load box catalog');
+      setInspect(null);
+    } finally {
+      setInspecting(false);
+    }
+  }, [superuserKey, boxId]);
+
+  const handleSimulate = async () => {
+    if (!superuserKey || simulating) return;
+    setSimulating(true); setSimError(''); setSimResult(null);
+    try {
+      const d = await lootboxLabSimulate(superuserKey, {
+        boxId,
+        count: simCount,
+        forceRarity: simForceRarity || null,
+        forceSku: simForceSku || null,
+      });
+      setSimResult(d);
+    } catch (e) {
+      setSimError(e.message || 'Simulation failed');
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  const handlePreviewAnimation = async () => {
+    if (!superuserKey || simulating) return;
+    setSimulating(true); setSimError('');
+    try {
+      const d = await lootboxLabSimulate(superuserKey, {
+        boxId,
+        count: 1,
+        forceRarity: simForceRarity || null,
+        forceSku: simForceSku || null,
+      });
+      const item = d.rolls?.[0];
+      if (!item) { setSimError('No item returned from simulation'); return; }
+      setPreviewItem(item);
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      setPreviewPhase(reducedMotion ? 'reveal' : 'shake');
+    } catch (e) {
+      setSimError(e.message || 'Preview failed');
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  const inputSt = {
+    padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)',
+    background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13,
+  };
+
+  const allPoolItems = React.useMemo(() => {
+    if (!inspect) return [];
+    return (inspect.odds || []).flatMap(row => (row.items || []).filter(it => !it.special).map(it => ({ ...it, rarity: row.rarity })));
+  }, [inspect]);
+
+  return (
+    <section style={{ marginBottom: 36 }} aria-labelledby="ap-anchor-lootbox-lab">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+        <h2 id="ap-anchor-lootbox-lab" style={{ margin: 0 }}>🧪 Lootbox Lab</h2>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', padding: '2px 8px', background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: 99 }}>
+          superuser · read-only
+        </span>
+      </div>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
+        Inspect, simulate, and preview lootboxes without touching real player state — no coins debited, no grants,
+        no audit rows. The catalog shown here is the live server state, so it reflects any edits you make above.
+      </p>
+
+      {/* Box selector */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+        {LAB_BOXES.map(b => (
+          <button
+            key={b.id}
+            type="button"
+            onClick={() => setBoxId(b.id)}
+            aria-pressed={boxId === b.id}
+            style={{
+              ...labBtn,
+              borderColor: boxId === b.id ? '#f59e0b' : undefined,
+              color: boxId === b.id ? '#f59e0b' : undefined,
+              fontWeight: boxId === b.id ? 700 : undefined,
+            }}
+          >
+            {b.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="btn"
+          onClick={loadInspect}
+          disabled={inspecting}
+          aria-label={`Inspect ${boxId} box catalog`}
+          style={{ fontSize: 13, padding: '7px 14px' }}
+        >
+          {inspecting ? 'Loading…' : inspect ? '↺ Refresh' : 'Inspect box'}
+        </button>
+      </div>
+
+      {inspectError && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 10 }}>{inspectError}</div>}
+
+      {/* Contents inspector */}
+      {inspect && (
+        <div style={{ marginBottom: 20, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', background: 'rgba(245,158,11,0.06)', borderBottom: '1px solid var(--border)' }}>
+            <strong style={{ fontSize: 14 }}>{inspect.box?.label}</strong>
+            <span style={{ marginLeft: 10, fontSize: 13, color: 'var(--text-muted)' }}>
+              {inspect.box?.price === 0 ? 'Free' : `${inspect.box?.price?.toLocaleString()} 🪙`}
+            </span>
+            <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--text-muted)' }}>{inspect.box?.blurb}</span>
+          </div>
+          <div style={{ padding: 16 }}>
+            {(inspect.odds || []).map(row => (
+              <div key={row.rarity} style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                  <strong style={{ color: LAB_RARITY_COLORS[row.rarity] || 'var(--text-primary)', fontSize: 13 }}>
+                    {row.label}
+                  </strong>
+                  <span style={{ fontFamily: 'var(--font-num, monospace)', fontSize: 13, color: 'var(--text-muted)' }}>
+                    weight {row.weight} · <strong style={{ color: LAB_RARITY_COLORS[row.rarity] }}>{row.pct}%</strong>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {(row.items || []).map(it => (
+                    <div
+                      key={it.sku}
+                      title={`SKU: ${it.sku}${it.set ? ` · set: ${it.set}` : ''}${it.boxExclusive ? ' · box-exclusive' : ''}${it.special ? ` · ${it.days}d Pro` : ''}`}
+                      style={{
+                        padding: '4px 8px', borderRadius: 6, fontSize: 11,
+                        border: `1px solid ${LAB_RARITY_COLORS[row.rarity]}44`,
+                        background: `${LAB_RARITY_COLORS[row.rarity]}10`,
+                        color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 4,
+                        cursor: 'default',
+                      }}
+                    >
+                      {it.special ? '⭐' : null}
+                      {it.label}
+                      {it.boxExclusive && <span style={{ fontSize: 9, opacity: 0.7 }}>★</span>}
+                      {it.set && <span style={{ fontSize: 9, opacity: 0.6 }}>set</span>}
+                      {it.days && <span style={{ fontSize: 9, opacity: 0.8 }}>{it.days}d</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {inspect.odds?.length === 0 && (
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>No eligible items in this box (all sets may be retired).</p>
+            )}
+            <details style={{ marginTop: 8 }}>
+              <summary style={{ fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer' }}>Dupe handling</summary>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, paddingLeft: 8 }}>
+                {Object.entries(inspect.dupeRefundCoins || {}).map(([r, coins]) => (
+                  <div key={r}>{r}: {coins > 0 ? `+${coins} coins refund` : '—'} {inspect.dupeGrantsToken?.[r] ? '(legendary → wildcard token)' : ''}</div>
+                ))}
+              </div>
+            </details>
+          </div>
+        </div>
+      )}
+
+      {/* Simulate / batch-open section */}
+      <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+        <h3 style={{ marginTop: 0, marginBottom: 12, fontSize: 14 }}>🎲 Simulate opens</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: '0 0 12px' }}>
+          Dry-run rolls — no coins debited, no cosmetics granted, no events written.
+          Use batch mode to sanity-check the rarity distribution. Use the force options to preview a specific rarity or item animation.
+        </p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 10 }}>
+          <label style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span>Count (1–1000)</span>
+            <input
+              type="number"
+              min={1}
+              max={1000}
+              value={simCount}
+              onChange={e => setSimCount(Math.max(1, Math.min(1000, parseInt(e.target.value) || 1)))}
+              style={{ ...inputSt, width: 90 }}
+              aria-label="Number of simulated opens"
+            />
+          </label>
+          <label style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span>Force rarity <span style={{ color: 'var(--text-muted)' }}>(optional)</span></span>
+            <select
+              value={simForceRarity}
+              onChange={e => { setSimForceRarity(e.target.value); setSimForceSku(''); }}
+              style={{ ...inputSt, minWidth: 120 }}
+              aria-label="Force a specific rarity for simulation"
+            >
+              <option value="">— natural roll —</option>
+              {LAB_RARITIES.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </label>
+          {inspect && allPoolItems.length > 0 && (
+            <label style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span>Force item <span style={{ color: 'var(--text-muted)' }}>(optional)</span></span>
+              <select
+                value={simForceSku}
+                onChange={e => { setSimForceSku(e.target.value); if (e.target.value) setSimForceRarity(''); }}
+                style={{ ...inputSt, minWidth: 200 }}
+                aria-label="Force a specific item for simulation"
+              >
+                <option value="">— natural pick —</option>
+                {allPoolItems.map(it => (
+                  <option key={it.sku} value={it.sku}>[{it.rarity}] {it.label}</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          <button
+            type="button"
+            onClick={handleSimulate}
+            disabled={simulating}
+            style={{ ...labBtnPrimary, opacity: simulating ? 0.6 : 1 }}
+            aria-label="Run simulated lootbox opens"
+          >
+            {simulating ? 'Running…' : `Simulate ${simCount}× open${simCount !== 1 ? 's' : ''}`}
+          </button>
+          <button
+            type="button"
+            onClick={handlePreviewAnimation}
+            disabled={simulating}
+            style={{ ...labBtn, opacity: simulating ? 0.6 : 1 }}
+            aria-label="Preview the open animation for a single roll"
+          >
+            ▶ Preview animation
+          </button>
+        </div>
+        {simError && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{simError}</div>}
+
+        {/* Batch distribution */}
+        {simResult && simResult.count > 1 && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 13, marginBottom: 6, fontWeight: 600 }}>
+              Distribution across {simResult.count} opens{simResult.forced ? ' (forced)' : ''}:
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {LAB_RARITIES.map(r => {
+                const d = simResult.distribution?.[r];
+                if (!d || d.count === 0) return null;
+                return (
+                  <div key={r} style={{
+                    padding: '6px 12px', borderRadius: 8, fontSize: 13,
+                    border: `1px solid ${LAB_RARITY_COLORS[r]}55`,
+                    background: `${LAB_RARITY_COLORS[r]}10`,
+                  }}>
+                    <span style={{ color: LAB_RARITY_COLORS[r], fontWeight: 700, textTransform: 'capitalize' }}>{r}</span>
+                    <span style={{ marginLeft: 8, fontFamily: 'var(--font-num, monospace)' }}>
+                      {d.count} <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>({d.pct}%)</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Single-roll or few-roll result list */}
+        {simResult && simResult.rolls && simResult.count <= 20 && (
+          <div>
+            <div style={{ fontSize: 13, marginBottom: 6, fontWeight: 600 }}>
+              {simResult.count === 1 ? 'Roll result:' : `Rolls (${simResult.count}):`}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 260, overflowY: 'auto' }}>
+              {simResult.rolls.map((r, i) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '6px 10px', borderRadius: 6,
+                  borderLeft: `3px solid ${LAB_RARITY_COLORS[r.rarity] || 'var(--border)'}`,
+                  background: 'var(--bg-card)',
+                }}>
+                  {!r.special && (
+                    <div style={{ width: 28, height: 28, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <CosmeticPreview kind={r.kind} value={r.value} label={r.label} size="sm" />
+                    </div>
+                  )}
+                  {r.special && <span style={{ fontSize: 18, flexShrink: 0 }} aria-hidden="true">⭐</span>}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{r.label}</span>
+                    {r.special && r.days && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 6 }}>{r.days}d Pro</span>}
+                  </div>
+                  <span style={{
+                    fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, padding: '2px 8px',
+                    borderRadius: 99, fontWeight: 700,
+                    color: LAB_RARITY_COLORS[r.rarity], background: `${LAB_RARITY_COLORS[r.rarity]}18`,
+                  }}>{r.rarity}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{r.kind}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {simResult && simResult.count > 20 && (
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '8px 0 0' }}>
+            {simResult.count} rolls complete — see distribution above. (Individual roll list hidden for batches over 20.)
+          </p>
+        )}
+      </div>
+
+      {/* Animation preview dialog — reuses the real Lootbox page shake→reveal flow */}
+      <Dialog
+        open={!!previewItem && !!previewPhase}
+        onClose={() => { setPreviewItem(null); setPreviewPhase(null); }}
+        label="Animation preview"
+        initialFocusRef={closeRef}
+        contentStyle={{
+          background: 'var(--bg-primary)', border: '1px solid var(--border)',
+          borderRadius: 20, padding: 0, maxWidth: 420, width: '90vw',
+        }}
+      >
+        {previewItem && previewPhase === 'shake' && (
+          <div style={{ padding: '32px 24px 24px', textAlign: 'center' }}>
+            <div
+              className={`lootbox-crate lootbox-shake-${previewItem.rarity || 'common'}`}
+              style={{ '--lb-rarity': LAB_RARITY_COLORS[previewItem.rarity] || '#c5a975' }}
+              aria-hidden="true"
+            >
+              <div className="lootbox-crate-lid" style={{ '--lb-rarity': LAB_RARITY_COLORS[previewItem.rarity] || '#c5a975' }} />
+              <div className="lootbox-crate-line" />
+            </div>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 14, marginBottom: 0 }}>
+              [Lab preview — no real open] Opening…
+            </p>
+          </div>
+        )}
+        {previewItem && previewPhase === 'reveal' && (
+          <div style={{ padding: 24 }}>
+            <div style={{
+              fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-muted)',
+              textAlign: 'center', marginBottom: 12, padding: '3px 0',
+              borderBottom: '1px solid var(--border)',
+            }}>
+              🧪 Lab preview — no coins spent, no grant made
+            </div>
+            <div
+              className="lootbox-reveal-card lootbox-reveal-glow"
+              style={{ '--lb-rarity': LAB_RARITY_COLORS[previewItem.rarity] || '#c5a975' }}
+            >
+              {previewItem.kind !== 'pro_time' ? (
+                <div style={{
+                  display: 'flex', justifyContent: 'center', alignItems: 'center',
+                  minHeight: 80, marginBottom: 16, padding: '0 16px',
+                }}>
+                  <div style={{ width: '100%', maxWidth: 200 }}>
+                    <CosmeticPreview
+                      kind={previewItem.kind}
+                      value={previewItem.value}
+                      label={previewItem.label}
+                      size="lg"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 52, marginBottom: 12, lineHeight: 1 }} aria-hidden="true">⭐</div>
+              )}
+              <div style={{
+                textTransform: 'uppercase', letterSpacing: 2, fontSize: 12,
+                color: LAB_RARITY_COLORS[previewItem.rarity] || '#c5a975',
+                fontFamily: 'var(--font-condensed, inherit)',
+              }}>{previewItem.rarity}{previewItem.boxExclusive ? ' · box-exclusive' : ''}</div>
+              <div style={{ fontSize: '1.8rem', fontFamily: 'var(--font-serif, inherit)', margin: '8px 0' }}>
+                {previewItem.label}
+              </div>
+              {previewItem.kind === 'pro_time' && previewItem.days && (
+                <strong style={{ color: LAB_RARITY_COLORS.legendary }}>{previewItem.days} Days of Pro membership</strong>
+              )}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, gap: 12 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>SKU: <code>{previewItem.sku}</code></span>
+              <button
+                type="button"
+                ref={closeRef}
+                onClick={() => { setPreviewItem(null); setPreviewPhase(null); }}
+                style={labBtnPrimary}
+              >
+                Close preview
+              </button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+    </section>
+  );
+}
+
 function LootboxSetsCard({ superuserKey }) {
   const [sets, setSets] = React.useState(null);
   const [items, setItems] = React.useState([]);
@@ -8319,6 +8761,7 @@ export default function AdminPanel() {
     { label: 'Live Ops Logs', tab: 'config', anchor: 'ap-anchor-ops-logs', icon: '📋', kw: 'ops logs live server buffer source filter errors stream ring' },
     { label: 'Ops History', tab: 'config', anchor: 'ap-anchor-ops-history', icon: '📈', kw: 'ops history sparkline telemetry samples 1min samples error spike throughput' },
     { label: 'Lootbox Sets', tab: 'marketplace', anchor: 'ap-anchor-lootbox-sets', icon: '📦', kw: 'lootbox sets seasonal retire cosmetics boxes drops collection active' },
+    { label: 'Lootbox Lab', tab: 'marketplace', anchor: 'ap-anchor-lootbox-lab', icon: '🧪', kw: 'lootbox lab test simulate preview open animation dry run inspect odds catalog rarity batch distribution cosmetic ring banner nameplate recap skin' },
   ];
 
   const q = searchQuery.trim().toLowerCase();
@@ -8693,6 +9136,8 @@ export default function AdminPanel() {
 
       {/* Tournament Brackets — active tournaments and bracket management */}
       <TournamentBracketPanel />
+      {/* Lootbox Lab — superuser dry-run inspector, simulator, and animation preview */}
+      <LootboxLabCard superuserKey={superuserKey} />
       {/* Lootbox seasonal set management (retire / un-retire sets) */}
       <LootboxSetsCard superuserKey={superuserKey} />
       {/* Task #450 — coin betting controls */}

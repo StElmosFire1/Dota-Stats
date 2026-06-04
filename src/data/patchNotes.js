@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "9.31",
+    "title": "Lootbox Lab — superuser inspector, simulator, and animation preview",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**Lootbox Lab added to Admin Panel → Monetisation.** Superusers can now inspect, simulate, and preview lootboxes without touching any real player state — no coins debited, no cosmetics granted, no events written.",
+      "**Live catalog inspector.** Select any box tier (Common Crate, Rare Cache, Legendary Vault, Weekly Free Box) and load its full drop pool: every item grouped by rarity with the effective weight, percentage, box-exclusive flag, set membership, and dupe-handling rules — all sourced live from the server catalog so it reflects any edits made in the Lootbox Sets card above.",
+      "**Dry-run simulate.** Run 1–1000 opens without side effects. Single and small batch results show individual roll cards with cosmetic previews; larger batches show the rarity distribution breakdown so operators can sanity-check the odds. Optional force-rarity and force-item selectors let you pin a specific outcome for targeted previews.",
+      "**Real animation preview.** 'Preview animation' triggers the same shake→reveal Dialog and CSS animations the player-facing Lootbox page uses (respecting prefers-reduced-motion), so what the admin sees matches production exactly. A lab badge in the reveal footer confirms no real open occurred. Full edition only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.30",
     "title": "Mass DM blasts now show live send progress instead of a frozen button",
     "published_at": "2026-06-04",
