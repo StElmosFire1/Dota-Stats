@@ -87,7 +87,7 @@ function Countdown({ startsAt, seconds, onExpire, endsAt, label, variant }) {
   );
 }
 
-function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canDraft, onDraftPick, balanceScore }) {
+function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canDraft, onDraftPick, balanceScore, viewerIsAdmin, myCaptainTeam }) {
   const mmr = Math.round(Number(player.trueskill_mmr) || 0);
   const statusColors = {
     registered: { bg: 'rgba(120,120,120,0.15)', color: '#aaa', label: 'Waiting' },
@@ -123,11 +123,20 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
       <span className="pb-avatar" aria-hidden="true">{(displayName || '?').trim().charAt(0) || '?'}</span>
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-serif)', fontSize: 15 }}>
-          <Link to={`/player/${player.account_id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+          {/* Task #815 — open the profile in a NEW TAB so clicking a player
+              during a live draft never navigates away from the lobby. The
+              live session stays put; back/refresh still shows the lobby. */}
+          <Link
+            to={`/player/${player.account_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open ${displayName}'s profile in a new tab`}
+            style={{ color: 'inherit', textDecoration: 'none' }}
+          >
             {displayName}
           </Link>
           {isCaptain && <span style={{ fontSize: 11, padding: '2px 6px', background: '#ff9800', color: '#000', borderRadius: 3, fontWeight: 700 }}>CAPTAIN</span>}
-          {player.team > 0 && <span style={{ fontSize: 11, padding: '2px 6px', background: player.team === 1 ? '#2e7d32' : '#c62828', color: '#fff', borderRadius: 3 }}>Team {player.team}</span>}
+          {player.team > 0 && <span style={{ fontSize: 11, padding: '2px 6px', background: player.team === 1 ? '#2e7d32' : '#c62828', color: '#fff', borderRadius: 3 }}>{player.team === 1 ? 'Green side' : 'Red side'}</span>}
           {/* Task #179 — flag picks made by the autoStartTicker deadline sweep
               so players can tell at a glance which slots their captain let
               the timer run on. Captain picks render no badge (the default). */}
@@ -159,11 +168,32 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
       <div style={{ padding: '4px 10px', background: s.bg, color: s.color, borderRadius: 4, fontSize: 12, fontWeight: 600 }}>
         {s.label}
       </div>
+      {/* Task #815 — draft controls. The captain whose turn it is sees a
+          single "Pick" button that drops the player onto their OWN side.
+          Admins get a clearly-separated override that can still assign to
+          either side (Green / Red). Captains whose turn it isn't see nothing. */}
       {canDraft && player.team === 0 && player.status !== 'declined' && (
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button onClick={() => onDraftPick(player.account_id, 1)} style={{ padding: '4px 8px', background: '#2e7d32', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>→ T1</button>
-          <button onClick={() => onDraftPick(player.account_id, 2)} style={{ padding: '4px 8px', background: '#c62828', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>→ T2</button>
-        </div>
+        viewerIsAdmin ? (
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <span aria-hidden="true" title="Admin override" style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>Admin</span>
+            <button type="button" aria-label={`Admin: assign ${displayName} to Green side`} onClick={() => onDraftPick(player.account_id, 1)} style={{ padding: '4px 8px', background: '#2e7d32', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>→ Green</button>
+            <button type="button" aria-label={`Admin: assign ${displayName} to Red side`} onClick={() => onDraftPick(player.account_id, 2)} style={{ padding: '4px 8px', background: '#c62828', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>→ Red</button>
+          </div>
+        ) : myCaptainTeam ? (
+          <button
+            type="button"
+            aria-label={`Pick ${displayName} onto your side`}
+            onClick={() => onDraftPick(player.account_id, myCaptainTeam)}
+            style={{
+              padding: '6px 16px',
+              background: myCaptainTeam === 1 ? '#2e7d32' : '#c62828',
+              color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer',
+              fontSize: 13, fontWeight: 700, letterSpacing: 0.4,
+            }}
+          >
+            Pick
+          </button>
+        ) : null
       )}
     </div>
   );
@@ -407,6 +437,100 @@ function PickAdvisorPanel({ sessionId, onDismiss }) {
         Suggestions exclude heroes already picked or banned this match. Toggle off any time in <a href="/settings/profile" style={{ color: 'var(--brass)' }}>Settings → Profile</a>.
       </div>
     </aside>
+  );
+}
+
+// Task #815 — streamer-safe server connect details. The IP / port / password
+// and the console connect string are masked by default behind a click-to-reveal
+// control so a casual screenshot or screen-share can't leak them. When the
+// signed-in viewer is currently live on Twitch (`streamerLive`), the details are
+// force-covered and can't be revealed by accident — a deliberate "I'm not on
+// stream — reveal anyway" confirm is required first. The steam:// "Connect to
+// Server" button stays visible because it launches the client without rendering
+// the password as on-screen text.
+function ServerConnectPanel({ session, connectLink, streamerLive }) {
+  const [revealed, setRevealed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  // If the viewer goes live mid-session, immediately re-cover the details and
+  // drop any in-flight confirm so streamer mode can't be bypassed by timing.
+  useEffect(() => {
+    if (streamerLive) { setRevealed(false); setConfirming(false); }
+  }, [streamerLive]);
+
+  const consoleStr = `connect ${session.server_ip}:${session.server_port}; password ${session.match_password}`;
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ fontWeight: 600, marginBottom: 8 }}>Match is live — connect now</div>
+      <a href={connectLink} style={{ display: 'inline-block', padding: '12px 24px', background: '#171a21', color: '#66c0f4', textDecoration: 'none', borderRadius: 4, fontWeight: 700, border: '1px solid #66c0f4' }}>
+        🎮 Connect to Server
+      </a>
+      <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
+        {revealed ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span>Or paste in Dota console: <code style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: 3 }}>{consoleStr}</code></span>
+            <button
+              type="button"
+              aria-expanded={true}
+              onClick={() => setRevealed(false)}
+              style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
+            >
+              🙈 Hide
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span>
+              Or paste in Dota console:{' '}
+              <code aria-hidden="true" style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: 3, letterSpacing: 2 }}>connect ••••••••; password ••••••••</code>
+            </span>
+            {streamerLive ? (
+              confirming ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ color: 'var(--amber)' }}>You appear live on Twitch — reveal anyway?</span>
+                  <button
+                    type="button"
+                    aria-expanded={false}
+                    onClick={() => { setRevealed(true); setConfirming(false); }}
+                    style={{ padding: '3px 10px', fontSize: 11, fontWeight: 700, background: 'var(--amber)', color: '#0d1424', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                  >
+                    I'm not on stream — reveal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirming(false)}
+                    style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, background: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer' }}
+                  >
+                    Keep hidden
+                  </button>
+                </span>
+              ) : (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ color: 'var(--amber)' }}>🔴 Streamer mode — details hidden because you're live on Twitch.</span>
+                  <button
+                    type="button"
+                    aria-expanded={false}
+                    onClick={() => setConfirming(true)}
+                    style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, background: 'transparent', color: 'var(--amber)', border: '1px solid var(--amber)', borderRadius: 4, cursor: 'pointer' }}
+                  >
+                    Reveal anyway…
+                  </button>
+                </span>
+              )
+            ) : (
+              <button
+                type="button"
+                aria-expanded={false}
+                onClick={() => setRevealed(true)}
+                style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, background: 'transparent', color: 'var(--brass)', border: '1px solid color-mix(in srgb, var(--brass) 55%, transparent)', borderRadius: 4, cursor: 'pointer' }}
+              >
+                👁 Reveal connect details
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1529,15 +1653,11 @@ export default function Inhouse() {
                 />
               )}
               {connectLink && session.status === 'in_progress' && isInSession && (
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Match is live — connect now</div>
-                  <a href={connectLink} style={{ display: 'inline-block', padding: '12px 24px', background: '#171a21', color: '#66c0f4', textDecoration: 'none', borderRadius: 4, fontWeight: 700, border: '1px solid #66c0f4' }}>
-                    🎮 Connect to Server
-                  </a>
-                  <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>
-                    Or paste in Dota console: <code style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: 3 }}>connect {session.server_ip}:{session.server_port}; password {session.match_password}</code>
-                  </div>
-                </div>
+                <ServerConnectPanel
+                  session={session}
+                  connectLink={connectLink}
+                  streamerLive={!!steamUser?.twitch_live}
+                />
               )}
             </div>
           )}
@@ -1589,8 +1709,11 @@ export default function Inhouse() {
             const canDraft = isAdmin || isMyTurn;
             const turnName = turn === 1 ? cap1Name : turn === 2 ? cap2Name : null;
             const isDrafting = session.status === 'drafting';
-            const team1Label = `Team 1${session.team1_is_radiant ? ' · Radiant' : ' · Dire'}`;
-            const team2Label = `Team 2${session.team1_is_radiant ? ' · Dire' : ' · Radiant'}`;
+            // Task #815 — teams read as Green side / Red side (mapped to the
+            // existing Team 1 green / Team 2 red colours). Radiant/Dire is kept
+            // as a secondary suffix so players still know which faction they're on.
+            const team1Label = `Green side${session.team1_is_radiant ? ' · Radiant' : ' · Dire'}`;
+            const team2Label = `Red side${session.team1_is_radiant ? ' · Dire' : ' · Radiant'}`;
 
             // Task #130 — auto_balance projected balance metadata. Only
             // populated when the captain mode is auto_balance and the route
@@ -1806,7 +1929,7 @@ export default function Inhouse() {
                     </div>
                     {isDrafting && isMyTurn && !isAdmin && undrafted.length > 0 && (
                       <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-                        Click → T{myCaptainTeam} on the player you want to pick onto your team.
+                        It's your turn — hit <strong style={{ color: myCaptainTeam === 1 ? '#4caf50' : '#f44336' }}>Pick</strong> next to the player you want on your {myCaptainTeam === 1 ? 'Green' : 'Red'} side.
                       </div>
                     )}
                     {undrafted.length === 0
@@ -1816,6 +1939,7 @@ export default function Inhouse() {
                       : undrafted.sort((a,b)=>Number(b.trueskill_mmr)-Number(a.trueskill_mmr)).map(p => (
                           <PlayerRow key={p.account_id} player={p} session={session}
                             isCurrentUser={Number(p.account_id) === myAccountId}
+                            viewerIsAdmin={isAdmin} myCaptainTeam={myCaptainTeam}
                             canDraft={isDrafting && canDraft} onDraftPick={draftPick} />
                         ))}
                   </div>

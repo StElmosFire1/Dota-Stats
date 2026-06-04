@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "9.46",
+    "title": "Cleaner, streamer-safe inhouse lobby",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**Player names open in a new tab.** Clicking a player anywhere in the inhouse lobby now opens their profile in a new browser tab, so a live draft is never replaced — refresh or back still shows the running session.",
+      "**Simpler captain draft.** Teams now read as **Green side** and **Red side** (same green/red colours as before). The captain whose turn it is sees a single **Pick** button next to each unpicked player that drops them onto their own side — the old '→ T1 / → T2' two-button control is gone for captains. Admins keep a clearly-labelled override that can still assign to either side.",
+      "**Server connect details are hidden by default.** The IP, port, password and console connect string are masked behind a click-to-reveal control so a casual screenshot or screen-share can't leak them.",
+      "**Streamer mode.** If you're linked on Twitch and currently live, the connect details are force-covered and can't be revealed by accident — a deliberate 'I'm not on stream — reveal' confirm is required first. Full edition only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.45",
     "title": "Full before/after detail for each lootbox dupe-return change",
     "published_at": "2026-06-04",

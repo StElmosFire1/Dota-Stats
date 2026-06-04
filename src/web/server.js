@@ -5077,7 +5077,26 @@ function createApiRouter(startupStatus = {}, _app = null) {
       } catch (err) {
         console.warn('[auth/me] discord-autojoin-pending check failed:', err.message);
       }
+      // Task #815 — streamer-safe inhouse lobby. Surface whether THIS signed-in
+      // account is currently live on Twitch by reading the existing live-stream
+      // poller cache (no Twitch call on the request path). The inhouse lobby
+      // uses this to auto-cover sensitive server-connect details so a casual
+      // screen-share can't leak them. Only true when the account is both linked
+      // (the poller only tracks linked channels) AND currently live.
+      let twitchLive = false;
+      try {
+        const { getTwitchPoller } = require('../api/twitchPoller');
+        const snap = getTwitchPoller(db).getLive();
+        if (snap && snap.configured && Array.isArray(snap.live)) {
+          twitchLive = snap.live.some(
+            (s) => s && String(s.accountId) === String(req.session.accountId)
+          );
+        }
+      } catch (err) {
+        console.warn('[auth/me] twitch-live check failed:', err.message);
+      }
       res.json({
+        twitch_live: twitchLive,
         accountId: req.session.accountId,
         steamId64: req.session.steamId64,
         displayName: req.session.displayName || null,
