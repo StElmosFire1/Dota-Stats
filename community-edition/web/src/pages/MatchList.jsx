@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { getMatches, updateMatchMeta } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { useSuperuser } from '../context/SuperuserContext';
+import { useSteamAuth } from '../context/SteamAuthContext';
 import HeroIcon from '../components/HeroIcon';
 import { MmrBadge } from '../components/RankBadge';
 import { resolvePlayerDisplayName } from '../utils/displayName';
@@ -60,6 +61,30 @@ function storyLabel(killMargin, durationMins) {
   if (killMargin <= 3 && durationMins > 40) return 'Neck and Neck';
   if (killMargin <= 5) return 'Close Game';
   return null;
+}
+
+// Story types players can filter by — mirrors the labels storyLabel() emits.
+const STORY_TYPES = ['Stomp', 'Decisive', 'Close Game', 'Neck and Neck'];
+
+// Resolve a match's story label from its already-fetched player rows.
+function matchStory(match) {
+  const players = match.players || [];
+  if (players.length === 0) return null;
+  const { radiant, dire } = splitTeams(players);
+  const killMargin = Math.abs(sumKills(radiant) - sumKills(dire));
+  const durationMins = match.duration ? match.duration / 60 : 0;
+  return storyLabel(killMargin, durationMins);
+}
+
+// Win/Loss relative to a given account. Returns 'win' | 'loss', or null when
+// the account didn't play in this match (so result filters can exclude it).
+function matchResultFor(match, accountId) {
+  if (!accountId) return null;
+  const me = (match.players || []).find(p => String(p.account_id) === String(accountId));
+  if (!me) return null;
+  const onRadiant = me.team === 'radiant' || me.team === 0 || me.team === '0';
+  const won = onRadiant ? !!match.radiant_win : !match.radiant_win;
+  return won ? 'win' : 'loss';
 }
 
 // Hero lineup + MVP strip.
@@ -139,10 +164,17 @@ function MatchPlayersStrip({ players, radiantWin, radiantMmr, direMmr }) {
 export default function MatchList() {
   const { seasonId, seasons } = useSeason();
   const { isSuperuser, superuserKey, setShowModal } = useSuperuser();
+  const { steamUser } = useSteamAuth();
+  const myAccountId = steamUser?.accountId || null;
   const [data, setData] = useState({ matches: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const limit = 20;
+
+  // Client-side filters applied to the already-fetched page (keeps latency low;
+  // pagination + bulk-season behaviour are driven off the same data set).
+  const [resultFilter, setResultFilter] = useState('all'); // all | win | loss
+  const [storyFilter, setStoryFilter] = useState('all');   // all | <story label>
 
   // Inline season editing state
   const [editingSeason, setEditingSeason] = useState(null);
@@ -171,6 +203,14 @@ export default function MatchList() {
   }, [page, seasonId]);
 
   const totalPages = Math.ceil(data.total / limit);
+
+  const filtersActive = resultFilter !== 'all' || storyFilter !== 'all';
+  const clearFilters = () => { setResultFilter('all'); setStoryFilter('all'); };
+  const visibleMatches = data.matches.filter((m) => {
+    if (storyFilter !== 'all' && matchStory(m) !== storyFilter) return false;
+    if (resultFilter !== 'all' && matchResultFor(m, myAccountId) !== resultFilter) return false;
+    return true;
+  });
 
   const getSeasonName = (id) => {
     if (!id) return null;
@@ -217,7 +257,7 @@ export default function MatchList() {
     });
   };
 
-  const selectAll = () => setSelected(new Set(data.matches.map(m => m.match_id)));
+  const selectAll = () => setSelected(new Set(visibleMatches.map(m => m.match_id)));
   const clearSelection = () => setSelected(new Set());
 
   const applyBulkSeason = async () => {
@@ -238,6 +278,66 @@ export default function MatchList() {
     reload();
     setTimeout(() => setBulkMsg(''), 4000);
   };
+
+  const chipLabelStyle = { fontSize: '0.72rem', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 700 };
+  const chipStyle = (active) => ({
+    padding: '4px 12px',
+    fontSize: '0.78rem',
+    fontWeight: 600,
+    borderRadius: 999,
+    border: `1px solid ${active ? '#2563eb' : '#334155'}`,
+    background: active ? '#2563eb' : 'transparent',
+    color: active ? '#fff' : 'var(--text-muted, #94a3b8)',
+    cursor: 'pointer',
+  });
+
+  const renderFilterBar = () => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+      {myAccountId && (
+        <div role="group" aria-label="Filter by result" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={chipLabelStyle}>RESULT</span>
+          {[['all', 'All'], ['win', 'Wins'], ['loss', 'Losses']].map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              aria-pressed={resultFilter === val}
+              onClick={() => setResultFilter(val)}
+              style={chipStyle(resultFilter === val)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div role="group" aria-label="Filter by story type" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <span style={chipLabelStyle}>STORY</span>
+        <button
+          type="button"
+          aria-pressed={storyFilter === 'all'}
+          onClick={() => setStoryFilter('all')}
+          style={chipStyle(storyFilter === 'all')}
+        >
+          All
+        </button>
+        {STORY_TYPES.map((t) => (
+          <button
+            key={t}
+            type="button"
+            aria-pressed={storyFilter === t}
+            onClick={() => setStoryFilter(t)}
+            style={chipStyle(storyFilter === t)}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+      {filtersActive && (
+        <button type="button" className="btn btn-sm" onClick={clearFilters} style={{ background: '#374151' }}>
+          Clear filters
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <div>
@@ -289,8 +389,15 @@ export default function MatchList() {
         </div>
       ) : (
         <>
+          {renderFilterBar()}
+          {visibleMatches.length === 0 ? (
+            <div className="empty-state">
+              <p>No matches on this page match these filters.</p>
+              <button type="button" className="btn btn-sm" onClick={clearFilters}>Clear filters</button>
+            </div>
+          ) : (
           <div className="match-list">
-            {data.matches.map((match) => {
+            {visibleMatches.map((match) => {
               const isEditing = editingSeason === match.match_id;
               const isSelected = selected.has(match.match_id);
 
@@ -460,6 +567,7 @@ export default function MatchList() {
               );
             })}
           </div>
+          )}
           {totalPages > 1 && (
             <div className="pagination">
               <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="btn btn-sm">

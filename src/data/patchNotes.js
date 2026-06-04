@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.33",
+    "title": "Filter Match History by result and story type",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**New filter chips above the match list.** Match History now has quick filters: **STORY** (Stomp / Decisive / Close Game / Neck and Neck) for browsing by how a game played out, and — when you're signed in via Steam — **RESULT** (Wins / Losses) relative to the team you were on in each match.",
+      "**Instant, no extra load.** Filtering is applied client-side to the already-fetched page, so it's instant and doesn't add a round-trip. Pagination and the superuser bulk-season editor are unaffected; an empty result shows a clear-filters prompt.",
+      "**Both editions.** Shipped to the full and community editions identically — no paywall gating. a11y gate green (chips are real buttons with `aria-pressed`)."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.32",
     "title": "Admin Panel guarded against the fragmented-tab smell",
     "published_at": "2026-06-04",
