@@ -1,0 +1,51 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# STEAMCMD=/usr/games/steamcmd
+echo "570 buildid BEFORE:"; grep -m1 '"buildid"' /opt/dota2/steamapps/appmanifest_570.acf
+systemctl stop dota-server.service
+"$STEAMCMD" +force_install_dir /opt/dota2 +login daburapc2 +app_update 570 validate +quit
+echo "570 buildid AFTER:"; grep -m1 '"buildid"' /opt/dota2/steamapps/appmanifest_570.acf
+grep -E 'ClientVersion|ServerVersion|VersionDate' /opt/dota2/game/dota/steam.inf
+systemctl start dota-server.service
+sleep 25
+echo "service: $(systemctl is-active dota-server.service)"
+journalctl -u dota-server.service --since "90 sec ago" --no-pager | grep -iE 'out of date|GC wants|server_version|build_version' | tail -8
+570 buildid BEFORE:
+        "buildid"               "22930791"
+steamcmd.sh[407409]: Starting  /root/.local/share/Steam/steamcmd/linux32/steamcmd
+Redirecting stderr to '/root/.local/share/Steam/logs/stderr.txt'
+Logging directory: '/root/.local/share/Steam/logs'
+[  0%] Checking for available updates...
+[----] Verifying installation...
+UpdateUI: skip show logo
+Steam Console Client (c) Valve Corporation - version 1780356001
+-- type 'quit' to exit --
+Loading Steam API...OK
+Logging in using cached credentials.
+Logging in user 'daburapc2' [U:1:1018228832] to Steam Public...OK
+Waiting for client config...Waiting for compat in post-logon took: 0.099133sOK
+Waiting for user info...OK
+ Update state (0x3) reconfiguring, progress: 0.00 (0 / 0)
+ Update state (0x61) downloading, progress: 14.60 (255078320 / 1747270940)
+ Update state (0x61) downloading, progress: 26.79 (468024789 / 1747270940)
+ Update state (0x61) downloading, progress: 47.80 (835126136 / 1747270940)
+ Update state (0x41) staging, progress: 69.45 (1213475622 / 1747270940)
+ Update state (0x61) downloading, progress: 87.55 (1529676744 / 1747270940)
+ Update state (0x81) verifying update, progress: 6.69 (116910800 / 1747270940)
+ Update state (0x81) verifying update, progress: 54.87 (958752026 / 1747270940)
+ Update state (0x101) committing, progress: 100.00 (1747270940 / 1747270940)
+ Update state (0x61) downloading, progress: 21.57 (420045448 / 1947507721)
+ Update state (0x41) staging, progress: 74.31 (1447178093 / 1947507721)
+ Update state (0x0) unknown, progress: 0.00 (0 / 0)
+Success! App '570' fully installed.
+Unloading Steam API...OK
+570 buildid AFTER:
+        "buildid"               "23514965"
+ClientVersion=6797
+ServerVersion=6797
+VersionDate=Jun 01 2026
+service: active
+Jun 04 14:36:20 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407549]: Version out of date (GC wants 6797, we are 6775)!
+Jun 04 14:36:20 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407549]: server_version: 6775
+Jun 04 14:36:20 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407549]: build_version: 6775
+Jun 04 14:36:20 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407549]: server_version: 6775
+Jun 04 14:36:20 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407549]: build_version: 6775
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# 
