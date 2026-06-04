@@ -29,6 +29,20 @@ function rarityColor(r) {
   return RARITY_COLORS[r] || 'var(--brass, #c5a975)';
 }
 
+// Describe what a duplicate of a given rarity pays back, reading from the live
+// catalog `dupeReturns` blob so it always matches the open transaction.
+// Shape: { refundCoins: {common,rare,epic,legendary}, legendaryRewardType, legendaryTokens }
+function dupeReturnLabel(rarity, dupeReturns) {
+  if (!dupeReturns) return null;
+  if (rarity === 'legendary' && dupeReturns.legendaryRewardType === 'token') {
+    const n = dupeReturns.legendaryTokens || 1;
+    return `Duplicate → ${n > 1 ? `${n} wildcard tokens` : '1 wildcard token'}`;
+  }
+  const coins = dupeReturns.refundCoins?.[rarity] ?? 0;
+  if (coins > 0) return `Duplicate → +${coins.toLocaleString()} coins`;
+  return 'Duplicate → no refund';
+}
+
 // Milliseconds of anticipation shake per rarity tier before the reveal pops.
 const SHAKE_DURATION = { common: 500, rare: 700, epic: 900, legendary: 1100 };
 
@@ -346,10 +360,15 @@ export default function Lootbox() {
             <h2 style={{ marginTop: 0, fontFamily: 'var(--font-serif, inherit)' }}>{poolBox.label} — odds &amp; pool</h2>
             {poolBox.odds.map((row) => (
               <div key={row.rarity} style={{ marginBottom: 18 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
                   <strong style={{ color: rarityColor(row.rarity) }}>{row.label}</strong>
                   <span className="pb-num">{row.pct}%</span>
                 </div>
+                {dupeReturnLabel(row.rarity, catalog?.dupeReturns) && (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+                    {dupeReturnLabel(row.rarity, catalog?.dupeReturns)}
+                  </div>
+                )}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {row.items.map((it) => (
                     <div key={it.sku} style={{

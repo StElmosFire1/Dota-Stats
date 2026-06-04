@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "9.43",
+    "title": "See what a duplicate pays before you open a box",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**Dupe returns now show on the odds screen.** Each box's 'Odds & pool' view now lists, per rarity, exactly what a duplicate pays back — the coin refund for Common/Rare/Epic, and the Legendary reward (a coin refund or N Wildcard Tokens). No more opening a box to find out what a dupe is worth.",
+      "**Always matches the real payout.** The figures read straight from the same `/api/lootbox/catalog` response the open transaction uses, so admin tweaks to dupe returns are reflected instantly with no separate copy to keep in sync. Full edition only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.42",
     "title": "Lootbox duplicate returns are now admin-editable",
     "published_at": "2026-06-04",
