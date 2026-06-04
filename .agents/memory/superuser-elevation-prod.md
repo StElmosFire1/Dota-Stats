@@ -66,3 +66,19 @@ site data, then reload.
 ## Dead ends (don't repeat)
 - **Incognito Steam sign-in failing is expected** — incognito blocks the third-party
   cookies Steam OpenID relies on. Not a valid test of prod auth; ignore it.
+
+## "Login does nothing" root cause — stale app shell from cacheable index.html
+The classic symptom (superuser modal never clears / admin panel unreachable in the
+**normal** browser but perfect in **Incognito**) is a **stale cached app shell**, not
+a server-auth bug. Confirmed root cause: `express.static(staticPath)` serves
+`index.html` for `/` with its default index behaviour and **ordinary cacheable
+validators**, *before* reaching the explicit no-store SPA fallback right below it. So
+the bootstrap HTML at `/` got cached by the browser/CDN, pinning an old build whose
+hashed JS/CSS chunks no longer exist after a deploy.
+**Fix:** mount `express.static(staticPath, { index: false })` so every document
+request — including `/` — falls through to the `app.get('/{*splat}')` handler that
+sets `Cache-Control: no-store, must-revalidate`. Hashed assets stay cacheable.
+Regression: `tests/spaShellNoStore.test.js`.
+**Why:** Incognito starts with an empty cache so it always pulls the fresh shell —
+that asymmetry is the tell. A no-store shell makes deploys take effect on the next
+normal navigation for everyone.

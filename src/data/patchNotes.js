@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "9.40",
+    "title": "Deploys no longer leave you on a stale, broken app shell",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**Fixed a caching bug that pinned old builds.** The server's static handler was serving the app's `index.html` bootstrap for `/` with ordinary cacheable headers, so after a deploy your browser (or an upstream CDN) could keep loading the previous build — which references hashed JS/CSS chunks that no longer exist. The most visible symptom was the Superuser Access modal never clearing (and 'Continue as superuser' doing nothing) because the cached bundle's session probe was out of step with the live server.",
+      "**The HTML shell is now always served `no-store`.** Static asset serving no longer hands out `index.html` itself; every document request falls through to the explicit no-store handler, so the bootstrap HTML is never cached while the hashed assets it points at stay cacheable. New deploys take effect on the next normal page load. Full edition · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.39",
     "title": "Fixed the private-preview sign-in loop",
     "published_at": "2026-06-04",

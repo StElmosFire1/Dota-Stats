@@ -4938,7 +4938,17 @@ function createServer(startupStatus = {}) {
 
   const staticPath = path.join(__dirname, '../../web/dist');
   if (fs.existsSync(staticPath)) {
-    app.use(express.static(staticPath));
+    // `index: false` is critical: by default express.static serves index.html
+    // for `/` (and any directory) with ordinary cacheable headers, which would
+    // let the browser/CDN pin a STALE app shell after a deploy — the shell
+    // references hashed JS/CSS chunks that no longer exist, so the user is
+    // stuck on an old build until a manual hard-refresh (observed as the
+    // superuser modal never clearing because the cached bundle's session
+    // probe is out of step with the live server). Disabling index serving
+    // forces EVERY document request — including `/` — to fall through to the
+    // explicit no-store handler below, so the bootstrap HTML is never cached
+    // while the hashed assets it points at stay cacheable.
+    app.use(express.static(staticPath, { index: false }));
     app.get('/{*splat}', (req, res) => {
       // Task #661 — the SPA HTML shell must not be cached by an upstream
       // proxy/CDN. The hashed JS/CSS bundles served by express.static above
