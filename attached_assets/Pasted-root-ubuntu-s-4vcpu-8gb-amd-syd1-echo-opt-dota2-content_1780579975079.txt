@@ -1,0 +1,62 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# echo '=== /opt/dota2 contents ==='
+ls -la /opt/dota2
+echo '=== launch scripts under /opt/dota2 ==='
+find /opt/dota2 -maxdepth 2 -iname '*.sh' 2>/dev/null
+echo '=== any leftover dota unit files ==='
+find /etc/systemd -iname '*dota*' 2>/dev/null
+ls -la /etc/systemd/system/ 2>/dev/null | grep -i dota
+echo '=== how you launched it before (shell history) ==='
+grep -iE 'dota2|-dedicated|srcds|rcon' ~/.bash_history 2>/dev/null | tail -30
+=== /opt/dota2 contents ===
+total 72
+drwxr-xr-x  8 root root 4096 Apr 27 12:05 .
+drwxr-xr-x  4 root root 4096 Apr 27 09:56 ..
+drwxr-xr-x  2 root root 4096 Apr 27 11:14 EmptySteamDepot
+-rwxr-xr-x  1 root root 2358 Apr 27 10:54 README.md
+-rwxr-xr-x  1 root root  275 Apr 27 10:55 VERSIONS.txt
+-rwxr-xr-x  1 root root 7515 Apr 27 10:55 _v2-entry-point
+drwxr-xr-x 10 root root 4096 Apr 27 11:14 game
+-rwxr-xr-x  1 root root 5575 Apr 27 10:54 mtree.txt.gz
+drwxr-xr-x  6 root root 4096 Apr 27 11:14 pressure-vessel
+-rwxr-xr-x  1 root root  621 Apr 27 10:54 run
+-rwxr-xr-x  1 root root  621 Apr 27 10:54 run-in-sniper
+drwxr-xr-x  3 root root 4096 Apr 27 11:14 sniper_platform_3.0.20260218.209091
+-rwxr-xr-x  1 root root  228 Apr 27 12:05 start_server.sh
+drwxr-xr-x  5 root root 4096 Apr 27 11:35 steamapps
+-rwxr-xr-x  1 root root  227 Apr 27 10:55 toolmanifest.vdf
+drwx------  4 root root 4096 Apr 27 12:05 var
+=== launch scripts under /opt/dota2 ===
+/opt/dota2/game/dota.sh
+/opt/dota2/start_server.sh
+=== any leftover dota unit files ===
+=== how you launched it before (shell history) ===
+/opt/dota2/game/bin/linuxsteamrt64/dota2   -dedicated   +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6   +map dota   +sv_lan 0   +sv_cheats 0   +dota_force_gamemode 1   -console
+find /opt/dota2 -name "*.sh" -maxdepth 4 2>/dev/null
+find /opt/dota2 -name "libv8*" 2>/dev/null
+steamcmd +force_install_dir /opt/dota2          +login daburapc2          +app_update 1628350 validate          +quit
+steamcmd +force_install_dir /opt/dota2          +login styg666          +app_update 1628350 validate          +quit
+find /opt/dota2 -name "libv8*" 2>/dev/null
+find /opt/dota2 -maxdepth 2 -name "run" -o -name "run.sh" 2>/dev/null
+ls /opt/dota2/
+/opt/dota2/run -- /opt/dota2/game/bin/linuxsteamrt64/dota2   -dedicated   +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6   +map dota   +sv_lan 0   +sv_cheats 0   +dota_force_gamemode 1   -console
+LD_LIBRARY_PATH=/opt/dota2/game/bin/linuxsteamrt64 /opt/dota2/run -- /opt/dota2/game/bin/linuxsteamrt64/dota2   -dedicated   +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6   +map dota   +sv_lan 0   +sv_cheats 0   +dota_force_gamemode 1   -console
+for lib in /opt/dota2/game/bin/linuxsteamrt64/libv8*.so; do   ln -sf "$lib" /opt/dota2/game/dota/bin/linuxsteamrt64/$(basename "$lib"); done
+/opt/dota2/run -- /opt/dota2/game/bin/linuxsteamrt64/dota2   -dedicated   +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6   +map dota   +sv_lan 0   +sv_cheats 0   +dota_force_gamemode 1   -console
+/opt/dota2/run -- /opt/dota2/game/bin/linuxsteamrt64/dota2   -dedicated   +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6   +map dota   +sv_lan 0   +sv_cheats 0   +dota_force_gamemode 1   -console
+/opt/dota2/run -- /opt/dota2/game/bin/linuxsteamrt64/dota2   -dedicated   +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6   +map dota   +sv_lan 0   +sv_cheats 0   +dota_force_gamemode 1   -console
+/opt/dota2/run -- /opt/dota2/game/bin/linuxsteamrt64/dota2   -dedicated   +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6   +map dota   +sv_lan 0   +sv_cheats 0   +dota_force_gamemode 1   -console
+screen -dmS dota2 bash /opt/dota2/start_server.sh
+screen -r dota2        # attach to see live console output
+screen -dmS dota2 bash /opt/dota2/start_server.sh
+cat > /opt/dota2/start_server.sh << 'EOF'
+/opt/dota2/run -- /opt/dota2/game/bin/linuxsteamrt64/dota2 \
+  -dedicated \
+chmod +x /opt/dota2/start_server.sh
+screen -dmS dota2 /opt/dota2/start_server.sh
+screen -r dota2
+screen -S dota2 -X quit
+sed -i 's/+sv_lan 0/+sv_lan 1/' /opt/dota2/start_server.sh
+screen -dmS dota2 /opt/dota2/start_server.sh
+screen -S dota2 -X quit
+sed -i 's/+sv_lan 1/+sv_lan 0/' /opt/dota2/start_server.sh
+screen -dmS dota2 /opt/dota2/start_server.sh
