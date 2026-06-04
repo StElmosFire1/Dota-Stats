@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "9.37",
+    "title": "Records page now fully on the Court & Pitch palette",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**Consistent branding on the Records page.** Replaced the remaining hardcoded slate/green/red hex colors (record cards, player links, winner/loser cues, muted labels) with the site's brand CSS tokens. Cards and borders now use `--bg-card`/`--border`, muted text uses `--text-muted`, player links use the brass `--accent`, and winner/loser hierarchy is preserved via `--accent-green`/`--accent-red`.",
+      "Purely visual cleanup — no behavior changes. Full edition · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.36",
     "title": "Spot and retry failed replay fetches from the admin panel",
     "published_at": "2026-06-04",

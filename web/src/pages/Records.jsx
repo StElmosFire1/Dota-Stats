@@ -91,16 +91,16 @@ function MultiKillsTab({ rows, sortKey, setSortKey }) {
         }}>
           <span style={{ fontSize: 32 }}>☠️</span>
           <div>
-            <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 }}>Rampage King</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>Rampage King</div>
             <div style={{ fontSize: 18, fontWeight: 700 }}>
               <Link to={`/player/${topRampage.account_id}`} style={{ color: '#e53935', textDecoration: 'none' }}>{topRampage.display_name}</Link>
             </div>
-            <div style={{ fontSize: 13, color: '#64748b' }}>{topRampage.rampages} rampage{topRampage.rampages > 1 ? 's' : ''} in {topRampage.games_played} games</div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{topRampage.rampages} rampage{topRampage.rampages > 1 ? 's' : ''} in {topRampage.games_played} games</div>
           </div>
         </div>
       )}
       {sorted.length === 0 ? (
-        <div style={{ textAlign: 'center', color: '#64748b', padding: '3rem' }}>No multi-kills recorded yet</div>
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem' }}>No multi-kills recorded yet</div>
       ) : (
         <div className="scoreboard-wrapper">
           <table className="scoreboard">
@@ -128,7 +128,7 @@ function MultiKillsTab({ rows, sortKey, setSortKey }) {
                   <td className="col-stat"><KillBadge count={r.triple_kills} color="#ef6c00" emoji="🔥" /></td>
                   <td className="col-stat"><KillBadge count={r.double_kills} color="#1976d2" emoji="⚔️" /></td>
                   <td className="col-stat" style={{ fontWeight: 700 }}>{r.total_multikills}</td>
-                  <td className="col-stat" style={{ color: '#64748b' }}>{r.games_played}</td>
+                  <td className="col-stat" style={{ color: 'var(--text-muted)' }}>{r.games_played}</td>
                 </tr>
               ))}
             </tbody>
@@ -178,7 +178,7 @@ export default function Records() {
   ];
 
   const cardStyle = {
-    background: '#1e293b', border: '1px solid #334155',
+    background: 'var(--bg-card)', border: '1px solid var(--border)',
     borderRadius: 10, padding: '1rem 1.25rem',
     display: 'flex', flexDirection: 'column', gap: 4,
   };
@@ -205,7 +205,7 @@ export default function Records() {
 
       {!loading && tab === 'records' && (
         <div>
-          <p style={{ color: '#64748b', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
             All-time best single-game performances across all inhouse matches.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
@@ -216,7 +216,7 @@ export default function Records() {
                 <div key={key} style={cardStyle}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
-                      <div style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                         {RECORD_ICONS[key]} {rec.label}
                       </div>
                       <div style={{ color: '#f8fafc', fontSize: '1.6rem', fontWeight: 700, lineHeight: 1.2, marginTop: 4 }}>
@@ -224,8 +224,8 @@ export default function Records() {
                       </div>
                     </div>
                   </div>
-                  <div style={{ marginTop: 8, borderTop: '1px solid #334155', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <Link to={`/player/${rec.account_id}`} style={{ color: '#4ade80', fontWeight: 600, fontSize: '0.95rem', textDecoration: 'none' }}>
+                  <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Link to={`/player/${rec.account_id}`} style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.95rem', textDecoration: 'none' }}>
                       {rec.persona_name}
                     </Link>
                     <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>
@@ -280,23 +280,23 @@ export default function Records() {
         const RecCard = ({ rec, card, color }) => {
           if (!rec) return (
             <div style={{ ...cardStyle, opacity: 0.4 }}>
-              <div style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.emoji} {card.label}</div>
-              <div style={{ color: '#334155', fontSize: '1.4rem', fontWeight: 700 }}>—</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.emoji} {card.label}</div>
+              <div style={{ color: 'var(--border)', fontSize: '1.4rem', fontWeight: 700 }}>—</div>
             </div>
           );
           const val = rec[card.field];
           const gp = rec.games_played ? ` (${rec.games_played}g)` : '';
           return (
             <div style={{ ...cardStyle, borderColor: `${color}44` }}>
-              <div style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.emoji} {card.label}</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{card.emoji} {card.label}</div>
               <div style={{ color, fontSize: '1.6rem', fontWeight: 700, lineHeight: 1.2, marginTop: 4 }}>
                 {val != null ? card.fmt(Number(val)) : '—'}
               </div>
-              <div style={{ marginTop: 8, borderTop: '1px solid #334155', paddingTop: 8 }}>
-                <Link to={`/player/${rec.account_id}`} style={{ color: '#4ade80', fontWeight: 600, fontSize: '0.95rem', textDecoration: 'none' }}>
+              <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                <Link to={`/player/${rec.account_id}`} style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.95rem', textDecoration: 'none' }}>
                   {rec.display_name}
                 </Link>
-                <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{gp}</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{gp}</span>
               </div>
             </div>
           );
@@ -305,10 +305,10 @@ export default function Records() {
         return (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-              {posCards.map(c => <RecCard key={c.key} rec={positive[c.key]} card={c} color="#4ade80" />)}
+              {posCards.map(c => <RecCard key={c.key} rec={positive[c.key]} card={c} color="var(--accent-green)" />)}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
-              {negCards.map(c => <RecCard key={c.key} rec={negative[c.key]} card={c} color="#f87171" />)}
+              {negCards.map(c => <RecCard key={c.key} rec={negative[c.key]} card={c} color="var(--accent-red)" />)}
             </div>
           </div>
         );
@@ -320,7 +320,7 @@ export default function Records() {
 
       {!loading && tab === 'firstblood' && (
         <div>
-          <p style={{ color: '#64748b', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
             Who draws first blood most often. Minimum 5 games.
           </p>
           <div className="scoreboard-wrapper">
@@ -337,21 +337,21 @@ export default function Records() {
               <tbody>
                 {fbStats.map((row, i) => (
                   <tr key={row.account_id}>
-                    <td style={{ color: i < 3 ? '#f8fafc' : '#64748b', fontWeight: i < 3 ? 700 : 400 }}>
+                    <td style={{ color: i < 3 ? '#f8fafc' : 'var(--text-muted)', fontWeight: i < 3 ? 700 : 400 }}>
                       {i === 0 ? '🩸' : i === 1 ? '2nd' : i === 2 ? '3rd' : `${i + 1}th`}
                     </td>
                     <td>
-                      <Link to={`/player/${row.account_id}`} style={{ color: '#4ade80', textDecoration: 'none' }}>
+                      <Link to={`/player/${row.account_id}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>
                         {row.display_name}
                       </Link>
                     </td>
-                    <td style={{ color: '#f87171', fontWeight: 600 }}>{row.fb_count}</td>
+                    <td style={{ color: 'var(--accent-red)', fontWeight: 600 }}>{row.fb_count}</td>
                     <td style={{ color: '#94a3b8' }}>{row.games}</td>
                     <td style={{ color: '#fbbf24' }}>{row.fb_rate}%</td>
                   </tr>
                 ))}
                 {fbStats.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', color: '#64748b', padding: '2rem' }}>No data yet</td></tr>
+                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No data yet</td></tr>
                 )}
               </tbody>
             </table>
@@ -361,7 +361,7 @@ export default function Records() {
 
       {!loading && tab === 'comebacks' && (
         <div>
-          <p style={{ color: '#64748b', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
             Matches where a team overcame a 5,000+ gold deficit to win. Sorted by comeback factor
             (parser-derived, 0–100; 20k gold deficit overcome = 100).
           </p>
@@ -373,7 +373,7 @@ export default function Records() {
                     <div style={{
                       padding: '3px 10px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 700,
                       background: match.comeback_team === 'radiant' ? '#166534' : '#7f1d1d',
-                      color: match.comeback_team === 'radiant' ? '#4ade80' : '#f87171',
+                      color: match.comeback_team === 'radiant' ? 'var(--accent-green)' : 'var(--accent-red)',
                     }}>
                       {match.comeback_team === 'radiant' ? '🟢 Radiant' : '🔴 Dire'} Comeback
                     </div>
@@ -390,7 +390,7 @@ export default function Records() {
                       </div>
                     )}
                   </div>
-                  <div style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                     {fmtDuration(match.duration)} &bull;{' '}
                     <Link to={`/match/${match.match_id}`} style={{ color: '#60a5fa', textDecoration: 'none' }}>
                       Match #{match.match_id}
@@ -399,18 +399,18 @@ export default function Records() {
                 </div>
                 <div style={{ display: 'flex', gap: '2rem', marginTop: 8, flexWrap: 'wrap' }}>
                   <div>
-                    <div style={{ color: '#4ade80', fontSize: '0.75rem', marginBottom: 3 }}>Radiant {match.radiant_win ? '🏆' : ''}</div>
+                    <div style={{ color: 'var(--accent-green)', fontSize: '0.75rem', marginBottom: 3 }}>Radiant {match.radiant_win ? '🏆' : ''}</div>
                     <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>{match.radiant_players.join(', ') || '—'}</div>
                   </div>
                   <div>
-                    <div style={{ color: '#f87171', fontSize: '0.75rem', marginBottom: 3 }}>Dire {!match.radiant_win ? '🏆' : ''}</div>
+                    <div style={{ color: 'var(--accent-red)', fontSize: '0.75rem', marginBottom: 3 }}>Dire {!match.radiant_win ? '🏆' : ''}</div>
                     <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>{match.dire_players.join(', ') || '—'}</div>
                   </div>
                 </div>
               </div>
             ))}
             {comebacks.length === 0 && (
-              <div style={{ textAlign: 'center', color: '#64748b', padding: '3rem' }}>
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem' }}>
                 No major comebacks recorded yet (requires parsed replays with gold lead data)
               </div>
             )}
