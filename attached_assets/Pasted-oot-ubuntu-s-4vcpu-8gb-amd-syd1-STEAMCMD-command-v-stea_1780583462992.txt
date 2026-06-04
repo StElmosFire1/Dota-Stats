@@ -1,0 +1,43 @@
+oot@ubuntu-s-4vcpu-8gb-amd-syd1:~# STEAMCMD=$(command -v steamcmd || ls ~/steamcmd/steamcmd.sh /opt/steamcmd/steamcmd.sh /root/steamcmd/steamcmd.sh 2>/dev/null | head -1)
+MANIFEST=$(find /opt /root /home -maxdepth 4 -name 'appmanifest_1628350.acf' 2>/dev/null | head -1)
+if [ -z "$STEAMCMD" ] || [ -z "$MANIFEST" ]; then
+  echo "ABORT — steamcmd=[$STEAMCMD] manifest=[$MANIFEST]; paste this and I'll adjust"
+else
+  INSTALL_DIR=$(dirname "$(dirname "$MANIFEST")")
+  echo "steamcmd=$STEAMCMD  install_dir=$INSTALL_DIR"
+  echo "buildid BEFORE:"; grep -m1 '"buildid"' "$MANIFEST"
+  systemctl stop dota-server.service
+  "$STEAMCMD" +force_install_dir "$INSTALL_DIR" +login daburapc2 +app_update 1628350 +quit
+  echo "buildid AFTER:"; grep -m1 '"buildid"' "$MANIFEST"
+  systemctl start dota-server.service
+  sleep 25
+  echo "service: $(systemctl is-active dota-server.service)"
+  journalctl -u dota-server.service --since "90 sec ago" --no-pager | grep -iE 'out of date|GC wants|server_version|build_version' | tail -6
+fi
+steamcmd=/usr/games/steamcmd  install_dir=/opt/dota2
+buildid BEFORE:
+        "buildid"               "23181402"
+steamcmd.sh[407247]: Starting  /root/.local/share/Steam/steamcmd/linux32/steamcmd
+Redirecting stderr to '/root/.local/share/Steam/logs/stderr.txt'
+Logging directory: '/root/.local/share/Steam/logs'
+[  0%] Checking for available updates...
+[----] Verifying installation...
+UpdateUI: skip show logo
+Steam Console Client (c) Valve Corporation - version 1780356001
+-- type 'quit' to exit --
+Loading Steam API...OK
+Logging in using cached credentials.
+Logging in user 'daburapc2' [U:1:1018228832] to Steam Public...OK
+Waiting for client config...Waiting for compat in post-logon took: 0.098606sOK
+Waiting for user info...OK
+Success! App '1628350' already up to date.
+Unloading Steam API...OK
+buildid AFTER:
+        "buildid"               "23181402"
+service: active
+Jun 04 14:29:59 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407152]: server_version: 6775
+Jun 04 14:29:59 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407152]: build_version: 6775
+Jun 04 14:29:59 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407152]: Version out of date (GC wants 6797, we are 6775)!
+Jun 04 14:30:16 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407339]: Version out of date (GC wants 6797, we are 6775)!
+Jun 04 14:30:16 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407339]: server_version: 6775
+Jun 04 14:30:16 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[407339]: build_version: 6775
