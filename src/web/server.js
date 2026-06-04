@@ -14916,6 +14916,81 @@ NOTES
     }
   });
 
+  // Task #780 — Recent-replays admin view. Returns the last N matches with
+  // their replay-archive status (ok / missing) joined against a live SSH
+  // snapshot of the dedicated server's replay directory so an operator can
+  // spot matches whose .dem was never fetched and retry them.
+  router.get('/admin/inhouse/recent-replays', requireSuperuser, async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
+      const rows = await db.getMatchesWithReplayStatus(limit, 0);
+      let sshReplayDir = null;
+      try {
+        const { checkReplayDir } = require('../services/serverReplayFetcher');
+        sshReplayDir = await checkReplayDir();
+      } catch (e) {
+        sshReplayDir = { ok: false, error: e.message };
+      }
+      const matches = rows.map((m) => {
+        const localName = m.replay_file_path ? path.basename(m.replay_file_path) : null;
+        const remoteName = m.replay_path ? path.basename(m.replay_path) : null;
+        const fileName = localName || remoteName || null;
+        const hasReplay = !!(m.replay_file_path || m.replay_path);
+        return {
+          match_id: m.match_id,
+          date: m.date,
+          file_name: fileName,
+          has_local_file: !!m.replay_file_path,
+          has_remote_archive: !!m.replay_path,
+          status: hasReplay ? 'ok' : 'missing',
+        };
+      });
+      res.json({ matches, sshReplayDir, checkedAt: new Date().toISOString() });
+    } catch (err) {
+      console.error('[API] recent-replays error:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Task #780 — Retry the replay fetch for a single match. Pulls the .dem from
+  // the dedicated server (a specific file when `fileName` is supplied, else the
+  // newest one) and runs it through the normal replay pipeline with
+  // `expectedMatchId` so a wrong .dem is rejected before it can clobber the
+  // match record.
+  router.post('/admin/inhouse/fetch-replay', requireSuperuser, express.json(), async (req, res) => {
+    try {
+      const matchId = req.body?.matchId != null ? String(req.body.matchId).trim() : '';
+      if (!matchId) return res.status(400).json({ ok: false, error: 'matchId is required' });
+      const match = await db.getMatch(matchId);
+      if (!match) return res.status(404).json({ ok: false, error: 'Match not found' });
+
+      const { fetchLatestReplay, fetchReplayByName } = require('../services/serverReplayFetcher');
+      let fetched;
+      const rawName = req.body?.fileName != null ? String(req.body.fileName).trim() : '';
+      if (rawName) {
+        // Honour only the basename so an operator-supplied value can't traverse
+        // out of the configured replay directory.
+        const fileName = path.basename(rawName);
+        if (!fileName.endsWith('.dem')) {
+          return res.status(400).json({ ok: false, error: 'fileName must be a .dem file' });
+        }
+        fetched = await fetchReplayByName(fileName);
+      } else {
+        fetched = await fetchLatestReplay();
+      }
+
+      const result = await processReplayInternal(fetched.localPath, 'admin-retry-fetch', {
+        expectedMatchId: matchId,
+        replayProvenance: 'dedicated_server',
+        remotePath: fetched.remotePath,
+      });
+      res.json({ ok: true, matchId, fileName: fetched.filename, status: result?.status || 'done' });
+    } catch (err) {
+      console.error('[API] inhouse/fetch-replay error:', err.message);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   // =====================================================================
   // Wave 2 / 3 endpoints — preview-flag-gated. Helpers used by all of these:
   //   _isSu(req)        — superuser key header check (matches existing pattern)

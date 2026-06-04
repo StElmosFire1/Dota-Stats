@@ -312,6 +312,33 @@ export async function pushInhouseServerPassword({ sessionId = null, password = n
   return d;
 }
 
+// Task #780 — list the most recent matches with their replay-archive status,
+// joined against a live SSH snapshot of the dedicated server's replay dir.
+export async function fetchRecentReplays(superuserKey, limit = 10) {
+  const r = await superuserFetch(`/admin/inhouse/recent-replays?limit=${encodeURIComponent(limit)}`, {
+    headers: { 'x-superuser-key': superuserKey },
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `Recent replays load failed: ${r.status}`);
+  return d;
+}
+
+// Task #780 — retry pulling a single match's .dem from the dedicated server.
+// Pass `fileName` to fetch a specific .dem (e.g. the newest one from the SSH
+// snapshot); omit it to fetch the newest available file.
+export async function retryReplayFetch({ matchId, fileName = null } = {}, superuserKey) {
+  const body = { matchId };
+  if (fileName) body.fileName = fileName;
+  const r = await superuserFetch('/admin/inhouse/fetch-replay', {
+    method: 'POST',
+    headers: { 'x-superuser-key': superuserKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `Replay fetch failed: ${r.status}`);
+  return d;
+}
+
 function _findHeader(headers, name) {
   const lower = name.toLowerCase();
   return Object.keys(headers).some(k => k.toLowerCase() === lower);

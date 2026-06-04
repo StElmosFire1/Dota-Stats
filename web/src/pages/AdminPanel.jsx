@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts } from '../api';
 import CosmeticPreview from '../components/CosmeticPreview';
 import Dialog from '../components/Dialog';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
@@ -4470,6 +4470,14 @@ function InhouseDiagPanel({ superuserKey }) {
   const [pushResult, setPushResult] = useState(null);
   const [pushError, setPushError] = useState('');
   const [customPwd, setCustomPwd] = useState('');
+  // Task #780 — Recent Replays: last N matches + their archive status, joined
+  // against the live SSH replay-dir snapshot so missing replays can be retried.
+  const [replays, setReplays] = useState(null);
+  const [replayDir, setReplayDir] = useState(null);
+  const [replaysLoading, setReplaysLoading] = useState(false);
+  const [replaysError, setReplaysError] = useState('');
+  const [retryingId, setRetryingId] = useState(null);
+  const [retryMsg, setRetryMsg] = useState(null);
 
   const loadActiveSession = useCallback(async () => {
     try {
@@ -4516,6 +4524,39 @@ function InhouseDiagPanel({ superuserKey }) {
   }, [superuserKey]);
 
   useEffect(() => { loadSrvStatus(); }, [loadSrvStatus]);
+
+  const loadReplays = useCallback(async () => {
+    setReplaysLoading(true);
+    setReplaysError('');
+    try {
+      const d = await fetchRecentReplays(superuserKey, 10);
+      setReplays(Array.isArray(d.matches) ? d.matches : []);
+      setReplayDir(d.sshReplayDir || null);
+    } catch (e) {
+      setReplaysError(e.message || 'Failed to load recent replays.');
+    } finally {
+      setReplaysLoading(false);
+    }
+  }, [superuserKey]);
+
+  useEffect(() => { loadReplays(); }, [loadReplays]);
+
+  async function handleRetryFetch(matchId) {
+    setRetryingId(matchId);
+    setRetryMsg(null);
+    try {
+      // Use the newest .dem on the server (from the SSH snapshot) as the
+      // candidate file; the server guards against a wrong .dem via expectedMatchId.
+      const fileName = replayDir?.ok ? (replayDir.newest || null) : null;
+      const r = await retryReplayFetch({ matchId, fileName }, superuserKey);
+      setRetryMsg({ matchId, ok: true, text: `Fetched ${r.fileName || 'replay'} — ${r.status || 'done'}.` });
+      loadReplays();
+    } catch (e) {
+      setRetryMsg({ matchId, ok: false, text: e.message || 'Retry failed.' });
+    } finally {
+      setRetryingId(null);
+    }
+  }
 
   async function handleProvision() {
     setRunning(true);
@@ -4858,6 +4899,121 @@ function InhouseDiagPanel({ superuserKey }) {
                 )}
               </details>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Recent Replays (Task #780) ────────────────────────────────────── */}
+      <div style={{
+        padding: '12px 16px', borderRadius: 8, background: 'var(--bg-card)',
+        border: '1px solid var(--border)', marginBottom: 14, fontSize: 13,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+          <strong style={{ whiteSpace: 'nowrap' }}>Recent replays</strong>
+          {replaysLoading && <span style={{ color: 'var(--text-muted)' }}>loading…</span>}
+          {replayDir && (
+            replayDir.ok ? (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                server dir: {replayDir.count} .dem file{replayDir.count !== 1 ? 's' : ''}
+                {replayDir.newest && (
+                  <span style={{ fontFamily: 'monospace', marginLeft: 4 }}>· newest: {replayDir.newest}</span>
+                )}
+              </span>
+            ) : (
+              <span style={{ fontSize: 11, color: '#fca5a5' }}>⚠ replay dir: {replayDir.error || 'unreachable'}</span>
+            )
+          )}
+          <button
+            type="button"
+            className="btn"
+            onClick={loadReplays}
+            disabled={replaysLoading}
+            aria-label="Refresh recent replays"
+            style={{ fontSize: 12, padding: '3px 10px', marginLeft: 'auto' }}
+          >
+            {replaysLoading ? '…' : '↺ Refresh'}
+          </button>
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 10px' }}>
+          Last 10 matches and whether a replay was archived. A <strong>missing</strong> replay can be
+          retried — this pulls the newest <code>.dem</code> from the dedicated server and re-parses it
+          (a wrong file is rejected by an embedded match-id check).
+        </p>
+
+        {replaysError && (
+          <div style={{ padding: '8px 12px', borderRadius: 6, background: '#450a0a',
+                        border: '1px solid #f87171', color: '#fca5a5', fontSize: 13, marginBottom: 10 }}>
+            ⚠ {replaysError}
+          </div>
+        )}
+
+        {!replaysLoading && replays && replays.length === 0 && (
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No matches recorded yet.</div>
+        )}
+
+        {replays && replays.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: 'var(--text-muted)', fontSize: 11 }}>
+                  <th style={{ padding: '4px 8px' }}>Match ID</th>
+                  <th style={{ padding: '4px 8px' }}>Date</th>
+                  <th style={{ padding: '4px 8px' }}>Replay file</th>
+                  <th style={{ padding: '4px 8px' }}>Status</th>
+                  <th style={{ padding: '4px 8px' }} />
+                </tr>
+              </thead>
+              <tbody>
+                {replays.map((m) => {
+                  const isMissing = m.status !== 'ok';
+                  const isRetrying = String(retryingId) === String(m.match_id);
+                  const msg = retryMsg && String(retryMsg.matchId) === String(m.match_id) ? retryMsg : null;
+                  return (
+                    <tr key={m.match_id} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>
+                        <Link to={`/matches/${encodeURIComponent(m.match_id)}`} style={{ color: 'var(--accent)' }}>
+                          {m.match_id}
+                        </Link>
+                      </td>
+                      <td style={{ padding: '6px 8px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                        {m.date ? new Date(m.date).toLocaleDateString() : '—'}
+                      </td>
+                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: 11 }}>
+                        {m.file_name || <span style={{ color: '#fca5a5' }}>missing</span>}
+                      </td>
+                      <td style={{ padding: '6px 8px' }}>
+                        <span style={{
+                          display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 11,
+                          fontWeight: 600,
+                          background: isMissing ? '#3f1d1d' : '#14331e',
+                          color: isMissing ? '#fca5a5' : '#86efac',
+                        }}>
+                          {isMissing ? 'missing' : 'ok'}
+                        </span>
+                        {msg && (
+                          <span style={{ marginLeft: 8, fontSize: 11, color: msg.ok ? '#86efac' : '#fca5a5' }}>
+                            {msg.ok ? '✓' : '⚠'} {msg.text}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                        {isMissing && (
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => handleRetryFetch(m.match_id)}
+                            disabled={isRetrying || !!retryingId}
+                            style={{ fontSize: 12, padding: '3px 10px' }}
+                          >
+                            {isRetrying ? '⏳ Fetching…' : '↻ Retry fetch'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

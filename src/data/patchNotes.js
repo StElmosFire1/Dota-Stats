@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.36",
+    "title": "Spot and retry failed replay fetches from the admin panel",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**New 'Recent replays' card** in Admin Panel → Bot → 🔌 Test: Provision & Connect. It lists the last 10 matches with their date, archived replay file name (or **missing**), and a fetch status pill (ok / missing) — so a replay the SSH fetch never pulled is no longer invisible.",
+      "**One-click retry.** Any match flagged *missing* gets a **↻ Retry fetch** button that pulls the newest `.dem` from the dedicated server and re-parses it for that match. A wrong file can't clobber the record — the pipeline rejects it via the embedded match-id check. The card also shows a live SSH snapshot of the server's replay directory (file count + newest file name).",
+      "**Backed by `GET /api/admin/inhouse/recent-replays` and `POST /api/admin/inhouse/fetch-replay`** (both superuser-only). Full edition only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.35",
     "title": "Re-push the server password without spinning up a diagnostic session",
     "published_at": "2026-06-04",
