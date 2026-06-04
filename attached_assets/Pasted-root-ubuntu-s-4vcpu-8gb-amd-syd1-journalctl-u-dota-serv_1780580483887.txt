@@ -1,0 +1,202 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# journalctl -u dota-server.service -n 200 --no-pager | grep -vi 'rcon_password'
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "28818_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Entity  [info_particle_system]: unrecognized parent "9072_riverflow_model"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Height map file (maps/prefabs/promotional_radiant_fountain.vhcg) not found, this will make ground height traces more expensive! Recompile the map to generate a height map.
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Height map file (maps/prefabs/promotional_dire_fountain.vhcg) not found, this will make ground height traces more expensive! Recompile the map to generate a height map.
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Bot ward spot ward_spot_radiant_high_point_top not found in map; falling back to hardcoded location.
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Bot ward spot ward_spot_dire_rune_bottom not found in map; falling back to hardcoded location.
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Bot ward spot ward_spot_dire_high_point_top in an invalid location, this may cause bots to get stuck.
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: SV:  64 player server started
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CSource2Server::GameServerSteamAPIActivated()
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Host activate: Loading (dota)
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: AuthStatus (steamid:90286595180308496):  OK  (OK)
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Certificate expires in 48h00m at 1780753171 (current time 1780580371), will renew in 46h00m
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Recv msg 4005 (k_EMsgGCServerWelcome), 26 bytes
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Received server welcome from GC.
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CMsgClientWelcome subscribed: 0 up-to-date, 0 out-of-date
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Version out of date (GC wants 6797, we are 6775)!
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: QuitServer called with reason: Terminating immediately since server is hibernating
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: QuitServer() executing "quit"
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CHostStateMgr::QueueNewRequest( Quitting, 3 )
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: HostStateRequest::Start(HSR_QUIT)
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: SV:  Server shutting down: NETWORK_DISCONNECT_EXITING (59)
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CNetworkGameServerBase::SetServerState (ss_active -> ss_dead)
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: SV:  AsyncUnloadSpawnGroup( 4 ) -- no such group
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: SV:  AsyncUnloadSpawnGroup( 5 ) -- no such group
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CPlayerVoiceListener::PostSpawnGroupUnload()
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CPlayerVoiceListener::PostSpawnGroupUnload()
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CPlayerVoiceListener::PostSpawnGroupUnload()
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CPlayerVoiceListener::PostSpawnGroupUnload()
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CPlayerVoiceListener::PostSpawnGroupUnload()
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CSteam3ServerS1::ShutdownGameServer
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CNetworkSystem::ShutdownGameServer
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Closing 'server' UDP listen socket
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Closing 'server' poll group
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CNetworkSystem::CleanupDebugOutputFunction()
+Jun 04 13:39:31 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: [S_API FAIL] Tried to access Steam interface STEAMUGC_INTERFACE_VERSION019 before SteamAPI_Init succeeded.
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CSource2Server::GameServerSteamAPIDeactivated()
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: SV:  IGameSystem::LoopDeactivateAllSystems {
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: HO:  IGameSystem::LoopDeactivateAllSystems {
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: HO:  } IGameSystem::LoopDeactivateAllSystems done
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: SV:  } IGameSystem::LoopDeactivateAllSystems done
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: SV: CNetworkStringTableContainer::RemoveAllTables:  removing 20 tables
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CL: CNetworkStringTableContainer::RemoveAllTables:  removing 20 tables
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CPlayerVoiceListener::GameShutdown()
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: SV:  CGameRulesGameSystem::GameShutdown uninstalled game rules
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: SV:  CGameRules::CGameRules destructed
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Host activate: Quitting
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Dispatching EventAppShutdown_t {
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Requested non-existent write path USRLOCAL!
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Requested non-existent write path USRLOCAL!
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Error writing user config file 'cfg/user_keys_0_slot0.vcfg'
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Requested non-existent write path USRLOCAL!
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Requested non-existent write path USRLOCAL!
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Requested non-existent write path USRLOCAL!
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Error writing user config file 'cfg/user_convars_0_slot0.vcfg'
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: } Dispatched EventAppShutdown_t
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: MainLoop returning
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CSharedEdictChangeInfo high water mark 996
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Source2Shutdown
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: ShutdownSource2Logging
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CNetworkSystem::Shutdown()
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: CNetworkSystem::CloseAllSockets()
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Forgot to remove resource type manager for type vsnap!
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Forgot to remove resource type manager for type vpcf!
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Forgot to remove resource type manager for type vcss!
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Forgot to remove resource type manager for type vxml!
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[405025]: Forgot to remove resource type manager for type vpost!
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 systemd[1]: dota-server.service: Deactivated successfully.
+Jun 04 13:39:32 ubuntu-s-4vcpu-8gb-amd-syd1 systemd[1]: dota-server.service: Consumed 8.751s CPU time.
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# 
