@@ -82,3 +82,19 @@ Regression: `tests/spaShellNoStore.test.js`.
 **Why:** Incognito starts with an empty cache so it always pulls the fresh shell —
 that asymmetry is the tell. A no-store shell makes deploys take effect on the next
 normal navigation for everyone.
+
+## Actual resolution observed: clear site COOKIES (stale session cookie)
+When the owner sees the superuser modal in their normal browser but Incognito works,
+the decisive test is to open `/api/admin/session-status` directly in the affected
+browser:
+- Returns `{isSuperuser:true,...}` → server already sees them as owner; the modal is a
+  stale FRONTEND bundle → hard-refresh.
+- Returns blank / 401 / `isSuperuser:false` → the live SESSION is not authenticated;
+  the avatar is stale.
+In the real incident the fix was **clearing site cookies** (not cache): a stale `oi.sid`
+session cookie was being sent that resolved to a session without the owner accountId, so
+elevation failed. Plain "clear cache" / "clear site data" did NOT fix it for this user;
+explicitly clearing **cookies** did. **Why:** the cookie is domain-scoped `.oceinhouse.gg`
+(spans apex+www) with a 7-day maxAge — a lingering old cookie can outlive the server-side
+session it points at. **How to apply:** for "admin/superuser login does nothing", check
+session-status first, then have the user clear cookies + re-sign-in before chasing code.
