@@ -189,13 +189,13 @@ export default function Records() {
 
       <div style={{ display: 'flex', gap: 8, marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         {tabs.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)} style={{
-            padding: '8px 18px', borderRadius: 8, cursor: 'pointer', fontSize: '0.9rem',
-            background: tab === t.key ? '#4ade80' : '#1e293b',
-            color: tab === t.key ? '#0f172a' : '#94a3b8',
-            border: `1px solid ${tab === t.key ? '#4ade80' : '#334155'}`,
-            fontWeight: tab === t.key ? 700 : 400,
-          }}>
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setTab(t.key)}
+            className={`tab-btn${tab === t.key ? ' active' : ''}`}
+            aria-pressed={tab === t.key}
+          >
             {t.label}
           </button>
         ))}
