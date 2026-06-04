@@ -2788,12 +2788,17 @@ export const getAdminDmRecipients = (superuserKey, filter = null) =>
     { superuserKey }
   );
 
+// Task #755 — kicks off a background blast and returns { ok, jobId, recipientCount }
+// immediately. Poll getAdminDmBlastStatus for live progress and the final breakdown.
 export const adminDmBlast = (superuserKey, message, accountIds) =>
   superuserJson('/admin/dm-blast', {
     method: 'POST',
     body: { message, accountIds },
     superuserKey,
   });
+
+export const getAdminDmBlastStatus = (superuserKey) =>
+  superuserJson('/admin/dm-blast/status', { superuserKey });
 
 export const getAdminDmBlasts = (superuserKey, limit = 25) =>
   superuserJson(`/admin/dm-blasts?limit=${encodeURIComponent(limit)}`, { superuserKey });

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast, getAdminDmBlasts } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts } from '../api';
 import Dialog from '../components/Dialog';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
@@ -3205,6 +3205,9 @@ function MassDmPanel({ superuserKey }) {
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState(null);
   const [sendError, setSendError] = useState('');
+  // Task #755 — live progress of the background blast job ({ processed, sent,
+  // failed, remaining, recipientCount, done } as reported by the status poll).
+  const [progress, setProgress] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -3292,10 +3295,14 @@ function MassDmPanel({ superuserKey }) {
     ).map(f => String(f.account_id)).filter(Boolean);
     if (failedIds.length === 0) { setResendTarget(null); return; }
     setResending(true); setResendError(''); setResendResult(null);
+    const blastId = resendTarget.id;
     try {
-      const d = await adminDmBlast(superuserKey, resendTarget.message, failedIds);
-      setResendResult({ blastId: resendTarget.id, sent: d.sent, failed: d.failed });
+      await adminDmBlast(superuserKey, resendTarget.message, failedIds);
       setResendTarget(null);
+      // Task #755 — the resend is now a background job too; poll to completion
+      // before reporting the final tally so the history refresh reflects it.
+      const finalJob = await pollDmBlastUntilDone();
+      setResendResult({ blastId, sent: finalJob.sent, failed: finalJob.failed });
       await loadHistory();
     } catch (e) {
       setResendError(e.message || 'Resend failed');
@@ -3346,17 +3353,55 @@ function MassDmPanel({ superuserKey }) {
     setSelected(new Set());
   }
 
+  // Task #755 — poll the status endpoint until the background job reports done,
+  // pushing each snapshot into `setProgress`. Resolves with the final job view
+  // (which carries the per-recipient sentList/failedList) or throws on error.
+  function pollDmBlastUntilDone(onSnapshot) {
+    return new Promise((resolve, reject) => {
+      let stopped = false;
+      const tick = async () => {
+        if (stopped) return;
+        try {
+          const { job } = await getAdminDmBlastStatus(superuserKey);
+          if (!job) { reject(new Error('Blast job not found (server may have restarted).')); return; }
+          if (onSnapshot) onSnapshot(job);
+          if (job.done) {
+            stopped = true;
+            if (job.error) reject(new Error(job.error));
+            else resolve(job);
+            return;
+          }
+        } catch (e) {
+          // Transient poll failures shouldn't abort the whole run — keep trying.
+          // A persistent failure simply means progress stalls; the admin can
+          // refresh. We only reject on an explicit job-level error above.
+          console.warn('[MassDM] status poll failed:', e.message);
+        }
+        setTimeout(tick, 1000);
+      };
+      tick();
+    });
+  }
+
   async function send() {
-    setSending(true); setSendError(''); setResults(null);
+    setSending(true); setSendError(''); setResults(null); setProgress(null);
     try {
       const accountIds = Array.from(selected);
-      const d = await adminDmBlast(superuserKey, message, accountIds);
-      setResults(d);
+      const start = await adminDmBlast(superuserKey, message, accountIds);
+      setProgress({ recipientCount: start.recipientCount || accountIds.length, processed: 0, sent: 0, failed: 0, remaining: start.recipientCount || accountIds.length, done: false });
       setShowConfirm(false);
+      const finalJob = await pollDmBlastUntilDone(setProgress);
+      setResults({
+        sent: finalJob.sent,
+        failed: finalJob.failed,
+        sentList: finalJob.sentList || [],
+        failedList: finalJob.failedList || [],
+      });
     } catch (e) {
       setSendError(e.message || 'Send failed');
     } finally {
       setSending(false);
+      setProgress(null);
     }
   }
 
@@ -3548,6 +3593,42 @@ function MassDmPanel({ superuserKey }) {
             {selected.size === 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Select at least one recipient.</span>}
             {!message.trim() && selected.size > 0 && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Enter a message first.</span>}
           </div>
+
+          {/* Task #755 — live progress bar while a background blast is sending. */}
+          {progress && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>
+                  Sending… {progress.processed} / {progress.recipientCount}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  <span style={{ color: '#22c55e' }}>✓ {progress.sent}</span>{' · '}
+                  <span style={{ color: progress.failed > 0 ? '#ef4444' : 'var(--text-muted)' }}>✗ {progress.failed}</span>{' · '}
+                  {progress.remaining} remaining
+                </span>
+              </div>
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={progress.recipientCount || 0}
+                aria-valuenow={progress.processed || 0}
+                aria-label="Mass DM send progress"
+                style={{ height: 8, borderRadius: 4, background: 'var(--bg)', overflow: 'hidden', border: '1px solid var(--border)' }}
+              >
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${progress.recipientCount ? Math.round((progress.processed / progress.recipientCount) * 100) : 0}%`,
+                    background: 'var(--accent)',
+                    transition: 'width 0.4s ease',
+                  }}
+                />
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '8px 0 0' }}>
+                Sends run in the background at ~700 ms each. You can leave this open; progress updates live.
+              </p>
+            </div>
+          )}
 
           {/* Confirm dialog — uses the shared <Dialog> primitive for focus trapping, Escape-to-close, and ARIA */}
           <Dialog

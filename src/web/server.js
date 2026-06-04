@@ -28,13 +28,19 @@ function _webPushReady() {
   return Boolean(webpush && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
 }
 
-// Task #732 — concurrency guard for POST /admin/dm-blast. A blast sends up to
-// 500 DMs sequentially at 700 ms each (~6 min). Without a guard a double-click
-// or a second admin would fan out duplicate DMs to the same recipients. This
-// in-process flag lets a second request fail fast with a 409 while one is live.
+// Task #732 / #755 — background job + concurrency guard for POST /admin/dm-blast.
+// A blast sends up to 500 DMs sequentially at 700 ms each (~6 min). Holding the
+// HTTP request open that long risks a proxy timeout, so the send now runs as an
+// in-process background job: POST kicks it off and returns a job id immediately,
+// and the AdminPanel polls a status endpoint for live progress. The single
+// `_dmBlastJob` slot doubles as the concurrency guard from Task #732 — a second
+// request fails fast with a 409 while a job is still running (`done === false`).
+// The finished job is kept in the slot so the status poll can read the final
+// per-recipient breakdown; the next POST overwrites it once the prior one is done.
 // In-process is sufficient: the prod web server is a single PM2 process per
-// edition, and the flag self-clears in a finally so a thrown send can't wedge it.
-let _dmBlastInProgress = null; // null when idle, else { startedAt, sender, recipientCount }
+// edition, and the job is marked done in a finally so a thrown send can't wedge it.
+let _dmBlastJob = null; // null until first blast, then the latest job object (see runner)
+let _dmBlastJobSeq = 0;
 
 // Task #381 — Expo push fan-out. Posts up to 100 messages per HTTP call
 // to Expo's push service (no SDK needed; thin wrapper around node-fetch).
@@ -12397,9 +12403,101 @@ NOTES
     }
   });
 
-  // POST /admin/dm-blast — send a plain-text message to a picked set of
-  // players via Discord DM. Sends sequentially with a short delay so we
-  // don't hammer Discord's rate limit. Returns a per-recipient breakdown.
+  // Task #755 — the actual send loop, run in the background (not awaited by the
+  // POST handler). Mutates the shared `job` object as it progresses so the status
+  // endpoint can report live counts, and marks it done in a finally so a thrown
+  // send can never wedge the concurrency guard shut.
+  async function _runDmBlastJob(job, bot) {
+    const { text } = job;
+    const sent = job.sentList;   // shared arrays — status endpoint reads these
+    const failed = job.failedList;
+    try {
+      for (const rawId of job.accountIds) {
+        const accountId = String(rawId);
+        let discordId = null;
+        try {
+          discordId = await db.getDiscordIdByAccountId(accountId);
+        } catch (e) {
+          failed.push({ account_id: accountId, reason: 'DB lookup error: ' + e.message });
+          job.processed++;
+          continue;
+        }
+        if (!discordId) {
+          failed.push({ account_id: accountId, reason: 'No Discord ID on file' });
+          job.processed++;
+          continue;
+        }
+        try {
+          const user = await bot.client.users.fetch(discordId).catch(() => null);
+          if (!user) {
+            failed.push({ account_id: accountId, discord_id: discordId, reason: 'User not found on Discord' });
+            job.processed++;
+            continue;
+          }
+          await user.send({ content: text });
+          sent.push({ account_id: accountId, discord_id: discordId });
+        } catch (e) {
+          const reason = e?.message?.includes('Cannot send messages to this user')
+            ? 'DMs are closed (user has DMs disabled)'
+            : (e?.message || 'Send failed');
+          failed.push({ account_id: accountId, discord_id: discordId, reason });
+        }
+        job.processed++;
+        // 700 ms between sends to respect Discord's DM rate limit.
+        await new Promise(r => setTimeout(r, 700));
+      }
+
+      // Task #730 — persist the blast to the audit trail. Best-effort: a logging
+      // failure must not fail the send (the DMs already went out), so we only warn.
+      try {
+        await db.logAdminDmBlast({
+          senderAccountId: job.sender,
+          senderRole: 'superuser',
+          message: text,
+          recipientCount: job.recipientCount,
+          sentCount: sent.length,
+          failedCount: failed.length,
+          results: { sent, failed },
+        });
+      } catch (e) {
+        console.error('[AdminDmBlast] failed to write audit log:', e.message);
+      }
+    } catch (e) {
+      // Unexpected loop failure — record it so the poll surfaces a real error
+      // instead of silently appearing "done" with a partial breakdown.
+      job.error = e?.message || 'Mass DM blast failed unexpectedly';
+      console.error('[AdminDmBlast] background job crashed:', job.error);
+    } finally {
+      job.done = true;
+      job.finishedAt = Date.now();
+    }
+  }
+
+  // Serialise a job into the shape the status poll / final-result UI expects.
+  function _dmBlastJobView(job) {
+    if (!job) return null;
+    const remaining = Math.max(0, job.recipientCount - job.processed);
+    return {
+      jobId: job.id,
+      startedAt: new Date(job.startedAt).toISOString(),
+      finishedAt: job.finishedAt ? new Date(job.finishedAt).toISOString() : null,
+      recipientCount: job.recipientCount,
+      processed: job.processed,
+      remaining,
+      sent: job.sentList.length,
+      failed: job.failedList.length,
+      done: job.done,
+      error: job.error || null,
+      // Only ship the (potentially large) per-recipient breakdown once finished.
+      sentList: job.done ? job.sentList : undefined,
+      failedList: job.done ? job.failedList : undefined,
+    };
+  }
+
+  // POST /admin/dm-blast — kick off a background mass-DM job and return its id
+  // immediately (Task #755). Sends run sequentially with a short delay so we
+  // don't hammer Discord's rate limit; poll GET /admin/dm-blast/status for
+  // progress and the final per-recipient breakdown.
   router.post('/admin/dm-blast', requireSuperuser, express.json(), async (req, res) => {
     const { message, accountIds } = req.body || {};
     if (!message || typeof message !== 'string' || !message.trim()) {
@@ -12417,91 +12515,52 @@ NOTES
       return res.status(503).json({ error: 'Discord bot is not connected. Try again once the bot is online.' });
     }
 
-    // Task #732 — refuse to start a second blast while one is already running.
+    // Task #732 — refuse to start a second blast while one is still running.
     // A blast can take ~6 minutes, so a double-click or a second admin would
-    // otherwise fan out duplicate DMs to the same recipients.
-    if (_dmBlastInProgress) {
-      const startedAt = _dmBlastInProgress.startedAt;
+    // otherwise fan out duplicate DMs to the same recipients. A finished job is
+    // kept around for its final-result poll but does not block a new blast.
+    if (_dmBlastJob && !_dmBlastJob.done) {
+      const startedAt = _dmBlastJob.startedAt;
       const elapsedSec = Math.round((Date.now() - startedAt) / 1000);
       return res.status(409).json({
         error: 'A mass DM blast is already in progress. Wait for it to finish before starting another.',
         inProgress: {
+          jobId: _dmBlastJob.id,
           startedAt: new Date(startedAt).toISOString(),
           elapsedSeconds: elapsedSec,
-          recipientCount: _dmBlastInProgress.recipientCount,
+          recipientCount: _dmBlastJob.recipientCount,
         },
       });
     }
-    _dmBlastInProgress = {
+
+    const job = {
+      id: `dmblast_${Date.now()}_${++_dmBlastJobSeq}`,
       startedAt: Date.now(),
+      finishedAt: null,
       sender: req.session && req.session.accountId ? String(req.session.accountId) : null,
+      text: message.trim(),
+      accountIds: accountIds.slice(),
       recipientCount: accountIds.length,
+      processed: 0,
+      sentList: [],
+      failedList: [],
+      done: false,
+      error: null,
     };
+    _dmBlastJob = job;
 
-    const text = message.trim();
-    const sent = [];
-    const failed = [];
+    // Fire-and-forget: the runner owns the job lifecycle from here. We do NOT
+    // await it so the HTTP request returns straight away.
+    _runDmBlastJob(job, bot);
 
-    try {
-      for (const rawId of accountIds) {
-        const accountId = String(rawId);
-        let discordId = null;
-        try {
-          discordId = await db.getDiscordIdByAccountId(accountId);
-        } catch (e) {
-          failed.push({ account_id: accountId, reason: 'DB lookup error: ' + e.message });
-          continue;
-        }
-        if (!discordId) {
-          failed.push({ account_id: accountId, reason: 'No Discord ID on file' });
-          continue;
-        }
-        try {
-          const user = await bot.client.users.fetch(discordId).catch(() => null);
-          if (!user) {
-            failed.push({ account_id: accountId, discord_id: discordId, reason: 'User not found on Discord' });
-            continue;
-          }
-          await user.send({ content: text });
-          sent.push({ account_id: accountId, discord_id: discordId });
-        } catch (e) {
-          const reason = e?.message?.includes('Cannot send messages to this user')
-            ? 'DMs are closed (user has DMs disabled)'
-            : (e?.message || 'Send failed');
-          failed.push({ account_id: accountId, discord_id: discordId, reason });
-        }
-        // 700 ms between sends to respect Discord's DM rate limit.
-        await new Promise(r => setTimeout(r, 700));
-      }
+    res.status(202).json({ ok: true, jobId: job.id, recipientCount: job.recipientCount });
+  });
 
-      // Task #730 — persist the blast to the audit trail. Best-effort: a logging
-      // failure must not fail the send (the DMs already went out), so we only warn.
-      try {
-        await db.logAdminDmBlast({
-          senderAccountId: req.session && req.session.accountId ? String(req.session.accountId) : null,
-          senderRole: 'superuser',
-          message: text,
-          recipientCount: accountIds.length,
-          sentCount: sent.length,
-          failedCount: failed.length,
-          results: { sent, failed },
-        });
-      } catch (e) {
-        console.error('[AdminDmBlast] failed to write audit log:', e.message);
-      }
-
-      res.json({
-        ok: true,
-        sent: sent.length,
-        failed: failed.length,
-        sentList: sent,
-        failedList: failed,
-      });
-    } finally {
-      // Always release the guard, even if the loop throws unexpectedly, so a
-      // single failed blast can't wedge the endpoint shut forever.
-      _dmBlastInProgress = null;
-    }
+  // GET /admin/dm-blast/status — poll progress of the current/last mass-DM job
+  // (Task #755). Returns { job: null } when no blast has been started this
+  // process lifetime, otherwise live counts and (once done) the full breakdown.
+  router.get('/admin/dm-blast/status', requireSuperuser, async (req, res) => {
+    res.json({ job: _dmBlastJobView(_dmBlastJob) });
   });
 
   // GET /admin/dm-blasts — audit trail of past mass-DM broadcasts (Task #730).

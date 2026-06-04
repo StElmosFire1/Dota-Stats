@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.30",
+    "title": "Mass DM blasts now show live send progress instead of a frozen button",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**Background send with a progress bar.** A mass Discord DM to hundreds of players used to hold the admin's request open for minutes (sends are paced at ~700ms each), risking a proxy timeout with nothing to show for it. The send now runs as a background job: the Send button returns instantly and the card shows a live progress bar with sent / failed / remaining counts that updates every second.",
+      "**Pollable status endpoint.** `POST /admin/dm-blast` kicks off the job and returns a job id; `GET /admin/dm-blast/status` reports progress and, once finished, the full per-recipient breakdown. The single-blast-at-a-time guard still applies — a second blast is refused with a 409 while one is running.",
+      "**Resend-to-failures** uses the same background flow and waits for completion before refreshing the history. Full edition only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.29",
     "title": "Owner can no longer be locked out of the site lockdown gate",
     "published_at": "2026-06-04",
