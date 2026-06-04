@@ -1,0 +1,66 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# echo "=== service active? ==="
+systemctl is-active dota-server.service
+echo "=== anything listening on 27015? ==="
+ss -tulnp | grep 27015 || echo "NOTHING listening on 27015"
+echo "=== launch args (rcon / ip / hibernate / port) ==="
+grep -E 'rcon_password|-ip|sv_hibernate|tcp|-port|27015' /opt/dota2/start_server.sh
+echo "=== last 50 log lines (look for repeated Started/Stopped = restart loop, or a crash reason) ==="
+journalctl -u dota-server.service --no-pager -n 50
+=== service active? ===
+active
+=== anything listening on 27015? ===
+udp   UNCONN 0      0                  *:27015            *:*    users:(("dota2",pid=406446,fd=171))                     
+tcp   LISTEN 0      2            0.0.0.0:27015      0.0.0.0:*    users:(("dota2",pid=406446,fd=186))                     
+=== launch args (rcon / ip / hibernate / port) ===
+exec /opt/dota2/run -- /opt/dota2/game/bin/linuxsteamrt64/dota2 -dedicated -ip 0.0.0.0 -usercon +sv_hibernate_when_empty 0 +sv_setsteamaccount DE9148762557A322D957287FC1BDF1C6 +rcon_password "b4d5ceb0dc95e2f47e409e177e574f83" +sv_lan 0 +sv_cheats 0 +tv_enable 1 +tv_autorecord 1 +dota_force_gamemode 1 +map dota
+=== last 50 log lines (look for repeated Started/Stopped = restart loop, or a crash reason) ===
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: Start Primary SourceTV Client: Auto-Recording demo
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: Host activate: Loading (dota)
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: AuthStatus (steamid:90286596525360144):  OK  (OK)
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: Certificate expires in 48h00m at 1780755378 (current time 1780582578), will renew in 46h00m
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: Recv msg 4005 (k_EMsgGCServerWelcome), 26 bytes
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: Received server welcome from GC.
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: CMsgClientWelcome subscribed: 0 up-to-date, 0 out-of-date
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: Version out of date (GC wants 6797, we are 6775)!
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: S:Gamerules: entering state 'DOTA_GAMERULES_STATE_CUSTOM_GAME_SETUP'
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: S:Gamerules: entering state 'DOTA_GAMERULES_STATE_PLAYER_DRAFT'
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: S:Gamerules: entering state 'DOTA_GAMERULES_STATE_HERO_SELECTION'
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: Muted Players: Send msg 8870 (k_EMsgServerToGCLobbyInitialized), 8 bytes
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: --- Sent CMsgGameServerInfo to GC
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_public_ip_addr: 2261231327
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_private_ip_addr: 0
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_port: 27015
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_tv_port: 27020
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_key: ""
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_hibernation: false
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_type: GAME
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_region: 0
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_loadavg: 0.326660156
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_tv_broadcast_time: -118.700005
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_game_time: -75
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: relay_slots_max: 64
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: relays_connected: 0
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: relay_clients_connected: 0
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: tv_secret_code: 17816189646285126623
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_version: 6775
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: server_cluster: 0
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: assigned_server_tv_port: 27020
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: allow_custom_games: BOTH
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: build_version: 6775
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: ---
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: SourceTV[0] broadcast active.
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: CHLTVServerAsync::ExecuteDelayedCall StartAutoRecordingCall_t with start tick == 0
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: Recording SourceTV replay to replays/auto-20260604-1416-dota-Dota_2.dem...
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: playdemo replays/auto-20260604-1416-dota-Dota_2.dem
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: Send msg 4508 (k_EMsgGCGameServerInfo), 84 bytes
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: SteamLearn: Invalid HMAC encoding for RegisterDataSource (DotaMatchHero)
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: SteamLearn: Invalid HMAC encoding for RegisterDataSource (DotaAbilitySkill)
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: SteamLearn: Invalid HMAC encoding for RegisterDataSource (DotaPlayerTimedStats)
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: SteamLearn: Invalid HMAC encoding for RegisterDataSource (DotaMatchInfoTeam)
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: SteamLearn: Invalid HMAC encoding for RegisterDataSource (DotaMatchHero)
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: SteamLearn: Invalid HMAC encoding for RegisterDataSource (DotaPlayerMatchState)
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: SteamLearn: Invalid HMAC encoding for RegisterDataSource (DotaPreGameItemPurchases)
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: SteamLearn: Invalid HMAC encoding for RegisterDataSource (DotaMatchState)
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: SteamLearn: Invalid HMAC encoding for RegisterDataSource (DotaWardPlacement)
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: SteamLearn: Invalid HMAC encoding for RegisterDataSource (DotaPreGameItemPurchase)
+Jun 04 14:16:18 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[406446]: SteamLearn: Invalid HMAC encoding for RegisterDataSource (DotaMatchHeroes)
