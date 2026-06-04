@@ -172,4 +172,55 @@ function streamReplayFromArchive(remotePath, res) {
   });
 }
 
-module.exports = { listReplays, fetchLatestReplay, fetchReplayByName, testConnection, archiveMatchReplay, streamReplayFromArchive };
+// Returns { ok, count, newest, files, error } — connects via SSH and lists the
+// configured replay directory. Produces distinct failure reasons:
+//   • 'SSH not configured' when secrets are missing (no connection attempted)
+//   • 'Replay directory not found' when the path doesn't exist on the server
+//   • 'Permission denied' / err.message for any other SSH/IO failures
+// An empty-but-reachable directory returns { ok: true, count: 0 }.
+async function checkReplayDir() {
+  const ssh = config.dota?.dedicatedServer?.ssh || {};
+  if (!ssh.host) return { ok: false, error: 'SSH not configured (DEDICATED_SERVER_SSH_HOST missing)' };
+  if (!ssh.privateKey) return { ok: false, error: 'SSH not configured (DEDICATED_SERVER_SSH_PRIVATE_KEY missing)' };
+  const dir = ssh.replayDir || '/opt/dota2/game/dota/replays';
+  try {
+    return await withConnection(async (conn) => {
+      // Step 1: verify the directory is reachable. `test -d` exits 1 when the
+      // path doesn't exist or isn't a directory; execCommand throws on non-zero
+      // exit, so authentication/connectivity failures also surface here.
+      try {
+        await execCommand(conn, `test -d "${dir}"`);
+      } catch (dirErr) {
+        // Re-check: distinguish "no such directory" from a connectivity error.
+        // If the connection was healthy enough to run a command, it's a path issue.
+        const msg = String(dirErr.message || '');
+        if (msg.includes('permission denied') || msg.includes('Permission denied')) {
+          return { ok: false, error: `Permission denied reading replay directory: ${dir}` };
+        }
+        return { ok: false, error: `Replay directory not found: ${dir}` };
+      }
+      // Step 2: list .dem files sorted newest-first. `find` exits 0 even when
+      // no files match (unlike `ls *.dem` which exits 1 on empty glob), so an
+      // empty directory is { ok: true, count: 0 } — not an error.
+      // -printf '%T@ %f\n' is GNU find (Linux) — always available on Ubuntu/Debian.
+      const out = await execCommand(
+        conn,
+        `find "${dir}" -maxdepth 1 -name '*.dem' -printf '%T@ %f\\n' 2>/dev/null | sort -rn | head -20`
+      );
+      const files = out
+        .split('\n')
+        .map(l => l.trim().replace(/^\d+\.\d+\s+/, ''))
+        .filter(s => s && s.endsWith('.dem'));
+      return {
+        ok: true,
+        count: files.length,
+        newest: files.length > 0 ? files[0] : null,
+        files: files.slice(0, 5),
+      };
+    });
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+module.exports = { listReplays, fetchLatestReplay, fetchReplayByName, testConnection, checkReplayDir, archiveMatchReplay, streamReplayFromArchive };

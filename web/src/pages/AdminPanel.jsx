@@ -4371,16 +4371,17 @@ function InhouseDiagPanel({ superuserKey }) {
   const [cleaningUp, setCleaningUp] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-  // On a failed provision the API now returns the server_failed session row
-  // (status + notes) AND a sessionId. We track that here so the UI can show
-  // the failure detail AND offer Cleanup for the orphaned diagnostic row.
+  // On a failed provision the API returns the server_failed session row (status +
+  // notes) AND a sessionId so the UI can render the failure detail inline AND
+  // offer Cleanup for the orphaned diagnostic row.
   const [failedSession, setFailedSession] = useState(null);
   const [failedSessionId, setFailedSessionId] = useState(null);
-  // Reuse the existing /api/admin/dedicated-server/status endpoint so the
-  // operator can pre-flight check RCON + SSH reachability before pressing
-  // the diagnostic button. Loaded lazily on mount.
+  // Pre-flight reachability snapshot: RCON + SSH + replay-dir.
   const [srvStatus, setSrvStatus] = useState(null);
   const [srvLoading, setSrvLoading] = useState(false);
+  const [srvCheckedAt, setSrvCheckedAt] = useState(null);
+  // Collapsible operator checklist.
+  const [checklistOpen, setChecklistOpen] = useState(false);
 
   const loadSrvStatus = useCallback(async () => {
     setSrvLoading(true);
@@ -4394,6 +4395,7 @@ function InhouseDiagPanel({ superuserKey }) {
       setSrvStatus({ error: e.message });
     } finally {
       setSrvLoading(false);
+      setSrvCheckedAt(new Date());
     }
   }, [superuserKey]);
 
@@ -4410,8 +4412,6 @@ function InhouseDiagPanel({ superuserKey }) {
       setResult(r);
     } catch (e) {
       setError(e.message || 'Provisioning failed.');
-      // Surface the server_failed session shape so the operator can read
-      // notes inline AND cleanup the orphan row left behind by the failure.
       setFailedSession(e.session || null);
       setFailedSessionId(e.sessionId || null);
     } finally {
@@ -4436,6 +4436,13 @@ function InhouseDiagPanel({ superuserKey }) {
     }
   }
 
+  const fmtTime = (d) => d ? d.toLocaleTimeString() : null;
+  const _dot = (ok) => ({
+    display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+    background: ok ? '#4ade80' : '#ef4444', marginRight: 6, flexShrink: 0,
+    verticalAlign: 'middle',
+  });
+
   return (
     <section className="admin-section" style={{ marginBottom: 36 }}>
       <h2 id="ap-anchor-inhouse-diag" className="section-title" style={{ marginBottom: 6 }}>
@@ -4445,59 +4452,125 @@ function InhouseDiagPanel({ superuserKey }) {
         Creates a hidden synthetic inhouse session, pushes a fresh match password to the
         configured dedicated server over RCON, and renders the <code>steam://</code> connect link
         below so you can click it and verify Dota launches and joins. The diagnostic session is
-        invisible to <code>/inhouse</code> and to match history, and it does <strong>not</strong> post to
-        Discord or move anyone in voice. Click <strong>Cleanup</strong> when you&rsquo;re done to delete
-        the hidden row.
+        invisible to <code>/inhouse</code> and to match history, and does <strong>not</strong> post to
+        Discord or move anyone in voice. Click <strong>Cleanup</strong> when you&rsquo;re done.
       </p>
 
-      {/* Pre-flight: dedicated-server reachability snapshot */}
+      {/* ── Pre-flight reachability snapshot ─────────────────────────────── */}
       <div style={{
-        display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center',
-        padding: '10px 14px', borderRadius: 8, background: 'var(--bg-card)',
+        padding: '12px 16px', borderRadius: 8, background: 'var(--bg-card)',
         border: '1px solid var(--border)', marginBottom: 14, fontSize: 13,
       }}>
-        <strong>Dedicated server:</strong>
-        {srvLoading && <span style={{ color: 'var(--text-muted)' }}>checking…</span>}
-        {!srvLoading && srvStatus && srvStatus.error && (
-          <span style={{ color: '#fca5a5' }}>⚠ {srvStatus.error}</span>
-        )}
-        {!srvLoading && srvStatus && !srvStatus.error && (
-          <>
+        {/* Header row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+          <strong style={{ whiteSpace: 'nowrap' }}>Dedicated server</strong>
+          {srvLoading && <span style={{ color: 'var(--text-muted)' }}>checking…</span>}
+          {!srvLoading && srvStatus?.error && (
+            <span style={{ color: '#fca5a5' }}>⚠ {srvStatus.error}</span>
+          )}
+          {!srvLoading && srvStatus && !srvStatus.error && (
             <span style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>
-              {srvStatus.ip || '(no IP configured)'}:{srvStatus.port}
+              {srvStatus.ip || '(no IP)'}:{srvStatus.port}
             </span>
-            <span>
-              <span style={{
-                display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
-                background: srvStatus.rcon?.ok ? '#4ade80' : '#ef4444', marginRight: 6,
-              }} />
-              RCON: <span style={{ color: srvStatus.rcon?.ok ? '#4ade80' : '#fca5a5' }}>
-                {srvStatus.rcon?.ok ? 'reachable' : (srvStatus.rcon?.error || 'unreachable')}
+          )}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {srvCheckedAt && (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                checked {fmtTime(srvCheckedAt)}
               </span>
-            </span>
-            <span>
-              <span style={{
-                display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
-                background: srvStatus.ssh?.ok ? '#4ade80' : '#ef4444', marginRight: 6,
-              }} />
-              SSH: <span style={{ color: srvStatus.ssh?.ok ? '#4ade80' : '#fca5a5' }}>
-                {srvStatus.ssh?.ok ? 'reachable' : (srvStatus.ssh?.error || 'unreachable')}
-              </span>
-            </span>
-          </>
+            )}
+            <button
+              type="button"
+              className="btn"
+              onClick={loadSrvStatus}
+              disabled={srvLoading}
+              aria-label="Refresh dedicated server reachability"
+              style={{ fontSize: 12, padding: '3px 10px' }}
+            >
+              {srvLoading ? '…' : '↺ Refresh'}
+            </button>
+            <Link to="/inhouse" style={{ fontSize: 12, color: 'var(--accent)' }}>Open /inhouse →</Link>
+          </div>
+        </div>
+
+        {/* Per-check rows */}
+        {!srvLoading && srvStatus && !srvStatus.error && (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {/* RCON */}
+            <div style={{ fontSize: 13 }}>
+              <span aria-hidden="true" style={_dot(srvStatus.rcon?.ok)} />
+              <strong style={{ color: srvStatus.rcon?.ok ? '#4ade80' : '#fca5a5' }}>RCON</strong>
+              {srvStatus.configured && !srvStatus.configured.ip && (
+                <span style={{ color: '#fca5a5', marginLeft: 6 }}>not configured — set DEDICATED_SERVER_IP</span>
+              )}
+              {srvStatus.configured?.ip && !srvStatus.configured?.rconPassword && (
+                <span style={{ color: '#fca5a5', marginLeft: 6 }}>not configured — set DEDICATED_SERVER_RCON_PASSWORD</span>
+              )}
+              {srvStatus.rcon?.ok && (
+                <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>reachable</span>
+              )}
+              {!srvStatus.rcon?.ok && srvStatus.configured?.ip && srvStatus.configured?.rconPassword && (
+                <span style={{ color: '#fca5a5', marginLeft: 6 }}>{srvStatus.rcon?.error || 'unreachable'}</span>
+              )}
+              {srvStatus.rcon?.response && (
+                <details style={{ marginTop: 4, paddingLeft: 16 }}>
+                  <summary style={{ fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer' }}>
+                    Show live status output
+                  </summary>
+                  <pre style={{
+                    margin: '6px 0 0', padding: '8px 10px',
+                    background: 'var(--bg)', border: '1px solid var(--border)',
+                    borderRadius: 4, color: 'var(--text-muted)', fontFamily: 'monospace',
+                    fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                    maxHeight: 180, overflow: 'auto',
+                  }}>
+                    {srvStatus.rcon.response}
+                  </pre>
+                </details>
+              )}
+            </div>
+
+            {/* SSH */}
+            <div style={{ fontSize: 13 }}>
+              <span aria-hidden="true" style={_dot(srvStatus.ssh?.ok)} />
+              <strong style={{ color: srvStatus.ssh?.ok ? '#4ade80' : '#fca5a5' }}>SSH</strong>
+              {srvStatus.configured && !srvStatus.configured.sshKey && (
+                <span style={{ color: '#fca5a5', marginLeft: 6 }}>not configured — set DEDICATED_SERVER_SSH_PRIVATE_KEY</span>
+              )}
+              {srvStatus.ssh?.ok && srvStatus.ssh?.info && (
+                <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontFamily: 'monospace', fontSize: 11 }}>
+                  {srvStatus.ssh.info}
+                </span>
+              )}
+              {!srvStatus.ssh?.ok && srvStatus.configured?.sshKey && (
+                <span style={{ color: '#fca5a5', marginLeft: 6 }}>{srvStatus.ssh?.error || 'unreachable'}</span>
+              )}
+            </div>
+
+            {/* SSH replay dir */}
+            {srvStatus.sshReplayDir && (
+              <div style={{ fontSize: 13 }}>
+                <span aria-hidden="true" style={_dot(srvStatus.sshReplayDir?.ok)} />
+                <strong style={{ color: srvStatus.sshReplayDir?.ok ? '#4ade80' : '#fca5a5' }}>Replay dir</strong>
+                {srvStatus.sshReplayDir?.ok ? (
+                  <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>
+                    {srvStatus.sshReplayDir.count} .dem file{srvStatus.sshReplayDir.count !== 1 ? 's' : ''} found
+                    {srvStatus.sshReplayDir.newest && (
+                      <span style={{ fontFamily: 'monospace', marginLeft: 6, fontSize: 11 }}>
+                        · newest: {srvStatus.sshReplayDir.newest}
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <span style={{ color: '#fca5a5', marginLeft: 6 }}>{srvStatus.sshReplayDir?.error || 'unreachable'}</span>
+                )}
+              </div>
+            )}
+          </div>
         )}
-        <button
-          type="button"
-          className="btn"
-          onClick={loadSrvStatus}
-          disabled={srvLoading}
-          style={{ fontSize: 12, padding: '3px 10px', marginLeft: 'auto' }}
-        >
-          {srvLoading ? '…' : '↺ Refresh'}
-        </button>
-        <Link to="/inhouse" style={{ fontSize: 12, color: 'var(--accent)' }}>Open /inhouse →</Link>
       </div>
 
+      {/* ── Action buttons ─────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
         <button
           type="button"
@@ -4519,13 +4592,14 @@ function InhouseDiagPanel({ superuserKey }) {
         )}
       </div>
 
+      {/* ── Failure detail ─────────────────────────────────────────────────── */}
       {failedSession && (
         <div style={{
           padding: '10px 14px', borderRadius: 8, background: '#1f0a0a',
           border: '1px solid #f87171', marginBottom: 12, fontSize: 13,
         }}>
           <div style={{ fontWeight: 600, color: '#fca5a5', marginBottom: 4 }}>
-            Diagnostic session #{failedSession.id} — status: {failedSession.status}
+            ✗ Diagnostic session #{failedSession.id} — {failedSession.status}
           </div>
           {failedSession.notes && (
             <pre style={{
@@ -4547,13 +4621,14 @@ function InhouseDiagPanel({ superuserKey }) {
         </div>
       )}
 
+      {/* ── Success result ─────────────────────────────────────────────────── */}
       {result && (
         <div style={{
           padding: 14, borderRadius: 8, background: 'var(--bg-card)',
-          border: '1px solid var(--border)',
+          border: '1px solid var(--border)', marginBottom: 14,
         }}>
           <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-muted)' }}>
-            Diagnostic session <code>#{result.sessionId}</code> provisioned successfully — RCON push accepted.
+            ✓ Diagnostic session <code>#{result.sessionId}</code> provisioned — RCON push accepted.
           </div>
           {result.connectLink && (
             <div style={{ marginBottom: 10 }}>
@@ -4570,18 +4645,104 @@ function InhouseDiagPanel({ superuserKey }) {
             </div>
           )}
           {result.consoleCommand && (
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
               Or paste in the Dota console:{' '}
               <code style={{ background: 'var(--bg)', padding: '2px 6px', borderRadius: 3, userSelect: 'all' }}>
                 {result.consoleCommand}
               </code>
             </div>
           )}
-          <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+          <div style={{ marginBottom: 8, fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
             Server: {result.serverIp}:{result.serverPort} · Password: {result.password}
           </div>
+          {/* Live status output — confirms server is up and shows player count / map. */}
+          {result.serverStatus && (
+            <details open style={{ marginTop: 8 }}>
+              <summary style={{ fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600 }}>
+                {result.serverStatus.ok ? '✓ Live server status (RCON)' : '⚠ Server status (RCON ping failed)'}
+              </summary>
+              {result.serverStatus.ok ? (
+                <pre style={{
+                  margin: '6px 0 0', padding: '8px 10px',
+                  background: 'var(--bg)', border: '1px solid var(--border)',
+                  borderRadius: 4, color: 'var(--text-muted)', fontFamily: 'monospace',
+                  fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  maxHeight: 220, overflow: 'auto',
+                }}>
+                  {result.serverStatus.response}
+                </pre>
+              ) : (
+                <div style={{ fontSize: 12, color: '#fca5a5', marginTop: 4 }}>
+                  {result.serverStatus.error}
+                </div>
+              )}
+            </details>
+          )}
         </div>
       )}
+
+      {/* ── Operator checklist ─────────────────────────────────────────────── */}
+      <div style={{ marginTop: 4 }}>
+        <button
+          type="button"
+          aria-expanded={checklistOpen}
+          aria-controls="ap-diag-checklist"
+          onClick={() => setChecklistOpen(o => !o)}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--text-muted)', fontSize: 13, padding: '4px 0',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          <span aria-hidden="true">{checklistOpen ? '▾' : '▸'}</span>
+          Host → Join verification checklist
+        </button>
+        {checklistOpen && (
+          <ol
+            id="ap-diag-checklist"
+            style={{
+              margin: '8px 0 0 0', lineHeight: 1.8, fontSize: 13,
+              color: 'var(--text-muted)', background: 'var(--bg-card)',
+              border: '1px solid var(--border)', borderRadius: 8,
+              padding: '12px 12px 12px 32px',
+            }}
+          >
+            <li>
+              <strong>RCON + SSH both green.</strong> If RCON is red: verify the server
+              process is running (<code>systemctl status dota2</code>) and port 27015 TCP
+              is open in UFW and the DigitalOcean firewall. If RCON shows "auth failed":
+              the password in <code>DEDICATED_SERVER_RCON_PASSWORD</code> doesn&apos;t match
+              <code>rcon_password</code> in the server&apos;s <code>server.cfg</code>.
+              If SSH is red: verify <code>DEDICATED_SERVER_SSH_PRIVATE_KEY</code> matches
+              the droplet&apos;s <code>~/.ssh/authorized_keys</code>.
+            </li>
+            <li>
+              <strong>Click &ldquo;Run Diagnostic Provision&rdquo;.</strong> A synthetic session is created
+              and the password is pushed over RCON. Expected: green result card with a steam:// link
+              and a live status readout showing <code>map: dota</code> and 0 players.
+            </li>
+            <li>
+              <strong>Click &ldquo;🎮 Connect to Server&rdquo;</strong> or paste the console command into
+              Dota 2 (<code>~</code> key opens the developer console). The server should accept
+              the password and you should load into the map.
+            </li>
+            <li>
+              <strong>Confirm via the live status output</strong> that player count changed to 1
+              after you joined. Hit <strong>↺ Refresh</strong> to re-run the status check.
+            </li>
+            <li>
+              <strong>Click &ldquo;🧹 Cleanup&rdquo;</strong> to delete the diagnostic session row and leave
+              the server clean for real matches.
+            </li>
+            <li>
+              <strong>Common failure causes:</strong> wrong RCON password · port 27015 TCP
+              closed · port 27015 UDP closed (game traffic) · server not running ·
+              SSH key mismatch · wrong <code>DEDICATED_SERVER_SSH_USER</code> (default root).
+              See <code>docs/dedicated-server-runbook.md</code> for the full setup guide.
+            </li>
+          </ol>
+        )}
+      </div>
     </section>
   );
 }

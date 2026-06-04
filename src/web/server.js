@@ -14372,6 +14372,16 @@ NOTES
       const consoleCommand = (s.server_ip && s.match_password)
         ? `connect ${s.server_ip}:${s.server_port}; password ${s.match_password}`
         : null;
+      // After a successful provision, ping the server live so the operator can
+      // see the RCON `status` output (player count, map, hostname) and confirm
+      // the server is truly up and joinable — not just password-accepting.
+      let serverStatus = null;
+      try {
+        const { pingServer } = require('../services/rconClient');
+        serverStatus = await pingServer();
+      } catch (sErr) {
+        serverStatus = { ok: false, error: sErr.message };
+      }
       // Response carries both the canonical `session` object (matches the
       // shape /api/inhouse/:id/server returns) AND the flattened convenience
       // fields the diagnostic UI consumes directly. Keeping both keeps the
@@ -14385,6 +14395,7 @@ NOTES
         serverIp: s.server_ip,
         serverPort: s.server_port,
         password: s.match_password,
+        serverStatus,
       });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -14665,21 +14676,30 @@ NOTES
     }
   });
 
-  // Dedicated server health: RCON + SSH ping (admin only — leaks infra detail otherwise)
+  // Dedicated server health: RCON + SSH ping + replay-dir check (admin only — leaks infra detail otherwise)
   router.get('/dedicated-server/status', requireSuperuser, async (req, res) => {
     try {
       const { pingServer } = require('../services/rconClient');
-      const { testConnection } = require('../services/serverReplayFetcher');
+      const { testConnection, checkReplayDir } = require('../services/serverReplayFetcher');
       const cfg = require('../config').config;
-      const [rcon, ssh] = await Promise.all([
+      const ds = cfg.dota?.dedicatedServer || {};
+      const [rcon, ssh, sshReplayDir] = await Promise.all([
         pingServer().catch(e => ({ ok: false, error: e.message })),
         testConnection().catch(e => ({ ok: false, error: e.message })),
+        checkReplayDir().catch(e => ({ ok: false, error: e.message })),
       ]);
       res.json({
-        ip: cfg.dota?.dedicatedServer?.ip || null,
-        port: cfg.dota?.dedicatedServer?.port || 27015,
+        ip: ds.ip || null,
+        port: ds.port || 27015,
+        configured: {
+          ip: !!ds.ip,
+          rconPassword: !!ds.rconPassword,
+          sshKey: !!ds.ssh?.privateKey,
+        },
         rcon,
         ssh,
+        sshReplayDir,
+        checkedAt: new Date().toISOString(),
       });
     } catch (err) {
       res.status(500).json({ error: err.message });

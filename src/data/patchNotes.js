@@ -4486,6 +4486,13 @@ module.exports = [
     "author": "System"
   },
   {
+    "version": "9.28",
+    "title": "Dedicated server — end-to-end admin testability",
+    "published_at": "2026-06-03",
+    "content": "Full edition (Task #754). The admin panel Provision & Connect diagnostic and the supporting backend have been wired end-to-end so the operator can verify the dedicated server is reachable, accepting RCON commands, serving replays, and joinable by a real Dota 2 client — all from one card, without touching prod lobby state.\n\n**Replay-dir SSH check.** New `checkReplayDir()` in `src/services/serverReplayFetcher.js` connects via SSH, lists `*.dem` files in the configured replay directory (default `/opt/dota2/game/dota/replays`), and returns `{ok, count, newest, files}`. A `|| true` shell wrapper makes the command exit-0 when the directory is empty so the first-boot case (no replays yet) shows \"0 .dem files found\" rather than an SSH error.\n\n**Enhanced `/api/dedicated-server/status`.** The superuser-only endpoint now runs `pingServer()`, `testConnection()`, and `checkReplayDir()` in parallel and returns `{ip, port, configured: {ip, rconPassword, sshKey}, rcon, ssh, sshReplayDir, checkedAt}`. The `configured` flags let the UI distinguish 'not set up yet' from 'set up but unreachable'.\n\n**Live status after provision.** `POST /api/admin/inhouse/diag-provision` now runs a second RCON `status` call immediately after a successful password push and returns the raw server output as `serverStatus`. The result card in the admin panel shows this output in a collapsible `<details>` block so the operator can see the map name, hostname, and current player count.\n\n**InhouseDiagPanel redesign.** Pre-flight bar now shows separate rows for RCON, SSH, and Replay dir with coloured dots, human-readable error strings, and a 'checked HH:MM:SS' timestamp. A collapsible 'Host → Join verification checklist' at the bottom walks the operator through the full end-to-end verification (RCON + SSH green → Provision → Connect → confirm player count → Cleanup) and documents the six most common failure causes.\n\n**Runbook.** New `docs/dedicated-server-runbook.md` covers SteamCMD install, Dota 2 server setup, UFW + DO-firewall port rules, replay directory creation, systemd service, SSH key generation, and the full secrets table. Full edition only; community edition unchanged.",
+    "author": "System"
+  },
+  {
     "version": "9.16",
     "title": "Inhouse Lobby — readability and usability polish pass",
     "published_at": "2026-06-03",
