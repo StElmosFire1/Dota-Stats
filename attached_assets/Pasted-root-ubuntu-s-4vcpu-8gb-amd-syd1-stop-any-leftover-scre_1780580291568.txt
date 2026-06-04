@@ -1,0 +1,35 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# # stop any leftover screen session first (harmless if none)
+screen -S dota2 -X quit 2>/dev/null
+
+systemctl daemon-reload
+systemctl enable --now dota-server.service
+echo 'waiting ~15s for the server to boot...'
+sleep 15
+systemctl status dota-server.service --no-pager
+echo '--- listening ports (looking for 27015) ---'
+ss -tulnp | grep 27015 || echo 'nothing on 27015 yet'
+No screen session found.
+Created symlink /etc/systemd/system/multi-user.target.wants/dota-server.service → /etc/systemd/system/dota-server.service.
+waiting ~15s for the server to boot...
+○ dota-server.service - Dota 2 Dedicated Server
+     Loaded: loaded (/etc/systemd/system/dota-server.service; enabled; preset: enabled)
+     Active: inactive (dead) since Thu 2026-06-04 13:37:27 UTC; 6s ago
+   Duration: 8.582s
+    Process: 404752 ExecStart=/opt/dota2/start_server.sh (code=exited, status=0/SUCCESS)
+   Main PID: 404752 (code=exited, status=0/SUCCESS)
+        CPU: 10.441s
+
+Jun 04 13:37:27 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[404918]: ShutdownSource2Logging
+Jun 04 13:37:27 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[404918]: CNetworkSystem::Shutdown()
+Jun 04 13:37:27 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[404918]: CNetworkSystem::CloseAllSockets()
+Jun 04 13:37:27 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[404918]: Forgot to remove resource type manager …nap!
+Jun 04 13:37:27 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[404918]: Forgot to remove resource type manager …pcf!
+Jun 04 13:37:27 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[404918]: Forgot to remove resource type manager …css!
+Jun 04 13:37:27 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[404918]: Forgot to remove resource type manager …xml!
+Jun 04 13:37:27 ubuntu-s-4vcpu-8gb-amd-syd1 start_server.sh[404918]: Forgot to remove resource type manager …ost!
+Jun 04 13:37:27 ubuntu-s-4vcpu-8gb-amd-syd1 systemd[1]: dota-server.service: Deactivated successfully.
+Jun 04 13:37:27 ubuntu-s-4vcpu-8gb-amd-syd1 systemd[1]: dota-server.service: Consumed 10.441s CPU time.
+Hint: Some lines were ellipsized, use -l to show in full.
+--- listening ports (looking for 27015) ---
+nothing on 27015 yet
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# 
