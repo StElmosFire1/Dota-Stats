@@ -10821,6 +10821,8 @@ function LootboxDupeReturnsPanel({ superuserKey }) {
   const handleChange = (key, val) => setDraft(d => ({ ...d, [key]: val }));
   const handleReset = (key) => setDraft(d => ({ ...d, [key]: '' }));
 
+  const fmtAuditDate = (ts) => ts ? new Date(ts).toLocaleString('en-AU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+
   // Effective values (override applied) used to seed selects/displays.
   const eff = data?.effective || {};
   const def = data?.defaults || {};
@@ -10995,6 +10997,41 @@ function LootboxDupeReturnsPanel({ superuserKey }) {
                   Blank coin fields revert to the hardcoded default on save.
                 </span>
               </div>
+
+              {data?.audit?.length > 0 && (
+                <div style={{ marginTop: 24 }}>
+                  <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+                    Recent changes
+                  </h3>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                        <th style={{ padding: '4px 10px 4px 0', fontWeight: 500 }}>When</th>
+                        <th style={{ padding: '4px 10px', fontWeight: 500 }}>Changed by</th>
+                        <th style={{ padding: '4px 0', fontWeight: 500 }}>What changed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.audit.map(row => {
+                        const newObj = (() => { try { return JSON.parse(row.new_value || '{}'); } catch { return {}; } })();
+                        const oldObj = (() => { try { return JSON.parse(row.old_value || '{}'); } catch { return {}; } })();
+                        const changed = Object.keys({ ...newObj, ...oldObj }).filter(k => newObj[k] !== oldObj[k]);
+                        return (
+                          <tr key={row.id} style={{ borderTop: '1px solid var(--border)' }}>
+                            <td style={{ padding: '5px 10px 5px 0', whiteSpace: 'nowrap' }}>{fmtAuditDate(row.changed_at)}</td>
+                            <td style={{ padding: '5px 10px' }}>{row.changed_by}</td>
+                            <td style={{ padding: '5px 0', color: 'var(--text-muted)', maxWidth: 400 }}>
+                              {changed.length > 0
+                                ? changed.map(k => `${k}: ${oldObj[k] ?? 'default'} → ${newObj[k] ?? 'default'}`).join(', ')
+                                : 'no changes'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </>
           )}
         </>

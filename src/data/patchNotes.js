@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "9.44",
+    "title": "Lootbox dupe-return changes now keep an audit trail",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**Every dupe-return change is now recorded.** Saving the Admin Panel's 'Lootbox Dupe Returns' card writes a history row — who changed it (Steam account id), the old and new override values, and a timestamp — mirroring the existing economy-pricing audit trail. Previously these payout edits went straight to settings with no record of who changed what or when.",
+      "**Read-only history in the same card.** A 'Recent changes' table at the bottom of the dupe-returns panel lists the last 10 edits with a per-field old → new diff. No-op saves (a refresh-and-resave with no edits) are skipped so the log stays meaningful. Full edition only · superuser-only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.43",
     "title": "See what a duplicate pays before you open a box",
     "published_at": "2026-06-04",

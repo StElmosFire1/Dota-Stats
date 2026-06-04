@@ -249,7 +249,8 @@ function mountLootboxRoutes({ router, express, deps }) {
         out.legendaryTokens = n;
       }
 
-      const cfg = await lb.saveDupeReturns(out);
+      const changedBy = req.session?.accountId ? String(req.session.accountId) : 'superuser';
+      const cfg = await lb.saveDupeReturns(out, changedBy);
       res.json({ ok: true, ...cfg });
     } catch (err) {
       if (err.code === 'BAD_INPUT') return res.status(400).json({ error: err.message });

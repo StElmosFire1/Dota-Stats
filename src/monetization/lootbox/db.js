@@ -103,6 +103,21 @@ function createLootboxDb({ getPool }) {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+
+    // Audit trail for dupe-returns changes (Task #807). Mirrors
+    // economy_price_audit: who changed the payout overrides, the old + new
+    // raw override blobs (JSON text), and when. The live value still lives in
+    // site_settings under DUPE_RETURNS_KEY — this table is history only.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS lootbox_dupe_returns_audit (
+        id SERIAL PRIMARY KEY,
+        changed_by TEXT NOT NULL,
+        old_value TEXT,
+        new_value TEXT NOT NULL,
+        changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_lootbox_dupe_returns_audit_changed_at ON lootbox_dupe_returns_audit (changed_at DESC)`);
   }
 
   function _weekStartExpr() {
@@ -186,27 +201,56 @@ function createLootboxDb({ getPool }) {
     return _mergeDupeReturns(await _getRawDupeOverrides());
   }
 
-  // Admin GET payload: defaults + raw stored overrides + effective merged view.
+  // Admin GET payload: defaults + raw stored overrides + effective merged view
+  // + recent audit history.
   async function getDupeReturnsConfig() {
     const overrides = await _getRawDupeOverrides();
     return {
       defaults: _dupeDefaults(),
       overrides,
       effective: _mergeDupeReturns(overrides),
+      audit: await listDupeReturnsAudit(10),
     };
+  }
+
+  // Last N dupe-returns changes, newest first (id, changed_by, old/new raw
+  // override JSON, timestamp). Mirrors listEconomyPriceAudit.
+  async function listDupeReturnsAudit(limit = 20) {
+    const p = getPool();
+    const n = Math.max(1, Math.min(100, parseInt(limit, 10) || 20));
+    const r = await p.query(
+      `SELECT id, changed_by, old_value, new_value, changed_at
+         FROM lootbox_dupe_returns_audit
+        ORDER BY changed_at DESC, id DESC LIMIT $1`,
+      [n]
+    );
+    return r.rows;
   }
 
   // Persist a validated override blob (plain object). An empty object reverts
   // every field to its catalog default. Clears the cache so it takes effect.
-  async function saveDupeReturns(overrides) {
+  // Records an audit row (who changed it, old + new raw override JSON) when the
+  // stored blob actually changes — mirrors the economy-price audit trail.
+  async function saveDupeReturns(overrides, changedBy) {
     const clean = (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) ? overrides : {};
     const p = getPool();
+    const oldRaw = await _getRawDupeOverrides();
+    const oldValue = JSON.stringify(oldRaw || {});
+    const newValue = JSON.stringify(clean);
     await p.query(
       `INSERT INTO site_settings (key, value, updated_at)
        VALUES ($1, $2, NOW())
        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-      [DUPE_RETURNS_KEY, JSON.stringify(clean)]
+      [DUPE_RETURNS_KEY, newValue]
     );
+    // Only log when the stored blob genuinely changed, so a no-op save (e.g. a
+    // refresh-and-resave with no edits) doesn't spam the history.
+    if (newValue !== oldValue) {
+      await p.query(
+        `INSERT INTO lootbox_dupe_returns_audit (changed_by, old_value, new_value) VALUES ($1, $2, $3)`,
+        [changedBy ? String(changedBy) : 'unknown', oldValue, newValue]
+      );
+    }
     _clearDupeCache();
     return getDupeReturnsConfig();
   }
@@ -701,6 +745,7 @@ function createLootboxDb({ getPool }) {
     getDupeReturns,
     getDupeReturnsConfig,
     saveDupeReturns,
+    listDupeReturnsAudit,
     listSets,
     createSet,
     setRetired,
