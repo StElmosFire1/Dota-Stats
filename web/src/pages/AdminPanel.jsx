@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getLootboxDupeReturns, setLootboxDupeReturns, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts, getAdminCosmeticsCatalog } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getLootboxDupeReturns, setLootboxDupeReturns, getLootboxDupeReturnsAudit, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts, getAdminCosmeticsCatalog } from '../api';
 import CosmeticPreview from '../components/CosmeticPreview';
 import FounderRing from '../components/founderRings/FounderRing';
 import { FRAME_META, LAYOUT_THEME_META, VOICE_PACK_META, COVER_FX_META, avatarRingStyle, bannerStyle, nameplateStyle, recapSkinSwatch } from '../profileCosmetics';
@@ -10799,12 +10799,20 @@ function EconomyPricingPanel({ superuserKey }) {
 
 // Task #804 — live-editable lootbox duplicate returns (per-rarity coin refunds
 // + the Legendary reward: coins or a wildcard token with a configurable count).
+const DUPE_AUDIT_PAGE = 10;
+
 function LootboxDupeReturnsPanel({ superuserKey }) {
   const [data, setData] = React.useState(null);
   const [draft, setDraft] = React.useState({});
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState('');
   const [open, setOpen] = React.useState(false);
+  // Audit history is paged independently of the main config payload so we can
+  // "Show more" beyond the first 10 rows (Task #810).
+  const [audit, setAudit] = React.useState([]);
+  const [auditTotal, setAuditTotal] = React.useState(0);
+  const [auditLoading, setAuditLoading] = React.useState(false);
+  const [expandedAudit, setExpandedAudit] = React.useState(null);
 
   const load = React.useCallback(async () => {
     if (!superuserKey) return;
@@ -10813,8 +10821,25 @@ function LootboxDupeReturnsPanel({ superuserKey }) {
       setData(j);
       setDraft({});
       setMsg('');
+      setAudit(j.audit || []);
+      setAuditTotal(j.auditTotal ?? (j.audit || []).length);
+      setExpandedAudit(null);
     } catch (e) { setMsg(`Load error: ${e.message}`); }
   }, [superuserKey]);
+
+  const loadMoreAudit = React.useCallback(async () => {
+    if (!superuserKey) return;
+    setAuditLoading(true);
+    try {
+      const j = await getLootboxDupeReturnsAudit(superuserKey, { limit: DUPE_AUDIT_PAGE, offset: audit.length });
+      setAudit(prev => {
+        const seen = new Set(prev.map(r => r.id));
+        return [...prev, ...(j.audit || []).filter(r => !seen.has(r.id))];
+      });
+      if (typeof j.total === 'number') setAuditTotal(j.total);
+    } catch (e) { setMsg(`History error: ${e.message}`); }
+    finally { setAuditLoading(false); }
+  }, [superuserKey, audit.length]);
 
   React.useEffect(() => { if (open) load(); }, [open, load]);
 
@@ -10998,38 +11023,80 @@ function LootboxDupeReturnsPanel({ superuserKey }) {
                 </span>
               </div>
 
-              {data?.audit?.length > 0 && (
+              {audit.length > 0 && (
                 <div style={{ marginTop: 24 }}>
                   <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                    Recent changes
+                    Recent changes {auditTotal > 0 && <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>({audit.length} of {auditTotal})</span>}
                   </h3>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead>
                       <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                        <th style={{ padding: '4px 10px 4px 0', fontWeight: 500, width: 28 }}></th>
                         <th style={{ padding: '4px 10px 4px 0', fontWeight: 500 }}>When</th>
                         <th style={{ padding: '4px 10px', fontWeight: 500 }}>Changed by</th>
                         <th style={{ padding: '4px 0', fontWeight: 500 }}>What changed</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {data.audit.map(row => {
+                      {audit.map(row => {
                         const newObj = (() => { try { return JSON.parse(row.new_value || '{}'); } catch { return {}; } })();
                         const oldObj = (() => { try { return JSON.parse(row.old_value || '{}'); } catch { return {}; } })();
                         const changed = Object.keys({ ...newObj, ...oldObj }).filter(k => newObj[k] !== oldObj[k]);
+                        const isExpanded = expandedAudit === row.id;
+                        const fmtBlob = (raw) => {
+                          try {
+                            const obj = JSON.parse(raw || '{}');
+                            if (!obj || Object.keys(obj).length === 0) return '(none — all defaults)';
+                            return JSON.stringify(obj, null, 2);
+                          } catch { return String(raw ?? '(none)'); }
+                        };
                         return (
-                          <tr key={row.id} style={{ borderTop: '1px solid var(--border)' }}>
-                            <td style={{ padding: '5px 10px 5px 0', whiteSpace: 'nowrap' }}>{fmtAuditDate(row.changed_at)}</td>
-                            <td style={{ padding: '5px 10px' }}>{row.changed_by}</td>
-                            <td style={{ padding: '5px 0', color: 'var(--text-muted)', maxWidth: 400 }}>
-                              {changed.length > 0
-                                ? changed.map(k => `${k}: ${oldObj[k] ?? 'default'} → ${newObj[k] ?? 'default'}`).join(', ')
-                                : 'no changes'}
-                            </td>
-                          </tr>
+                          <React.Fragment key={row.id}>
+                            <tr style={{ borderTop: '1px solid var(--border)' }}>
+                              <td style={{ padding: '5px 10px 5px 0', verticalAlign: 'top' }}>
+                                <button type="button"
+                                  onClick={() => setExpandedAudit(prev => prev === row.id ? null : row.id)}
+                                  aria-expanded={isExpanded}
+                                  aria-label={isExpanded ? `Hide full detail for change at ${fmtAuditDate(row.changed_at)}` : `Show full detail for change at ${fmtAuditDate(row.changed_at)}`}
+                                  style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', lineHeight: 1 }}>
+                                  {isExpanded ? '▾' : '▸'}
+                                </button>
+                              </td>
+                              <td style={{ padding: '5px 10px 5px 0', whiteSpace: 'nowrap' }}>{fmtAuditDate(row.changed_at)}</td>
+                              <td style={{ padding: '5px 10px' }}>{row.changed_by}</td>
+                              <td style={{ padding: '5px 0', color: 'var(--text-muted)', maxWidth: 400 }}>
+                                {changed.length > 0
+                                  ? changed.map(k => `${k}: ${oldObj[k] ?? 'default'} → ${newObj[k] ?? 'default'}`).join(', ')
+                                  : 'no changes'}
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={4} style={{ padding: '0 0 10px' }}>
+                                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', padding: '8px 12px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6 }}>
+                                    <div style={{ flex: '1 1 240px', minWidth: 220 }}>
+                                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>Old override blob</div>
+                                      <pre style={{ margin: 0, fontSize: 11, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-primary)' }}>{fmtBlob(row.old_value)}</pre>
+                                    </div>
+                                    <div style={{ flex: '1 1 240px', minWidth: 220 }}>
+                                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }}>New override blob</div>
+                                      <pre style={{ margin: 0, fontSize: 11, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-primary)' }}>{fmtBlob(row.new_value)}</pre>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       })}
                     </tbody>
                   </table>
+                  {audit.length < auditTotal && (
+                    <button type="button" onClick={loadMoreAudit} disabled={auditLoading}
+                      style={{ marginTop: 10, fontSize: 12, padding: '5px 14px', borderRadius: 6, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: auditLoading ? 'not-allowed' : 'pointer', opacity: auditLoading ? 0.6 : 1 }}>
+                      {auditLoading ? 'Loading…' : `Show more (${auditTotal - audit.length} older)`}
+                    </button>
+                  )}
                 </div>
               )}
             </>

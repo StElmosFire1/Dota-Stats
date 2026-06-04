@@ -209,22 +209,33 @@ function createLootboxDb({ getPool }) {
       defaults: _dupeDefaults(),
       overrides,
       effective: _mergeDupeReturns(overrides),
-      audit: await listDupeReturnsAudit(10),
+      audit: await listDupeReturnsAudit(10, 0),
+      auditTotal: await countDupeReturnsAudit(),
     };
   }
 
-  // Last N dupe-returns changes, newest first (id, changed_by, old/new raw
-  // override JSON, timestamp). Mirrors listEconomyPriceAudit.
-  async function listDupeReturnsAudit(limit = 20) {
+  // A page of dupe-returns changes, newest first (id, changed_by, old/new raw
+  // override JSON, timestamp). Supports offset paging. Mirrors
+  // listEconomyPriceAudit.
+  async function listDupeReturnsAudit(limit = 20, offset = 0) {
     const p = getPool();
     const n = Math.max(1, Math.min(100, parseInt(limit, 10) || 20));
+    const off = Math.max(0, parseInt(offset, 10) || 0);
     const r = await p.query(
       `SELECT id, changed_by, old_value, new_value, changed_at
          FROM lootbox_dupe_returns_audit
-        ORDER BY changed_at DESC, id DESC LIMIT $1`,
-      [n]
+        ORDER BY changed_at DESC, id DESC LIMIT $1 OFFSET $2`,
+      [n, off]
     );
     return r.rows;
+  }
+
+  // Total number of audit rows — lets the admin UI know whether there's more
+  // history to page back through.
+  async function countDupeReturnsAudit() {
+    const p = getPool();
+    const r = await p.query(`SELECT COUNT(*)::int AS n FROM lootbox_dupe_returns_audit`);
+    return r.rows[0]?.n ?? 0;
   }
 
   // Persist a validated override blob (plain object). An empty object reverts
@@ -746,6 +757,7 @@ function createLootboxDb({ getPool }) {
     getDupeReturnsConfig,
     saveDupeReturns,
     listDupeReturnsAudit,
+    countDupeReturnsAudit,
     listSets,
     createSet,
     setRetired,

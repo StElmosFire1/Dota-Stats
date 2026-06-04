@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "9.45",
+    "title": "Full before/after detail for each lootbox dupe-return change",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**Expandable detail rows.** Each entry in the dupe-returns 'Recent changes' history now has a ▸ toggle that reveals the complete old vs new override blob (pretty-printed JSON, side by side) — not just the compact per-field diff. Empty blobs read as '(none — all defaults)' so a revert-to-default is obvious. Read-only.",
+      "**Page back through the full history.** A 'Show more' button loads older entries in pages of 10 (`GET /admin/lootbox/dupe-returns/audit?limit=&offset=`), with an 'X of Y' count in the header, so audits can go beyond the last 10 changes. Full edition only · superuser-only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.44",
     "title": "Lootbox dupe-return changes now keep an audit trail",
     "published_at": "2026-06-04",

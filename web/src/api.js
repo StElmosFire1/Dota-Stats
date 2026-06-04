@@ -2854,6 +2854,9 @@ export const setLootboxDupeReturns = (overrides, superuserKey) =>
     superuserKey,
   });
 
+export const getLootboxDupeReturnsAudit = (superuserKey, { limit = 10, offset = 0 } = {}) =>
+  superuserJson(`/admin/lootbox/dupe-returns/audit?limit=${encodeURIComponent(limit)}&offset=${encodeURIComponent(offset)}`, { superuserKey });
+
 export const getAdminEconomyPrices = (superuserKey) =>
   superuserJson('/admin/economy/prices', { superuserKey });
 

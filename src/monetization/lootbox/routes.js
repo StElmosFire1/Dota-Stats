@@ -203,6 +203,24 @@ function mountLootboxRoutes({ router, express, deps }) {
     }
   });
 
+  // Paged audit history for dupe-returns changes (Task #810). Lets the admin
+  // UI page back beyond the first 10 entries shown in the config payload.
+  // Read-only, superuser-only. Returns { audit: [...], total }.
+  router.get('/admin/lootbox/dupe-returns/audit', requireSuperuser, async (req, res) => {
+    try {
+      const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 10));
+      const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+      const [audit, total] = await Promise.all([
+        lb.listDupeReturnsAudit(limit, offset),
+        lb.countDupeReturnsAudit(),
+      ]);
+      res.json({ audit, total });
+    } catch (err) {
+      console.error('[lootbox] admin dupe-returns audit GET:', err.message);
+      res.status(500).json({ error: 'Failed to load dupe returns history' });
+    }
+  });
+
   router.post('/admin/lootbox/dupe-returns', requireSuperuser, json, async (req, res) => {
     try {
       const body = req.body || {};
