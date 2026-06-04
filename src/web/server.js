@@ -1661,6 +1661,32 @@ function createServer(startupStatus = {}) {
     '<p class="sub">Access is limited to the site owner. Sign in with your Steam account to continue — superuser access is linked to your Steam account.</p>',
     '<a class="btn" href="/auth/steam">Sign in with Steam</a>',
     '</main>',
+    // Bootstrap the Steam token exchange from the gate itself. After
+    // /auth/steam/return the browser lands here on `/?auth=success&t=<token>`
+    // with an empty session, so the lockdown middleware serves this gate page
+    // instead of the SPA — meaning the SPA's own /api/auth/complete call never
+    // runs and the owner can never get past the gate (chicken-and-egg loop).
+    // We exchange the single-use token here (the endpoint is allow-listed at
+    // LOCKDOWN_ALLOWED_PATHS) so the session is established + isSuperuser is
+    // stamped, then reload `/` which now passes the gate and serves the SPA.
+    // Non-superusers get a session but still see the gate (no loop, no token).
+    '<script nonce="' + nonce + '">',
+    '(function(){',
+    '  try {',
+    '    var p = new URLSearchParams(window.location.search);',
+    "    var t = p.get('t');",
+    "    if (p.get('auth') !== 'success' || !t) return;",
+    "    var btn = document.querySelector('a.btn');",
+    "    if (btn) { btn.textContent = 'Signing you in\\u2026'; btn.removeAttribute('href'); btn.style.cursor = 'wait'; }",
+    "    fetch('/api/auth/complete?t=' + encodeURIComponent(t), { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })",
+    '      .then(function(r){ if (!r.ok) throw new Error(String(r.status)); return r.json(); })',
+    "      .then(function(){ window.location.replace('/'); })",
+    '      .catch(function(){',
+    "        if (btn) { btn.textContent = 'Sign in with Steam'; btn.setAttribute('href', '/auth/steam'); btn.style.cursor = 'pointer'; }",
+    '      });',
+    '  } catch (e) {}',
+    '})();',
+    '</script>',
     '</body>',
     '</html>',
   ].join('\n');

@@ -16,5 +16,6 @@
 - [ffmpeg zoompan -loop explosion](ffmpeg-zoompan-loop-explosion.md) — never pair `-loop 1 -t` with zoompan `d=` on a still (frames×frames hang); feed one image + `-frames:v`. Build clips in stages.
 - [Steam admin roles & live auth](steam-admin-roles-auth.md) — admin is Steam-account role (admin_roles table), no password; NEVER gate on cached req.session.isAdmin — resolve live via isAdminOrHigher/getEffectiveRole.
 - [Superuser elevation on prod](superuser-elevation-prod.md) — password-free; superuser auto-granted to allow-listed Steam accounts; owner's accountId is a hardcoded always-on default so a missing env var can't lock the owner out; "login does nothing" is usually a stale frontend bundle.
+- [Lockdown gate sign-in loop](lockdown-gate-token-exchange.md) — gate is served before the SPA, so the SPA's /api/auth/complete never runs during lockdown; the gate PAGE must exchange the Steam token itself or the owner loops forever.
 - [Hype trailer renderer](trailer-renderer.md) — render-trailer.mjs canvas+ffmpeg; cross-dissolve beats via 2 offscreen canvases (never per-beat fade-to-black); feature beats composite real screenshots/site_*.jpg.
 - [AdminPanel tab render guards](adminpanel-tab-render-guards.md) — sections gated only by `{activeTab==='x'}`; same-tab fragments consolidate safely if concatenated in file order; TAB_META is single source.

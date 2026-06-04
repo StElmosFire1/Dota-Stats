@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "9.39",
+    "title": "Fixed the private-preview sign-in loop",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**Owner sign-in no longer loops at the lockdown gate.** When the site is in private-preview (FULL_SITE_LOCKDOWN), signing in with Steam returned you to `/?auth=success&t=…` — but with an empty session the gate served its static page instead of the app, so the single-use token was never exchanged, your session was never established, and you bounced back to the gate forever.",
+      "**The gate page now completes the sign-in itself.** It exchanges the Steam token via the already-allow-listed `/api/auth/complete`, which stamps the session (and superuser for the owner), then reloads into the app. Non-owners still see the gate, with no loop. Full edition only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.38",
     "title": "Match History filters now search across every match, not just the page",
     "published_at": "2026-06-04",
