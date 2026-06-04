@@ -1,0 +1,75 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# echo "=== listening sockets on 27015 ==="
+ss -lntup 2>/dev/null | grep ':27015' || echo "(none on 27015)"
+echo
+python3 - <<'PY'
+import socket, struct, re, time
+pw=None
+for line in open("/opt/dota2/start_server.sh"):
+    m=re.search(r'\+rcon_password\s+"([^"]+)"', line)
+    if m: pw=m.group(1)
+HOST,PORT=("134.199.166.223",27015)
+def send(s,i,t,body):
+    p=struct.pack('<ii',i,t)+body.encode()+b'\x00\x00'
+    s.sendall(struct.pack('<i',len(p))+p)
+def recv(s):
+    ln=struct.unpack('<i',s.recv(4))[0]; data=b''
+    while len(data)<ln: data+=s.recv(ln-len(data))
+    i,t=struct.unpack('<ii',data[:8]); return i,t,data[8:-2].decode('utf-8','replace')
+try:
+    s=socket.socket(); s.settimeout(5); s.connect((HOST,PORT))
+    send(s,1,3,pw); i,t,b=recv(s)
+    print("AUTH id",i,"type",t)
+    for cmd in ("status","stats"):
+        send(s,2,2,cmd); time.sleep(0.5)
+        try: i,t,b=recv(s); print(f"\n--- {cmd} ---\n{b}")
+        except Exception as e: print(cmd,"recv err",e)
+    s.close()
+except Exception as e:
+    print("RCON ERR",e)
+PY
+=== listening sockets on 27015 ===
+udp   UNCONN 0      0                  *:27015            *:*    users:(("dota2",pid=407935,fd=178))                     
+tcp   LISTEN 0      2            0.0.0.0:27015      0.0.0.0:*    users:(("dota2",pid=407935,fd=186))                     
+
+AUTH id 1 type 2
+
+--- status ---
+Server:  Running [0.0.0.0:27015]
+Client:  Disconnected
+----- Status -----
+@ Current  :  game
+source   : console
+hostname : Dota 2
+spawn    : 1
+version  : 48/48 10757 secure  public
+steamid  : [A:1:4127226896:49966] (90286599010548752)
+udp/ip   : 0.0.0.0:27015 (public 134.199.166.223:27015)
+os/type  : Linux dedicated
+sourcetv[0] : 0.0.0.0:27020 (public 134.199.166.223:27020) delay 120.0s
+players  : 0 humans, 1 bots (0 max) (not hibernating) (unreserved)
+---------spawngroups----
+loaded spawngroup(  1)  : SV:  [1: dota | main lump | mapload]
+loaded spawngroup(  2)  : SV:  [2: prefabs/promotional_radiant_fountain | main lump | mapload | point_prefab]
+loaded spawngroup(  3)  : SV:  [3: prefabs/promotional_dire_fountain | main lump | mapload | point_prefab]
+loaded spawngroup(  4)  : SV:  [4: dota | world_layer_dire_base | <none> | world_layer]
+loaded spawngroup(  5)  : SV:  [5: dota | world_layer_radiant_base | <none> | world_layer]
+---------players--------
+  id     time ping loss      state   rate adr name
+   0      BOT    0    0     active      0 'SourceTV'
+GameState: DOTA_GAMERULES_STATE_HERO_SELECTION Times: Transition=61.30 Current=49.10
+#end
+--- SourceTV[0] Status ---
+Online 00:47, FPS 33.3, Version 10757 (Linux)
+Master "SourceTV", delay 120, frames 1 / ticks 1
+Game Time 00:01, Mod "dota", Map "dota"
+Local IP 0.0.0.0:27020, KB/sec In 0.0, Out 0.0
+Local Slots 64, Spectators 0, Proxies 0
+Total Slots 64, Spectators 0, Proxies 0
+Now recording to "replays/auto-20260604-1445-dota-Dota_2.dem", recorded length so far is 00:01.
+# userid name uniqueid connected ping loss state rate adr
+#end
+
+
+--- stats ---
+CPU   In    Out   Uptime  Users   FPS    Players
+ 3.56  0.00  0.00       0     0   30.01       1
