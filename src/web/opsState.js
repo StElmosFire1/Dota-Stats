@@ -52,6 +52,19 @@ const state = {
     lastDeliveryAt: null,
     lastDeliveryError: null,
   },
+  // Task #778 — dedicated-server crash watchdog. The serverHealthMonitor
+  // pings RCON on a fixed interval; this surfaces "last healthy at" + the
+  // most recent auto-restart outcome to the admin panel.
+  serverHealth: {
+    monitoring: false,
+    lastCheckAt: null,
+    lastHealthyAt: null,
+    lastError: null,
+    consecutiveFailures: 0,
+    lastRestartAt: null,
+    lastRestartOk: null,
+    lastRestartError: null,
+  },
   // Ring buffer of 5xx response timestamps; we keep only timestamps so
   // the count over the last 60 min is a cheap filter.
   http5xx: [],
@@ -175,6 +188,31 @@ function reportProvisioner({ inFlight, success, failure }) {
   }
 }
 
+function reportServerHealth({ monitoring, checked, ok, error, consecutiveFailures, restartAttempt } = {}) {
+  if (typeof monitoring === 'boolean') state.serverHealth.monitoring = monitoring;
+  if (checked) {
+    state.serverHealth.lastCheckAt = Date.now();
+    if (ok) {
+      state.serverHealth.lastHealthyAt = Date.now();
+      state.serverHealth.lastError = null;
+    } else if (error !== undefined) {
+      state.serverHealth.lastError = error ? String(error).slice(0, 300) : null;
+    }
+  }
+  if (typeof consecutiveFailures === 'number') state.serverHealth.consecutiveFailures = consecutiveFailures;
+  if (restartAttempt) {
+    state.serverHealth.lastRestartAt = Date.now();
+    state.serverHealth.lastRestartOk = !!restartAttempt.ok;
+    state.serverHealth.lastRestartError = restartAttempt.error ? String(restartAttempt.error).slice(0, 300) : null;
+    pushLog('serverHealth', restartAttempt.ok ? 'warn' : 'error',
+      `auto-restart ${restartAttempt.ok ? 'issued' : 'failed'}${restartAttempt.error ? `: ${restartAttempt.error}` : ''}`);
+  }
+}
+
+function getServerHealth() {
+  return { ...state.serverHealth };
+}
+
 function reportPush({ webPushReady, delivered, error }) {
   if (typeof webPushReady === 'boolean') state.push.webPushReady = webPushReady;
   if (delivered) state.push.lastDeliveryAt = Date.now();
@@ -228,6 +266,7 @@ async function snapshot(db) {
       byType: stripeByType,
     },
     provisioner: { ...state.provisioner },
+    serverHealth: { ...state.serverHealth },
     push: { ...state.push, subscriptionCount: pushCount },
     http: {
       count5xxLast60m: _count5xx(),
@@ -363,6 +402,8 @@ module.exports = {
   reportDiscord,
   reportStripeWebhook,
   reportProvisioner,
+  reportServerHealth,
+  getServerHealth,
   reportPush,
   recordHttp5xx,
   pushLog,

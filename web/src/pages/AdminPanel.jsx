@@ -4556,6 +4556,24 @@ function InhouseDiagPanel({ superuserKey }) {
             </span>
           )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {!srvLoading && srvStatus?.serverHealth?.monitoring && (
+              <span
+                style={{ fontSize: 11, whiteSpace: 'nowrap', color: srvStatus.serverHealth.lastHealthyAt ? '#86efac' : 'var(--text-muted)' }}
+                title={srvStatus.serverHealth.lastError ? `last error: ${srvStatus.serverHealth.lastError}` : undefined}
+              >
+                {srvStatus.serverHealth.lastHealthyAt
+                  ? `watchdog: last healthy at ${fmtTime(new Date(srvStatus.serverHealth.lastHealthyAt))}`
+                  : 'watchdog: no healthy ping yet'}
+                {srvStatus.serverHealth.consecutiveFailures > 0 && (
+                  <span style={{ color: '#fca5a5' }}> · {srvStatus.serverHealth.consecutiveFailures} fail(s)</span>
+                )}
+              </span>
+            )}
+            {!srvLoading && srvStatus?.serverHealth?.lastRestartAt && (
+              <span style={{ fontSize: 11, whiteSpace: 'nowrap', color: srvStatus.serverHealth.lastRestartOk ? '#86efac' : '#fca5a5' }}>
+                auto-restart {srvStatus.serverHealth.lastRestartOk ? 'issued' : 'failed'} {fmtTime(new Date(srvStatus.serverHealth.lastRestartAt))}
+              </span>
+            )}
             {srvCheckedAt && (
               <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                 checked {fmtTime(srvCheckedAt)}

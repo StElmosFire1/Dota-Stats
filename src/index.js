@@ -414,6 +414,17 @@ async function main() {
         console.warn('[Startup] Inhouse auto-start ticker failed to start:', err.message);
       }
     }
+
+    // Task #778 — dedicated-server crash watchdog. Pings RCON on a fixed
+    // interval and, after N consecutive failures, either pings the admin
+    // Discord channel or (when DEDICATED_SERVER_ALLOW_SSH_RESTART=1)
+    // remotely restarts the srcds systemd unit over SSH. No-ops when the
+    // dedicated server isn't configured.
+    try {
+      require('./services/serverHealthMonitor').start();
+    } catch (err) {
+      console.warn('[Startup] Dedicated-server health monitor failed to start:', err.message);
+    }
   });
 }
 

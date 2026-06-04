@@ -14761,6 +14761,10 @@ NOTES
         testConnection().catch(e => ({ ok: false, error: e.message })),
         checkReplayDir().catch(e => ({ ok: false, error: e.message })),
       ]);
+      // Task #778 — surface the crash watchdog's state (last healthy at,
+      // most recent auto-restart outcome) so the admin card can show it.
+      let serverHealth = null;
+      try { serverHealth = require('./opsState').getServerHealth(); } catch (_) {}
       res.json({
         ip: ds.ip || null,
         port: ds.port || 27015,
@@ -14772,6 +14776,7 @@ NOTES
         rcon,
         ssh,
         sshReplayDir,
+        serverHealth,
         checkedAt: new Date().toISOString(),
       });
     } catch (err) {

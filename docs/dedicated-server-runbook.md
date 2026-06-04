@@ -204,6 +204,11 @@ Set these in **Replit Secrets** (or the prod environment `.env`):
 | `DEDICATED_SERVER_SSH_PRIVATE_KEY` | `-----BEGIN OPENSSH PRIVATE KEY-----\n...` | Full PEM, newlines as `\n` in the secret value |
 | `DEDICATED_SERVER_REPLAY_DIR` | `/opt/dota2/game/dota/replays` | Default; omit to use default |
 | `DEDICATED_SERVER_STEAM_ID` | `90xxxxxx` (64-bit) | Optional — GC server assignment hint |
+| `DEDICATED_SERVER_ALLOW_SSH_RESTART` | `1` | Optional — enables the crash watchdog to auto-`systemctl restart` the server over SSH (see §13). Unset = alert-only. |
+| `DEDICATED_SERVER_SYSTEMD_UNIT` | `dota2` | Optional — systemd unit the watchdog restarts. Defaults to `dota2` (the unit created in §7). |
+| `DEDICATED_SERVER_HEALTH_INTERVAL_SECONDS` | `60` | Optional — how often the watchdog pings RCON. Default 60. |
+| `DEDICATED_SERVER_HEALTH_FAILURE_THRESHOLD` | `3` | Optional — consecutive RCON failures before the watchdog acts. Default 3. |
+| `DEDICATED_SERVER_RESTART_WAIT_SECONDS` | `20` | Optional — how long the watchdog waits after issuing a restart before re-pinging. Default 20. |
 
 > **SSH private key format:** store the entire key including `-----BEGIN` / `-----END` lines.  
 > In Replit Secrets the value is stored verbatim; the app reads it as `process.env.DEDICATED_SERVER_SSH_PRIVATE_KEY`.
@@ -238,7 +243,38 @@ systemctl start dota2
 
 ---
 
-## 12. Troubleshooting
+## 12. Crash watchdog / auto-restart [APP]
+
+The app runs a lightweight **server health monitor** (`src/services/serverHealthMonitor.js`)
+that pings the dedicated server over RCON every `DEDICATED_SERVER_HEALTH_INTERVAL_SECONDS`
+(default **60s**). It only runs when both `DEDICATED_SERVER_IP` and
+`DEDICATED_SERVER_RCON_PASSWORD` are set — otherwise it stays idle.
+
+After **`DEDICATED_SERVER_HEALTH_FAILURE_THRESHOLD`** consecutive ping failures
+(default **3** → ~3 minutes of downtime at the default interval) it takes one of two
+actions depending on `DEDICATED_SERVER_ALLOW_SSH_RESTART`:
+
+| `DEDICATED_SERVER_ALLOW_SSH_RESTART` | Behaviour |
+|---|---|
+| unset / not `1` (**default**) | **Alert-only.** Fires a one-shot Discord admin ping describing the outage and telling the operator to SSH in and run `systemctl restart dota2` by hand. The ping fires once per outage, not every tick. |
+| `1` | **Auto-restart.** Runs `systemctl restart <unit>` over the existing SSH helper (`withConnection` in `serverReplayFetcher.js`), waits `DEDICATED_SERVER_RESTART_WAIT_SECONDS` (default 20), then re-pings once. If RCON comes back it posts a 🟢 recovery note. If it's still down it falls through to the alert-only Discord ping. The SSH restart is attempted **at most once per outage** so a hard-down box doesn't get restart-looped. |
+
+When RCON recovers after an alert (whether by our restart or an operator's manual fix),
+the watchdog posts a 🟢 "recovered" note so the channel knows it's healthy again.
+
+**Method chosen for this deploy:** alert-only is the safe default. Enable
+`DEDICATED_SERVER_ALLOW_SSH_RESTART=1` only once you've confirmed the SSH user can run
+`systemctl restart dota2` non-interactively (the default `root` SSH user can; a non-root
+user needs an appropriate `sudoers`/polkit rule, and you'd set
+`DEDICATED_SERVER_SYSTEMD_UNIT` if your unit isn't named `dota2`).
+
+The Admin Panel → **Bot** tab → **🔌 Test: Provision & Connect** card shows
+**"watchdog: last healthy at HH:MM"** plus the most recent auto-restart outcome so you
+can confirm at a glance when the server was last OK.
+
+---
+
+## 13. Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---------|-------------|-----|
@@ -249,3 +285,5 @@ systemctl start dota2
 | Replay dir: `No such file or directory` | Dir not created | Run `mkdir -p /opt/dota2/game/dota/replays` on droplet |
 | Dota client can't connect | UDP 27015 blocked | Add UDP 27015 rule in DO firewall and UFW |
 | `server_failed` banner in `/inhouse` | RCON push failed at draft complete | Use **Retry** on lobby page, or re-run from admin panel; check server is running |
+| Discord 🔴 "health check failed" ping | srcds crashed/OOM between matches | If `DEDICATED_SERVER_ALLOW_SSH_RESTART=1` the watchdog already tried a restart — SSH in and check `journalctl -u dota2 -f`. Otherwise run `systemctl restart dota2` |
+| Watchdog never restarts despite outage | `DEDICATED_SERVER_ALLOW_SSH_RESTART` not set, or SSH not configured | Set the env var to `1` and confirm the SSH secrets in §9 are present and the user can run `systemctl restart dota2` |

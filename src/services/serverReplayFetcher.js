@@ -223,4 +223,4 @@ async function checkReplayDir() {
   }
 }
 
-module.exports = { listReplays, fetchLatestReplay, fetchReplayByName, testConnection, checkReplayDir, archiveMatchReplay, streamReplayFromArchive };
+module.exports = { listReplays, fetchLatestReplay, fetchReplayByName, testConnection, checkReplayDir, archiveMatchReplay, streamReplayFromArchive, withConnection, execCommand };

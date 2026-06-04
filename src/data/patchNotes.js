@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.34",
+    "title": "Dedicated server now auto-recovers when it crashes between matches",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**New crash watchdog.** A lightweight health monitor now pings the dedicated Dota 2 server over RCON every 60s. After 3 consecutive failures (≈3 min of downtime) it acts automatically instead of waiting for the next draft to fail — no more silently-dead server between sessions.",
+      "**Two recovery modes.** By default the watchdog is alert-only: it fires a one-shot Discord admin ping (and a 🟢 follow-up when RCON recovers). Set `DEDICATED_SERVER_ALLOW_SSH_RESTART=1` to let it remotely run `systemctl restart dota2` over the existing SSH helper, wait, and re-ping once before declaring it down — at most one restart per outage so a hard-down box never gets restart-looped.",
+      "**Admin visibility.** The Admin Panel → Bot → 🔌 Test: Provision & Connect card now shows **\"watchdog: last healthy at HH:MM\"** plus the most recent auto-restart outcome. Tunables (`DEDICATED_SERVER_HEALTH_INTERVAL_SECONDS`, `_FAILURE_THRESHOLD`, `_RESTART_WAIT_SECONDS`, `_SYSTEMD_UNIT`) and the full behaviour are documented in `docs/dedicated-server-runbook.md` §12. Full edition only."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.33",
     "title": "Filter Match History by result and story type",
     "published_at": "2026-06-04",
