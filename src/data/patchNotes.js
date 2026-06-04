@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "9.32",
+    "title": "Admin Panel guarded against the fragmented-tab smell",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**New regression gate keeps each admin tab to a single render block.** After the recent consolidation that collapsed the Matches (3 blocks) and Seasons (4 blocks) tabs down to one `{activeTab === 'x'}` guard each, a lightweight check (`npm run check:admin-tabs`) now scans `web/src/pages/AdminPanel.jsx` and fails the deploy / GitHub-push gates if any tab has zero or more than one render guard, or if a guard points at a tab id that isn't defined in `TAB_META`.",
+      "**Wired into both safety gate chains.** The check runs in `deploy.sh` and `scripts/post-merge.sh` alongside the existing a11y, patch-notes, and feature-list gates, with full unit coverage in `tests/checkAdminTabs.test.js`. Full edition only; community edition untouched."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.31",
     "title": "Lootbox Lab — superuser inspector, simulator, and animation preview",
     "published_at": "2026-06-04",

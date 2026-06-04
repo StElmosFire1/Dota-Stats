@@ -59,6 +59,13 @@ echo "==> Verifying the website feature inventory is in sync with App.jsx routes
 # are normalised (:matchId vs :id) so only genuinely undocumented pages fail.
 node scripts/check-feature-list.js
 
+echo "==> Verifying each admin tab has exactly one render guard (Task #758)..."
+# Hard gate: refuse to deploy if any TAB_META tab id in web/src/pages/AdminPanel.jsx
+# has zero or more-than-one {activeTab === 'x'} render guard, or if a guard
+# references a tab id not defined in TAB_META. Prevents the fragmented-tab smell
+# Task #751 consolidated (matches had 3 blocks, seasons had 4) from recurring.
+node scripts/check-admin-tabs.js
+
 echo "==> Verifying frontend accessibility (Task #164 — house rule gate)..."
 # Hard gate: refuse to deploy if any non-interactive element (div/span/li/tr/td
 # /th/etc.) has an onClick without the documented role+tabIndex+onKeyDown
