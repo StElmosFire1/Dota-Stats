@@ -2891,3 +2891,7 @@ export const removeAdminRole = (superuserKey, accountId) =>
     method: 'DELETE',
     superuserKey,
   });
+
+// Task #803 — Admin cosmetics catalog (superuser-only, read-only audit).
+export const getAdminCosmeticsCatalog = (superuserKey) =>
+  superuserJson('/admin/cosmetics-catalog', { superuserKey });

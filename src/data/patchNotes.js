@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.41",
+    "title": "New admin Cosmetics Catalog — audit every cosmetic in one place",
+    "published_at": "2026-06-04",
+    "notes": [
+      "**New 'Cosmetics Catalog' tab** in the Admin Panel (Site & Content group, superuser-only). A single read-only audit view of every cosmetic across all 14 categories — Avatar Rings, Profile Banners, Nameplate FX, Recap Skins, Titles, Themes, Frames, Layout Themes, Voice Packs, Cover FX, Founders Rings, Verified Badges, Vanity URLs, and Lootboxes — each rendered with a live preview using the real production render helpers.",
+      "**Every card shows the full metadata** the site knows about an item: id/SKU, label, rarity, prices (coins and/or USD, with live site-settings overrides applied), source/unlock path (free, Pro, coins, Stripe, founders, lootbox), lootbox items' drop boxes + per-item odds, and per-category counts. Lootbox cards list each box's published rarity odds.",
+      "**'Needs attention' flags** highlight any item whose preview can't render or that's missing data (no style mapping, missing label/price, drops from no active box), with a category filter and a 'needs attention only' toggle to triage quickly. Pure audit — no editing; pricing stays editable in the Monetisation tab. Backed by `GET /api/admin/cosmetics-catalog` (superuser-only). Full edition only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.40",
     "title": "Deploys no longer leave you on a stale, broken app shell",
     "published_at": "2026-06-04",

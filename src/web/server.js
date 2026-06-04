@@ -17619,6 +17619,248 @@ NOTES
     return null;
   }
 
+  // ── Task #803 — Admin cosmetics catalog review (superuser-only) ─────────
+  // Read-only audit endpoint. Aggregates EVERY cosmetic category from the
+  // authoritative sources (lootbox catalog, profile cosmetics module, economy
+  // price defaults + live site_settings overrides) into one normalized list so
+  // the owner can eyeball the whole catalog on a single admin page. It does not
+  // mutate anything — pricing stays editable in the Monetisation tab.
+  router.get('/admin/cosmetics-catalog', requireSuperuser, async (req, res) => {
+    try {
+      const cosm = require('../profileCosmetics');
+      const lootcat = require('../monetization/lootbox/catalog');
+      const { VERIFIED_BADGE_PRICE_CENTS } = require('../monetization/magazineV3/constants');
+
+      const [coinPrices, framePrices, econOverrides] = await Promise.all([
+        _getEffectiveCoinPrices(),
+        _getEffectiveFramePrices(),
+        _getEconOverrides(),
+      ]);
+
+      // Live lootbox retired-set state so the published per-box odds match what
+      // the server actually rolls (best-effort — fall back to no retired sets).
+      let retired = [];
+      let membership = null;
+      try {
+        if (db.lootbox?.getRetiredSetIds) retired = await db.lootbox.getRetiredSetIds();
+        if (db.lootbox?.getCustomSetMembership) membership = await db.lootbox.getCustomSetMembership();
+      } catch (_) { /* best-effort */ }
+
+      // Per-item lootbox drop odds: for each box, the rarity bucket pct is split
+      // uniformly across the items in that bucket.
+      const boxList = [...Object.values(lootcat.BOXES), lootcat.FREE_BOX];
+      const dropsBySku = {};
+      for (const box of boxList) {
+        const odds = lootcat.publishedOdds(box.id, retired, membership);
+        for (const row of odds) {
+          const per = row.items.length ? +(row.pct / row.items.length).toFixed(3) : 0;
+          for (const it of row.items) {
+            (dropsBySku[it.sku] = dropsBySku[it.sku] || []).push({
+              id: box.id, label: box.label, rarity: row.rarity, pct: per,
+            });
+          }
+        }
+      }
+
+      // ---- Lootbox cosmetics (avatar rings / banners / nameplate / recap) --
+      const lootByKind = { avatar_ring: [], profile_banner: [], nameplate_fx: [], recap_skin: [] };
+      for (const it of lootcat.ITEMS) {
+        if (!lootByKind[it.kind]) continue; // skips the pro_time special
+        const boxes = dropsBySku[it.sku] || [];
+        const warnings = [];
+        if (!it.label) warnings.push('Missing label');
+        if (boxes.length === 0) warnings.push('Drops from no active box');
+        lootByKind[it.kind].push({
+          category: it.kind, value: it.value, sku: it.sku,
+          label: it.label || it.value,
+          rarity: it.rarity,
+          rarityColor: (lootcat.RARITY_META[it.rarity] || {}).color || null,
+          free: false, proGated: false,
+          priceUsdCents: null, priceCoins: null,
+          lootboxOnly: true, boxExclusive: !!it.boxExclusive,
+          set: lootcat.itemSetId(it, membership),
+          sourceLabel: it.boxExclusive ? 'Lootbox exclusive' : 'Lootbox drop',
+          boxes, warnings,
+        });
+      }
+
+      // ---- Titles ----------------------------------------------------------
+      const titles = cosm.ALL_TITLES.map((t) => {
+        const premium = cosm.isPremiumTitle(t);
+        return {
+          category: 'title', value: t, label: t === '' ? '(No title)' : t,
+          rarity: null, free: !premium, proGated: premium,
+          priceUsdCents: null, priceCoins: null,
+          sourceLabel: premium ? 'Pro membership' : 'Free',
+          warnings: [],
+        };
+      });
+
+      // ---- Themes (accent colours) ----------------------------------------
+      const themes = cosm.ALL_THEMES.map((c) => {
+        const premium = cosm.isPremiumTheme(c);
+        return {
+          category: 'theme', value: c, label: c, rarity: null,
+          free: !premium, proGated: premium,
+          priceUsdCents: null, priceCoins: null,
+          sourceLabel: premium ? 'Pro membership' : 'Free',
+          warnings: /^#[0-9a-f]{6}$/i.test(c) ? [] : ['Not a valid hex colour'],
+        };
+      });
+
+      // ---- Frames ----------------------------------------------------------
+      const frames = cosm.ALL_FRAMES.map((f) => {
+        const isFree = cosm.FREE_FRAMES.includes(f);
+        const isFounder = cosm.isFounderFrame(f);
+        let usd = null, coins = null, proGated = false, sourceLabel;
+        if (isFounder) { sourceLabel = 'Founders (auto-granted)'; }
+        else if (isFree) { sourceLabel = 'Free'; }
+        else if (f === 'gold') { usd = framePrices.gold ?? null; proGated = true; sourceLabel = 'Pro membership or purchase'; }
+        else { usd = framePrices[f] ?? null; coins = coinPrices[`frame:${f}`] ?? null; sourceLabel = 'Stripe or coins'; }
+        const warnings = [];
+        if (!isFree && !isFounder && f !== 'gold' && usd == null) warnings.push('Missing USD price');
+        return {
+          category: 'frame', value: f,
+          sku: (isFree || isFounder) ? null : `frame:${f}`,
+          label: f, rarity: null,
+          free: isFree, proGated, founderGranted: isFounder,
+          priceUsdCents: usd, priceCoins: coins,
+          sourceLabel, warnings,
+        };
+      });
+
+      // ---- Layout themes ---------------------------------------------------
+      const layoutThemes = cosm.ALL_LAYOUT_THEMES.map((t) => {
+        const premium = cosm.isPremiumLayoutTheme(t);
+        return {
+          category: 'layout_theme', value: t,
+          sku: premium ? `layout_theme:${t}` : null,
+          label: t, rarity: null,
+          free: !premium, proGated: premium,
+          priceUsdCents: null,
+          priceCoins: premium ? (coinPrices[`layout_theme:${t}`] ?? null) : null,
+          sourceLabel: premium ? 'Pro or coins' : 'Free (default)',
+          warnings: [],
+        };
+      });
+
+      // ---- Voice packs -----------------------------------------------------
+      const voicePacks = cosm.ALL_VOICE_PACKS.map((p) => ({
+        category: 'voice_pack', value: p, sku: `voice_pack:${p}`, label: p,
+        rarity: null, free: false, proGated: true,
+        priceUsdCents: null, priceCoins: coinPrices[`voice_pack:${p}`] ?? null,
+        sourceLabel: 'Pro or coins',
+        warnings: (coinPrices[`voice_pack:${p}`] == null) ? ['Missing coin price'] : [],
+      }));
+
+      // ---- Cover FX --------------------------------------------------------
+      const coverFx = cosm.COVER_FX_IDS.map((id) => {
+        const meta = cosm.COVER_FX_META[id] || {};
+        return {
+          category: 'cover_fx', value: id, label: meta.label || id, sub: meta.sub || null,
+          rarity: null, free: false, proGated: true,
+          priceUsdCents: null, priceCoins: null,
+          sourceLabel: 'Pro membership',
+          warnings: meta.label ? [] : ['Missing metadata'],
+        };
+      });
+
+      // ---- Founders rings --------------------------------------------------
+      const founderRings = [];
+      for (const slug of cosm.FOUNDER_RING_SLUGS) {
+        const tier = cosm.FOUNDER_RING_TIER[slug];
+        const bundled = tier === 'bundled';
+        let usd = null, coins = null, sourceLabel;
+        if (bundled) {
+          sourceLabel = 'Founders Pack (bundled)';
+        } else {
+          usd = await _founderRingIndividualPriceCents(slug);
+          coins = coinPrices[`founder_ring:${slug}`] ?? null;
+          sourceLabel = 'Stripe or coins';
+        }
+        const label = cosm.FOUNDER_RING_LABEL[slug];
+        const warnings = [];
+        if (!label) warnings.push('Missing label');
+        if (!bundled && usd == null) warnings.push('Missing USD price');
+        founderRings.push({
+          category: 'founder_ring', value: slug, sku: cosm.founderRingSku(slug),
+          label: label || slug, rarity: null, tier, bundled,
+          free: false, proGated: false,
+          priceUsdCents: usd, priceCoins: coins,
+          sourceLabel, warnings,
+        });
+      }
+
+      // ---- Verified badges -------------------------------------------------
+      const verifiedBadges = [{
+        category: 'verified_badge', value: 'verified', label: 'Verified Badge',
+        rarity: null, free: false, proGated: false,
+        priceUsdCents: VERIFIED_BADGE_PRICE_CENTS, priceCoins: null,
+        sourceLabel: 'Stripe (admin-approved / code-challenge)',
+        warnings: [],
+      }];
+
+      // ---- Vanity URLs -----------------------------------------------------
+      const vanityUrls = [{
+        category: 'vanity_url', value: 'vanity_url', sku: 'cosmetic:vanity_url',
+        label: 'Custom Profile URL', rarity: null,
+        free: false, proGated: false,
+        priceUsdCents: _econInt(econOverrides, 'vanity_url_cents'),
+        priceCoins: coinPrices['cosmetic:vanity_url'] ?? null,
+        sourceLabel: 'Stripe or coins',
+        warnings: [],
+      }];
+
+      // ---- Lootboxes (the boxes themselves) --------------------------------
+      const lootboxes = boxList.map((box) => {
+        const odds = lootcat.publishedOdds(box.id, retired, membership);
+        return {
+          category: 'lootbox', value: box.id, label: box.label, rarity: null,
+          free: box.price === 0, proGated: false,
+          priceUsdCents: null, priceCoins: box.price,
+          sourceLabel: box.price === 0 ? 'Free weekly box' : 'Coins',
+          blurb: box.blurb,
+          odds: odds.map((r) => ({ rarity: r.rarity, label: r.label, color: r.color, pct: r.pct, count: r.items.length })),
+          warnings: odds.length === 0 ? ['No eligible drops'] : [],
+        };
+      });
+
+      const categories = [
+        { key: 'avatar_ring',    label: 'Avatar Rings',    items: lootByKind.avatar_ring },
+        { key: 'profile_banner', label: 'Profile Banners', items: lootByKind.profile_banner },
+        { key: 'nameplate_fx',   label: 'Nameplate FX',    items: lootByKind.nameplate_fx },
+        { key: 'recap_skin',     label: 'Recap Skins',     items: lootByKind.recap_skin },
+        { key: 'title',          label: 'Titles',          items: titles },
+        { key: 'theme',          label: 'Themes',          items: themes },
+        { key: 'frame',          label: 'Frames',          items: frames },
+        { key: 'layout_theme',   label: 'Layout Themes',   items: layoutThemes },
+        { key: 'voice_pack',     label: 'Voice Packs',     items: voicePacks },
+        { key: 'cover_fx',       label: 'Cover FX',        items: coverFx },
+        { key: 'founder_ring',   label: 'Founders Rings',  items: founderRings },
+        { key: 'verified_badge', label: 'Verified Badges', items: verifiedBadges },
+        { key: 'vanity_url',     label: 'Vanity URLs',     items: vanityUrls },
+        { key: 'lootbox',        label: 'Lootboxes',       items: lootboxes },
+      ].map((c) => ({ ...c, count: c.items.length }));
+
+      const totalItems = categories.reduce((n, c) => n + c.count, 0);
+      const totalWarnings = categories.reduce(
+        (n, c) => n + c.items.reduce((m, it) => m + ((it.warnings && it.warnings.length) ? 1 : 0), 0),
+        0,
+      );
+
+      res.json({
+        edition: 'full',
+        generatedAt: new Date().toISOString(),
+        totalItems, totalWarnings,
+        rarityMeta: lootcat.RARITY_META,
+        categories,
+      });
+    } catch (err) {
+      console.error('[API] cosmetics-catalog error:', err.message);
+      res.status(500).json({ error: 'Failed to assemble cosmetics catalog' });
+    }
+  });
+
   // GET /api/shop/founders-ring/status — public read for the shop card.
   router.get('/shop/founders-ring/status', async (req, res) => {
     try {

@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts, getAdminCosmeticsCatalog } from '../api';
 import CosmeticPreview from '../components/CosmeticPreview';
+import FounderRing from '../components/founderRings/FounderRing';
+import { FRAME_META, LAYOUT_THEME_META, VOICE_PACK_META, COVER_FX_META, avatarRingStyle, bannerStyle, nameplateStyle, recapSkinSwatch } from '../profileCosmetics';
 import Dialog from '../components/Dialog';
 import RankBadge, { decodeRankTier } from '../components/RankBadge';
 import SortableTh from '../components/SortableTh';
@@ -8858,6 +8860,289 @@ function WeeklyRivalsPanel({ superuserKey }) {
   );
 }
 
+// ── Task #803 — Cosmetics Catalog audit panel (superuser-only, read-only) ─────
+// Lists every cosmetic across every category with a live preview, metadata, and
+// pricing pulled from GET /admin/cosmetics-catalog. Pure audit view — no editing.
+function _fmtUsdCents(c) {
+  if (c == null) return null;
+  return `$${(c / 100).toFixed(2)}`;
+}
+// Render-level "can't preview this" detection layered on top of the server's
+// data-level warnings (missing label / price / box). Returns an array.
+function _cosmeticClientWarnings(item) {
+  const w = [];
+  switch (item.category) {
+    case 'avatar_ring':    if (!avatarRingStyle(item.value)) w.push('No ring style mapping'); break;
+    case 'profile_banner': if (!bannerStyle(item.value)) w.push('No banner style mapping'); break;
+    case 'nameplate_fx':   if (!nameplateStyle(item.value)) w.push('No nameplate style mapping'); break;
+    case 'recap_skin':     if (!recapSkinSwatch(item.value)) w.push('No recap swatch mapping'); break;
+    case 'frame':          if (!FRAME_META[item.value]) w.push('No frame style mapping'); break;
+    case 'layout_theme':   if (!LAYOUT_THEME_META[item.value]) w.push('No layout theme metadata'); break;
+    case 'voice_pack':     if (!VOICE_PACK_META[item.value]) w.push('No voice pack metadata'); break;
+    case 'cover_fx':       if (!COVER_FX_META[item.value]) w.push('No cover FX metadata'); break;
+    default: break;
+  }
+  return w;
+}
+
+function CosmeticPreviewCell({ item }) {
+  const cat = item.category;
+  if (cat === 'avatar_ring' || cat === 'profile_banner' || cat === 'nameplate_fx' || cat === 'recap_skin') {
+    return <CosmeticPreview kind={cat} value={item.value} label={item.label} size="md" />;
+  }
+  if (cat === 'frame') {
+    const meta = FRAME_META[item.value] || {};
+    return (
+      <div aria-hidden="true" style={{
+        width: 56, height: 56, borderRadius: '50%', margin: '4px auto',
+        background: 'var(--bg-primary)', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', fontSize: 11, color: 'var(--text-muted)',
+        ...(meta.style || {}),
+      }}>OA</div>
+    );
+  }
+  if (cat === 'founder_ring') {
+    return <div style={{ display: 'flex', justifyContent: 'center' }}><FounderRing sku={item.value} size={64} disc="emblem" /></div>;
+  }
+  if (cat === 'theme') {
+    return (
+      <div aria-hidden="true" style={{
+        width: 56, height: 56, borderRadius: 10, margin: '4px auto',
+        background: item.value, border: '1px solid rgba(255,255,255,0.15)',
+      }} />
+    );
+  }
+  if (cat === 'layout_theme') {
+    const meta = LAYOUT_THEME_META[item.value] || {};
+    return (
+      <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', padding: '8px 4px' }}>
+        <div aria-hidden style={{ fontSize: 20 }}>🖼️</div>
+        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{meta.label || item.value}</div>
+        {meta.sub && <div>{meta.sub}</div>}
+      </div>
+    );
+  }
+  if (cat === 'voice_pack') {
+    const meta = VOICE_PACK_META[item.value] || {};
+    return (
+      <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', padding: '8px 4px' }}>
+        <div aria-hidden style={{ fontSize: 20 }}>🔊</div>
+        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{meta.label || item.value}</div>
+        {meta.sub && <div>{meta.sub}</div>}
+      </div>
+    );
+  }
+  if (cat === 'cover_fx') {
+    const meta = COVER_FX_META[item.value] || {};
+    return (
+      <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', padding: '8px 4px' }}>
+        <div aria-hidden style={{ fontSize: 20 }}>✨</div>
+        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{meta.label || item.value}</div>
+        {meta.sub && <div>{meta.sub}</div>}
+      </div>
+    );
+  }
+  if (cat === 'verified_badge') {
+    return <div aria-hidden style={{ textAlign: 'center', fontSize: 34, color: '#3b82f6' }}>✔</div>;
+  }
+  if (cat === 'vanity_url') {
+    return <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', padding: '12px 4px' }}>oceinhouse.gg/u/<span style={{ color: 'var(--accent)' }}>you</span></div>;
+  }
+  if (cat === 'lootbox') {
+    return (
+      <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', padding: '8px 4px' }}>
+        <div aria-hidden style={{ fontSize: 26 }}>📦</div>
+        {Array.isArray(item.odds) && item.odds.map((o) => (
+          <div key={o.rarity} style={{ color: o.color || 'var(--text-muted)' }}>
+            {o.label || o.rarity}: {o.pct}% <span style={{ opacity: 0.7 }}>({o.count})</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
+}
+
+function CosmeticCard({ item, rarityMeta }) {
+  const warnings = [...(item.warnings || []), ..._cosmeticClientWarnings(item)];
+  const flagged = warnings.length > 0;
+  const usd = _fmtUsdCents(item.priceUsdCents);
+  const rmeta = item.rarity ? (rarityMeta?.[item.rarity] || {}) : null;
+  const rarityColor = item.rarityColor || (rmeta && rmeta.color) || null;
+  return (
+    <div style={{
+      border: flagged ? '1px solid #f59e0b' : '1px solid var(--border, rgba(255,255,255,0.1))',
+      borderRadius: 10, padding: 10, background: 'var(--bg-secondary, rgba(255,255,255,0.02))',
+      display: 'flex', flexDirection: 'column', gap: 6, position: 'relative',
+    }}>
+      {flagged && (
+        <span title={warnings.join('; ')} aria-label={`Needs attention: ${warnings.join('; ')}`} style={{
+          position: 'absolute', top: 6, right: 6, fontSize: 14,
+        }}>⚠️</span>
+      )}
+      <div style={{ minHeight: 64, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <CosmeticPreviewCell item={item} />
+      </div>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', wordBreak: 'break-word' }}>
+        {item.label}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+        {item.sku || item.value}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {item.rarity && (
+          <span style={{
+            fontSize: 10, padding: '1px 6px', borderRadius: 6,
+            border: `1px solid ${rarityColor || 'var(--border)'}`,
+            color: rarityColor || 'var(--text-muted)', textTransform: 'capitalize',
+          }}>{item.rarity}</span>
+        )}
+        {item.free && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>Free</span>}
+        {item.proGated && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, background: 'rgba(245,158,11,0.15)', color: 'var(--amber, #f59e0b)' }}>Pro</span>}
+        {item.bundled && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, background: 'rgba(197,169,117,0.15)', color: 'var(--brass, #c5a975)' }}>Bundled</span>}
+        {item.founderGranted && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, background: 'rgba(197,169,117,0.15)', color: 'var(--brass, #c5a975)' }}>Founders</span>}
+        {item.boxExclusive && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 6, background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}>Box-exclusive</span>}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-secondary, var(--text-muted))' }}>
+        {item.sourceLabel}
+      </div>
+      {(usd || item.priceCoins != null) && (
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+          {usd && <span>{usd}</span>}
+          {usd && item.priceCoins != null && <span style={{ color: 'var(--text-muted)' }}> · </span>}
+          {item.priceCoins != null && <span>🪙{item.priceCoins}</span>}
+        </div>
+      )}
+      {Array.isArray(item.boxes) && item.boxes.length > 0 && (
+        <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+          {item.boxes.map((b) => `${b.label} ${b.pct}%`).join(' · ')}
+        </div>
+      )}
+      {item.set && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Set: {item.set}</div>}
+      {flagged && (
+        <div style={{ fontSize: 10, color: 'var(--amber, #f59e0b)' }}>{warnings.join('; ')}</div>
+      )}
+    </div>
+  );
+}
+
+function CosmeticsPanel({ superuserKey }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [activeCat, setActiveCat] = useState('all');
+  const [onlyFlagged, setOnlyFlagged] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await getAdminCosmeticsCatalog(superuserKey);
+      setData(res);
+    } catch (e) {
+      setError(e.message || 'Failed to load cosmetics catalog');
+    } finally {
+      setLoading(false);
+    }
+  }, [superuserKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const rarityMeta = data?.rarityMeta || {};
+  const categories = data?.categories || [];
+  const isFlagged = (it) => ((it.warnings || []).length + _cosmeticClientWarnings(it).length) > 0;
+
+  const visibleCats = categories
+    .filter((c) => activeCat === 'all' || c.key === activeCat)
+    .map((c) => ({
+      ...c,
+      shown: onlyFlagged ? c.items.filter(isFlagged) : c.items,
+    }))
+    .filter((c) => c.shown.length > 0 || (!onlyFlagged && c.count > 0));
+
+  return (
+    <section className="card" style={{ padding: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <strong>🎨 Cosmetics Catalog</strong>
+          <span style={{ color: 'var(--text-muted)', marginLeft: 8, fontSize: 13 }}>
+            Read-only audit of every cosmetic. Pricing is editable in the Monetisation tab.
+          </span>
+        </div>
+        <button type="button" className="btn" onClick={load} disabled={loading}>
+          {loading ? 'Loading…' : '↻ Refresh'}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: 'rgba(239,68,68,0.12)', color: '#ef4444' }}>
+          {error}
+        </div>
+      )}
+
+      {data && (
+        <>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 12, fontSize: 13, color: 'var(--text-muted)' }}>
+            <span><strong style={{ color: 'var(--text-primary)' }}>{data.totalItems}</strong> items</span>
+            <span><strong style={{ color: 'var(--text-primary)' }}>{categories.length}</strong> categories</span>
+            <span style={{ color: data.totalWarnings > 0 ? 'var(--amber, #f59e0b)' : undefined }}>
+              ⚠️ <strong>{data.totalWarnings}</strong> flagged
+            </span>
+            <span>Generated {new Date(data.generatedAt).toLocaleString()}</span>
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
+            <button
+              type="button"
+              className="btn"
+              aria-pressed={activeCat === 'all'}
+              onClick={() => setActiveCat('all')}
+              style={{ fontSize: 12, padding: '3px 10px', opacity: activeCat === 'all' ? 1 : 0.6 }}
+            >All</button>
+            {categories.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                className="btn"
+                aria-pressed={activeCat === c.key}
+                onClick={() => setActiveCat(c.key)}
+                style={{ fontSize: 12, padding: '3px 10px', opacity: activeCat === c.key ? 1 : 0.6 }}
+              >{c.label} ({c.count})</button>
+            ))}
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 8, fontSize: 13, cursor: 'pointer' }}>
+              <input type="checkbox" checked={onlyFlagged} onChange={(e) => setOnlyFlagged(e.target.checked)} />
+              Needs attention only
+            </label>
+          </div>
+
+          {visibleCats.length === 0 && (
+            <p style={{ color: 'var(--text-muted)', marginTop: 16 }}>
+              {onlyFlagged ? 'No items need attention 🎉' : 'No cosmetics found.'}
+            </p>
+          )}
+
+          {visibleCats.map((c) => (
+            <div key={c.key} style={{ marginTop: 20 }}>
+              <h3 style={{ margin: '0 0 10px', fontSize: 15 }}>
+                {c.label} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({c.shown.length})</span>
+              </h3>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                gap: 10,
+              }}>
+                {c.shown.map((it) => (
+                  <CosmeticCard key={`${it.category}:${it.value}`} item={it} rarityMeta={rarityMeta} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+    </section>
+  );
+}
+
 // ── Admin tab metadata ───────────────────────────────────────────────────────
 // Single source of truth for every admin tab: icon, sidebar label, and the
 // one-line description shown in the per-tab header. The sidebar nav, the
@@ -8875,6 +9160,7 @@ const TAB_META = {
   users:       { icon: '👥', label: 'Players & Sign-Ups',     desc: 'Staff roles, ranks, nicknames, duplicates, and sign-up requests.' },
   challenges:  { icon: '🎯', label: 'Community Challenges',    desc: 'Create and manage community challenges and their leaderboards.' },
   rivals:      { icon: '⚔️', label: 'Weekly Rivals',          desc: 'Weekly head-to-head rival pairings.' },
+  cosmetics:   { icon: '🎨', label: 'Cosmetics Catalog',      desc: 'Read-only audit of every cosmetic across all categories, with live previews, metadata, and pricing.' },
 };
 
 // Grouped sidebar layout. Each item is a tab id resolved against TAB_META.
@@ -8883,7 +9169,7 @@ const ADMIN_NAV_GROUPS = [
   { label: 'Match Data',    items: ['matches'] },
   { label: 'Bot & Lobbies', items: ['bot', 'diagnostics'] },
   { label: 'Seasons & Money', items: ['seasons', 'marketplace'] },
-  { label: 'Site & Content', items: ['content', 'config'] },
+  { label: 'Site & Content', items: ['content', 'config', 'cosmetics'] },
   { label: 'Community',     items: ['users', 'challenges', 'rivals'] },
 ];
 
@@ -9106,6 +9392,7 @@ export default function AdminPanel() {
     { label: 'Ops History', tab: 'config', anchor: 'ap-anchor-ops-history', icon: '📈', kw: 'ops history sparkline telemetry samples 1min samples error spike throughput' },
     { label: 'Lootbox Sets', tab: 'marketplace', anchor: 'ap-anchor-lootbox-sets', icon: '📦', kw: 'lootbox sets seasonal retire cosmetics boxes drops collection active' },
     { label: 'Lootbox Lab', tab: 'marketplace', anchor: 'ap-anchor-lootbox-lab', icon: '🧪', kw: 'lootbox lab test simulate preview open animation dry run inspect odds catalog rarity batch distribution cosmetic ring banner nameplate recap skin' },
+    { label: 'Cosmetics Catalog', tab: 'cosmetics', icon: '🎨', kw: 'cosmetics catalog audit review preview avatar ring banner nameplate recap skin title theme frame layout voice pack cover fx founder ring verified badge vanity url lootbox rarity price odds metadata needs attention' },
   ];
 
   const q = searchQuery.trim().toLowerCase();
@@ -9496,6 +9783,11 @@ export default function AdminPanel() {
       {activeTab === 'rivals' && (<>
       <TabHeader id="rivals" />
       <WeeklyRivalsPanel superuserKey={superuserKey} />
+      </>)}
+
+      {activeTab === 'cosmetics' && (<>
+      <TabHeader id="cosmetics" />
+      <CosmeticsPanel superuserKey={superuserKey} />
       </>)}
 
       {activeTab === 'config' && (<>
