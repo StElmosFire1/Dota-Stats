@@ -5819,8 +5819,17 @@ function createApiRouter(startupStatus = {}, _app = null) {
       // superuser-only ?tenant_id= override for admin tooling. ?tenant_id=all
       // returns every row regardless of tenant.
       const tenantId = _resolveScopeTenantId(req);
-      const matches = await db.getMatches(limit, offset, seasonId, { tenantId });
-      const total = await db.getMatchCount(seasonId, { tenantId });
+      // Task #789 — optional Match History filters applied across ALL matches
+      // (not just the current page) so totals + pagination reflect the filtered
+      // set. result=win|loss needs account_id; story is a narrative label.
+      const filterOpts = {
+        tenantId,
+        result: req.query.result,
+        accountId: req.query.account_id,
+        story: req.query.story,
+      };
+      const matches = await db.getMatches(limit, offset, seasonId, filterOpts);
+      const total = await db.getMatchCount(seasonId, filterOpts);
       // Task #363 — getMatches is `SELECT m.*` so the new chat_log JSONB
       // column would otherwise be returned to every public list caller,
       // bypassing the per-match `chat_log_visible` gate. Strip it

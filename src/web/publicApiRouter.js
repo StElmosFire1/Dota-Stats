@@ -355,9 +355,16 @@ function createPublicApiRouter() {
       const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
       const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
       const seasonId = req.query.season_id ? parseInt(req.query.season_id, 10) : null;
+      // Task #789 — optional filters (result=win|loss + account_id, story) so the
+      // list searches across ALL matches; totals reflect the filtered set.
+      const filterOpts = {
+        result: req.query.result,
+        accountId: req.query.account_id,
+        story: req.query.story,
+      };
       const [matches, total] = await Promise.all([
-        db.getMatches(limit, offset, seasonId),
-        db.getMatchCount(seasonId),
+        db.getMatches(limit, offset, seasonId, filterOpts),
+        db.getMatchCount(seasonId, filterOpts),
       ]);
       res.json({
         matches: matches.map((m) => ({

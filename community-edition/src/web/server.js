@@ -601,8 +601,16 @@ function createApiRouter(startupStatus = {}) {
       const limit = Math.min(parseInt(req.query.limit) || 50, 100);
       const offset = parseInt(req.query.offset) || 0;
       const seasonId = req.query.season_id || null;
-      const matches = await db.getMatches(limit, offset, seasonId);
-      const total = await db.getMatchCount(seasonId);
+      // Task #789 — optional Match History filters applied across ALL matches
+      // (not just the current page) so totals + pagination reflect the filtered
+      // set. result=win|loss needs account_id; story is a narrative label.
+      const filterOpts = {
+        result: req.query.result,
+        accountId: req.query.account_id,
+        story: req.query.story,
+      };
+      const matches = await db.getMatches(limit, offset, seasonId, filterOpts);
+      const total = await db.getMatchCount(seasonId, filterOpts);
       res.json({ matches, total, limit, offset });
     } catch (err) {
       console.error('[API] Error fetching matches:', err.message);

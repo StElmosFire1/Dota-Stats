@@ -3555,6 +3555,44 @@ function _scNoAlias(seasonId, params) {
   return ` AND season_id = $${params.length}`;
 }
 
+// Task #789 — server-side Match History filters (result + story type) so they
+// search across ALL matches, not just the current page. Mirrors the client
+// helpers `storyLabel()` / `matchResultFor()` in web/src/pages/MatchList.jsx.
+// Returns `{ join, clause }` SQL fragments (clause already prefixed ` AND `)
+// and appends any bind params to `params`. Used by both getMatches and
+// getMatchCount so pagination totals reflect the filtered set.
+const _STORY_TYPES = ['Stomp', 'Decisive', 'Close Game', 'Neck and Neck'];
+function _matchFilterClause({ result, accountId, story }, params, alias = 'm') {
+  let join = '';
+  let clause = '';
+  // Result filter — win/loss relative to a specific account. won === whether
+  // the account's side won: (team === 'radiant') === radiant_win.
+  const acct = accountId != null && accountId !== '' ? parseInt(accountId, 10) : null;
+  if ((result === 'win' || result === 'loss') && Number.isFinite(acct)) {
+    params.push(acct);
+    const wonExpr = `((psr.team = 'radiant') = ${alias}.radiant_win)`;
+    const cond = result === 'win' ? wonExpr : `NOT ${wonExpr}`;
+    clause += ` AND EXISTS (SELECT 1 FROM player_stats psr WHERE psr.match_id = ${alias}.match_id AND psr.account_id = $${params.length} AND ${cond})`;
+  }
+  // Story filter — kill-margin + duration narrative. INNER JOIN drops matches
+  // with no player_stats rows (which have no story, mirroring matchStory()).
+  if (story && _STORY_TYPES.includes(story)) {
+    join += ` JOIN (SELECT match_id, ABS(SUM(CASE WHEN team = 'radiant' THEN kills ELSE 0 END) - SUM(CASE WHEN team = 'dire' THEN kills ELSE 0 END)) AS km FROM player_stats GROUP BY match_id) ks ON ks.match_id = ${alias}.match_id`;
+    const dur = `COALESCE(${alias}.duration, 0)`;
+    const stomp = `(ks.km >= 20 OR (ks.km >= 15 AND ${dur} > 0 AND ${dur} < 1800))`;
+    if (story === 'Stomp') {
+      clause += ` AND ${stomp}`;
+    } else if (story === 'Decisive') {
+      clause += ` AND NOT ${stomp} AND ks.km >= 10`;
+    } else if (story === 'Neck and Neck') {
+      clause += ` AND ks.km <= 3 AND ${dur} > 2400`;
+    } else if (story === 'Close Game') {
+      clause += ` AND ks.km <= 5 AND NOT (ks.km <= 3 AND ${dur} > 2400)`;
+    }
+  }
+  return { join, clause };
+}
+
 async function getSeasons() {
   const p = getPool();
   const result = await p.query(`
@@ -5197,11 +5235,12 @@ async function isFileHashRecorded(fileHash) {
   return result.rows.length > 0 ? result.rows[0].match_id : null;
 }
 
-async function getMatches(limit = 50, offset = 0, seasonId = null, { tenantId } = {}) {
+async function getMatches(limit = 50, offset = 0, seasonId = null, { tenantId, result, accountId, story } = {}) {
   const p = getPool();
   const params = [limit, offset];
   const seasonClause = _sc(seasonId, params, 'm');
   const tenantClause = _tc(tenantId, params, 'm');
+  const { join: filterJoin, clause: filterClause } = _matchFilterClause({ result, accountId, story }, params, 'm');
   // `players` is a JSON array of {team, hero, kills, deaths, assists,
   // account_id, nickname, persona_name, perf, mmr} ordered Radiant→Dire then
   // kills DESC. Used by the Match History list to render hero icons, a
@@ -5211,7 +5250,7 @@ async function getMatches(limit = 50, offset = 0, seasonId = null, { tenantId } 
   // card can fall back nickname → persona before ever showing a raw id; `perf`
   // drives the MVP pick; `mmr` is each player's *current* stored rating (joined
   // from `ratings`, not a per-match snapshot) for the team-average badge.
-  const result = await p.query(
+  const res = await p.query(
     `SELECT m.*,
        (SELECT COUNT(*) FROM player_stats ps WHERE ps.match_id = m.match_id) as player_count,
        (SELECT json_agg(row_to_json(p2) ORDER BY p2.team, p2.kills DESC NULLS LAST)
@@ -5226,8 +5265,8 @@ async function getMatches(limit = 50, offset = 0, seasonId = null, { tenantId } 
           WHERE ps.match_id = m.match_id
         ) p2
        ) as players
-     FROM matches m
-     WHERE 1=1${seasonClause}${tenantClause}
+     FROM matches m${filterJoin}
+     WHERE 1=1${seasonClause}${tenantClause}${filterClause}
      ORDER BY m.date DESC
      LIMIT $1 OFFSET $2`,
     params
@@ -5235,34 +5274,28 @@ async function getMatches(limit = 50, offset = 0, seasonId = null, { tenantId } 
   // Steam personas are stored as protobuf byte-string JSON ({"bytes":[...]}) on
   // some rows; decode them here (the single-match query does the same per-row)
   // so the frontend never renders a raw blob when falling back to the persona.
-  for (const row of result.rows) {
+  for (const row of res.rows) {
     if (Array.isArray(row.players)) {
       for (const pl of row.players) {
         if (pl && pl.persona_name) pl.persona_name = decodeByteString(pl.persona_name);
       }
     }
   }
-  return result.rows;
+  return res.rows;
 }
 
-async function getMatchCount(seasonId = null, { tenantId } = {}) {
+async function getMatchCount(seasonId = null, { tenantId, result, accountId, story } = {}) {
   const p = getPool();
   const params = [];
-  const tenantClause = _tc(tenantId, params, null);
-  if (seasonId === 'legacy') {
-    const result = await p.query(`SELECT COUNT(*) as count FROM matches WHERE is_legacy = true${tenantClause}`, params);
-    return parseInt(result.rows[0].count);
-  }
-  if (seasonId) {
-    params.unshift(parseInt(seasonId));
-    // Rebuild bind indexes since we prepended season_id at $1.
-    const params2 = [parseInt(seasonId)];
-    const tc = _tc(tenantId, params2, null);
-    const result = await p.query(`SELECT COUNT(*) as count FROM matches WHERE season_id = $1${tc}`, params2);
-    return parseInt(result.rows[0].count);
-  }
-  const result = await p.query(`SELECT COUNT(*) as count FROM matches WHERE is_legacy = false${tenantClause}`, params);
-  return parseInt(result.rows[0].count);
+  // Use the aliased season/tenant clause builders so the optional result/story
+  // filter (Task #789) can join player_stats — the COUNT must reflect the same
+  // filtered set the paginated getMatches() returns.
+  const seasonClause = _sc(seasonId, params, 'm');
+  const tenantClause = _tc(tenantId, params, 'm');
+  const { join: filterJoin, clause: filterClause } = _matchFilterClause({ result, accountId, story }, params, 'm');
+  const sql = `SELECT COUNT(*) as count FROM matches m${filterJoin} WHERE 1=1${seasonClause}${tenantClause}${filterClause}`;
+  const res = await p.query(sql, params);
+  return parseInt(res.rows[0].count);
 }
 
 async function getMatch(matchId) {

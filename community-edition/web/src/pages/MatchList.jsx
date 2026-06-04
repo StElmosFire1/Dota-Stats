@@ -64,28 +64,9 @@ function storyLabel(killMargin, durationMins) {
 }
 
 // Story types players can filter by — mirrors the labels storyLabel() emits.
+// Task #789 — filtering by these now happens server-side (across all matches);
+// storyLabel() is still used per-card to render the story pill on each match.
 const STORY_TYPES = ['Stomp', 'Decisive', 'Close Game', 'Neck and Neck'];
-
-// Resolve a match's story label from its already-fetched player rows.
-function matchStory(match) {
-  const players = match.players || [];
-  if (players.length === 0) return null;
-  const { radiant, dire } = splitTeams(players);
-  const killMargin = Math.abs(sumKills(radiant) - sumKills(dire));
-  const durationMins = match.duration ? match.duration / 60 : 0;
-  return storyLabel(killMargin, durationMins);
-}
-
-// Win/Loss relative to a given account. Returns 'win' | 'loss', or null when
-// the account didn't play in this match (so result filters can exclude it).
-function matchResultFor(match, accountId) {
-  if (!accountId) return null;
-  const me = (match.players || []).find(p => String(p.account_id) === String(accountId));
-  if (!me) return null;
-  const onRadiant = me.team === 'radiant' || me.team === 0 || me.team === '0';
-  const won = onRadiant ? !!match.radiant_win : !match.radiant_win;
-  return won ? 'win' : 'loss';
-}
 
 // Hero lineup + MVP strip.
 function MatchPlayersStrip({ players, radiantWin, radiantMmr, direMmr }) {
@@ -171,8 +152,9 @@ export default function MatchList() {
   const [page, setPage] = useState(0);
   const limit = 20;
 
-  // Client-side filters applied to the already-fetched page (keeps latency low;
-  // pagination + bulk-season behaviour are driven off the same data set).
+  // Task #789 — filters are now applied server-side (across ALL matches, not
+  // just the current page) so pagination totals reflect the filtered set. The
+  // selected values are passed straight through to getMatches() as query params.
   const [resultFilter, setResultFilter] = useState('all'); // all | win | loss
   const [storyFilter, setStoryFilter] = useState('all');   // all | <story label>
 
@@ -187,30 +169,31 @@ export default function MatchList() {
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkMsg, setBulkMsg] = useState('');
 
-  useEffect(() => { setPage(0); }, [seasonId]);
+  // Reset to the first page whenever the season or a filter changes — offsets
+  // from the previous (differently-sized) result set would be meaningless.
+  useEffect(() => { setPage(0); }, [seasonId, resultFilter, storyFilter]);
 
   useEffect(() => {
     setLoading(true);
     setSelected(new Set());
-    getMatches(limit, page * limit, seasonId)
+    getMatches(limit, page * limit, seasonId, { result: resultFilter, accountId: myAccountId, story: storyFilter })
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [page, seasonId]);
+  }, [page, seasonId, resultFilter, storyFilter, myAccountId]);
 
   const reload = useCallback(() => {
-    getMatches(limit, page * limit, seasonId).then(setData).catch(console.error);
-  }, [page, seasonId]);
+    getMatches(limit, page * limit, seasonId, { result: resultFilter, accountId: myAccountId, story: storyFilter })
+      .then(setData).catch(console.error);
+  }, [page, seasonId, resultFilter, storyFilter, myAccountId]);
 
   const totalPages = Math.ceil(data.total / limit);
 
   const filtersActive = resultFilter !== 'all' || storyFilter !== 'all';
   const clearFilters = () => { setResultFilter('all'); setStoryFilter('all'); };
-  const visibleMatches = data.matches.filter((m) => {
-    if (storyFilter !== 'all' && matchStory(m) !== storyFilter) return false;
-    if (resultFilter !== 'all' && matchResultFor(m, myAccountId) !== resultFilter) return false;
-    return true;
-  });
+  // Filtering is now done server-side (Task #789); the page we receive is
+  // already the globally-filtered, correctly-paginated slice.
+  const visibleMatches = data.matches;
 
   const getSeasonName = (id) => {
     if (!id) return null;
@@ -382,7 +365,7 @@ export default function MatchList() {
 
       {loading ? (
         <div className="loading">Loading matches...</div>
-      ) : data.matches.length === 0 ? (
+      ) : data.matches.length === 0 && !filtersActive ? (
         <div className="empty-state">
           <p>No matches recorded yet.</p>
           <p>Upload a .dem replay file to get started!</p>
@@ -392,7 +375,7 @@ export default function MatchList() {
           {renderFilterBar()}
           {visibleMatches.length === 0 ? (
             <div className="empty-state">
-              <p>No matches on this page match these filters.</p>
+              <p>No matches match these filters.</p>
               <button type="button" className="btn btn-sm" onClick={clearFilters}>Clear filters</button>
             </div>
           ) : (

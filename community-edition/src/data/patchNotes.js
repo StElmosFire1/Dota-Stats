@@ -82,5 +82,11 @@ module.exports = [
     "title": "Hall of Fame page no longer errors",
     "published_at": "2026-05-31",
     "content": "The Hall of Fame page could fail to load because its career-stats query crashed in the database. The average-KDA and average-GPM calculations were rounding a floating-point average directly, which PostgreSQL rejects (\"function round(double precision, integer) does not exist\") — so the whole query threw and the page showed an error. Fixed by casting those averages to numeric before rounding (matching how the player-benchmark query already did it). This mirrors the same fix the full edition shipped. Verified against the live database: the corrected query now returns rows."
+  },
+  {
+    "version": "1.8",
+    "title": "Match History filters now search across every match, not just the page",
+    "published_at": "2026-06-04",
+    "content": "The Win/Loss and story-type (Stomp / Decisive / Close Game / Neck and Neck) filters on Match History used to only narrow the 20 matches on the current page, so \"show me all the stomps this season\" felt incomplete. They now pass through to GET /api/matches as query params and are applied server-side across every match: story type is computed from kill margin + duration (mirroring the on-card story pill exactly) and result filtering joins your account's team against the match winner. Pagination totals now reflect the filtered set. Mirrors the full edition."
   }
 ];

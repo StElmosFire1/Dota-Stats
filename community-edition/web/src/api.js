@@ -173,8 +173,18 @@ function seasonParam(seasonId) {
   return seasonId ? `&season_id=${encodeURIComponent(seasonId)}` : '';
 }
 
-export async function getMatches(limit = 50, offset = 0, seasonId = null) {
-  return fetchJson(`/matches?limit=${limit}&offset=${offset}${seasonParam(seasonId)}`);
+// Task #789 — opts.result ('win'|'loss', needs opts.accountId), opts.story
+// (narrative label) are applied server-side across ALL matches so totals +
+// pagination reflect the filtered set.
+export async function getMatches(limit = 50, offset = 0, seasonId = null, opts = {}) {
+  const { result, accountId, story } = opts;
+  let qs = `/matches?limit=${limit}&offset=${offset}${seasonParam(seasonId)}`;
+  if (result && result !== 'all') {
+    qs += `&result=${encodeURIComponent(result)}`;
+    if (accountId) qs += `&account_id=${encodeURIComponent(accountId)}`;
+  }
+  if (story && story !== 'all') qs += `&story=${encodeURIComponent(story)}`;
+  return fetchJson(qs);
 }
 
 export async function getMatch(matchId) {
