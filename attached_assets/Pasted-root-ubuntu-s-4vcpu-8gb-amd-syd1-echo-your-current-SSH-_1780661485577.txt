@@ -1,0 +1,70 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# echo "=== your current SSH source IP ==="; echo "$SSH_CLIENT"
+echo "=== ufw ==="; ufw status verbose 2>/dev/null || echo "(ufw not installed / inactive)"
+echo "=== iptables ==="; iptables -S 2>/dev/null | head -40
+echo "=== listeners (22 / 27015 / 27020) ==="; ss -lntup | grep -E ':(22|27015|27020)'
+=== your current SSH source IP ===
+162.243.188.66 14836 22
+=== ufw ===
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), disabled (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    Anywhere                  
+27015/tcp                  ALLOW IN    Anywhere                  
+27015/udp                  ALLOW IN    Anywhere                  
+27005/udp                  ALLOW IN    Anywhere                  
+22/tcp (v6)                ALLOW IN    Anywhere (v6)             
+27015/tcp (v6)             ALLOW IN    Anywhere (v6)             
+27015/udp (v6)             ALLOW IN    Anywhere (v6)             
+27005/udp (v6)             ALLOW IN    Anywhere (v6)             
+
+=== iptables ===
+-P INPUT DROP
+-P FORWARD DROP
+-P OUTPUT ACCEPT
+-N ufw-after-forward
+-N ufw-after-input
+-N ufw-after-logging-forward
+-N ufw-after-logging-input
+-N ufw-after-logging-output
+-N ufw-after-output
+-N ufw-before-forward
+-N ufw-before-input
+-N ufw-before-logging-forward
+-N ufw-before-logging-input
+-N ufw-before-logging-output
+-N ufw-before-output
+-N ufw-logging-allow
+-N ufw-logging-deny
+-N ufw-not-local
+-N ufw-reject-forward
+-N ufw-reject-input
+-N ufw-reject-output
+-N ufw-skip-to-policy-forward
+-N ufw-skip-to-policy-input
+-N ufw-skip-to-policy-output
+-N ufw-track-forward
+-N ufw-track-input
+-N ufw-track-output
+-N ufw-user-forward
+-N ufw-user-input
+-N ufw-user-limit
+-N ufw-user-limit-accept
+-N ufw-user-logging-forward
+-N ufw-user-logging-input
+-N ufw-user-logging-output
+-N ufw-user-output
+-A INPUT -j ufw-before-logging-input
+-A INPUT -j ufw-before-input
+-A INPUT -j ufw-after-input
+-A INPUT -j ufw-after-logging-input
+-A INPUT -j ufw-reject-input
+=== listeners (22 / 27015 / 27020) ===
+udp   UNCONN 0      0                  *:27015            *:*    users:(("dota2",pid=454689,fd=170))                     
+udp   UNCONN 0      0                  *:27020            *:*    users:(("dota2",pid=454689,fd=260))                     
+tcp   LISTEN 0      2            0.0.0.0:27015      0.0.0.0:*    users:(("dota2",pid=454689,fd=185))                     
+tcp   LISTEN 0      4096         0.0.0.0:22         0.0.0.0:*    users:(("sshd",pid=23095,fd=3),("systemd",pid=1,fd=149))
+tcp   LISTEN 0      4096            [::]:22            [::]:*    users:(("sshd",pid=23095,fd=4),("systemd",pid=1,fd=150))
