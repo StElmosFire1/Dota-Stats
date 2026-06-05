@@ -1,0 +1,58 @@
+root@ubuntu-s-4vcpu-8gb-amd-syd1:~# cat > /opt/dota2/auto-update.py <<'PY'
+#!/usr/bin/env python3
+import socket, struct, re, subprocess, time, datetime
+
+INSTALL_DIR = "/opt/dota2"
+APPID       = "570"
+STEAM_LOGIN = "daburapc2"
+STEAMCMD    = "/usr/games/steamcmd"
+UNIT        = "dota-server.service"
+START_SH    = "/opt/dota2/start_server.sh"
+MANIFEST    = f"{INSTALL_DIR}/steamapps/appmanifest_{APPID}.acf"
+LOG         = "/var/log/dota-autoupdate.log"
+RCON_HOSTS  = ["127.0.0.1", "134.199.166.223"]
+RCON_PORT   = 27015
+
+def log(m):
+    line = f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S} {m}"
+    print(line)
+    try:
+        with open(LOG,"a") as f: f.write(line+"\n")
+    except Exception: pass
+
+def rcon_pw():
+    try:
+        for ln in open(START_SH):
+            mm = re.search(r'\+rcon_password\s+"([^"]+)"', ln)
+            if mm: return mm.group(1)
+    except Exception as e: log(f"start_server.sh read error: {e}")
+    return None
+
+def humans():
+    pw = rcon_pw()
+    if not pw: return None
+    def snd(s,i,t,b): p=struct.pack('<ii',i,t)+b.encode()+b'\x00\x00'; s.sendall(struct.pack('<i',len(p))+p)
+    def rcv(s):
+        ln=struct.unpack('<i',s.recv(4))[0]; d=b''
+        while len(d)<ln: d+=s.recv(ln-len(d))
+        return struct.unpack('<ii',d[:8])[0],d[8:-2].decode('utf-8','replace')
+    for host in RCON_HOSTS:
+        try:
+            s=socket.socket(); s.settimeout(5); s.connect((host,RCON_PORT))
+            snd(s,1,3,pw); rid,_=rcv(s)
+            if rid==-1: log("RCON auth failed"); s.close(); return None
+            snd(s,2,2,"status"); time.sleep(0.5); _,body=rcv(s); s.close()
+            mm=re.search(r'players\s*:\s*(\d+)\s+humans', body)
+            if mm: return int(mm.group(1))
+        except Exception as e:
+echo "=== next scheduled ==="; systemctl list-timers dota-autoupdate.timer --no-pager=3600) return
+Created symlink /etc/systemd/system/timers.target.wants/dota-autoupdate.timer → /etc/systemd/system/dota-autoupdate.timer.
+=== test run now ===
+=== log ===
+2026-06-05 11:46:00 skip: buildid unknown (inst=23514965 latest=None)
+=== next scheduled ===
+NEXT                        LEFT LAST                        PASSED UNIT                  ACTIVATES              
+Fri 2026-06-05 12:16:38 U… 30min Fri 2026-06-05 11:46:00 UTC 8s ago dota-autoupdate.timer dota-autoupdate.service
+
+1 timers listed.
+Pass --all to see loaded but inactive timers, too.
