@@ -88,5 +88,11 @@ module.exports = [
     "title": "Match History filters now search across every match, not just the page",
     "published_at": "2026-06-04",
     "content": "The Win/Loss and story-type (Stomp / Decisive / Close Game / Neck and Neck) filters on Match History used to only narrow the 20 matches on the current page, so \"show me all the stomps this season\" felt incomplete. They now pass through to GET /api/matches as query params and are applied server-side across every match: story type is computed from kill margin + duration (mirroring the on-card story pill exactly) and result filtering joins your account's team against the match winner. Pagination totals now reflect the filtered set. Mirrors the full edition."
+  },
+  {
+    "version": "1.9",
+    "title": "Discord post-match summary no longer attaches the recap card",
+    "published_at": "2026-06-05",
+    "content": "When a match finishes, the Discord bot used to post three things: a text embed (highlights + KDA), a scoreboard image, and the branded recap card graphic (\"RADIANT VICTORY\" with PERF rows and the site footer). The recap card is no longer posted to Discord — only the text embed and scoreboard image are sent. The recap card itself is untouched everywhere else: it still renders on the web match detail page and is still served by GET /api/matches/:matchId/recap-card.png. This change is community-edition only."
   }
 ];
