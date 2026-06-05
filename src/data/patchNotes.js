@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.47",
+    "title": "Edit Profile page tabs work again — and read much cleaner",
+    "published_at": "2026-06-05",
+    "notes": [
+      "**Tabs actually switch now.** The Edit Profile page (Identity / Appearance / Showcase / Connections) was rendering all four sections stacked on top of each other at once — the tab buttons only recoloured. Each tab now shows just its own section, the way it always should have.",
+      "**Tidier, scannable sections.** Compact pickers (accent colour, cover theme, frame, achievements, pinned hero/match) now sit side-by-side in a two-column grid instead of one long stack, while wide controls (bio, voice pack, social links, share card, streamer setup) keep the full width they need. Collapses back to a single column on narrow screens.",
+      "**Cleaner page structure.** The tab bar now spans the full width above the form and the live preview rail, so the preview no longer leaves an awkward gap. Presentation only — every control and its save path is unchanged. Full edition only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.46",
     "title": "Cleaner, streamer-safe inhouse lobby",
     "published_at": "2026-06-04",

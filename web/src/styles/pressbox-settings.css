@@ -140,13 +140,35 @@
 /* ── Tab panel ────────────────────────────────────────────────────────────── */
 
 .pb-settings-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+/* Hidden tab panels must actually hide. The explicit `display` above would
+   otherwise override the HTML `hidden` attribute, so every section would
+   stack on top of each other at once. This single rule restores tabbing. */
+.pb-settings-panel[hidden] {
+  display: none;
+}
+
+/* Cards that want the full width of the form column — long-form inputs (bio),
+   internal multi-column grids (social links), or complex tool cards
+   (streamer setup, share card). */
+.pb-settings-card--wide {
+  grid-column: 1 / -1;
 }
 
 .pb-settings-panel:focus {
   outline: none;
+}
+
+/* Collapse to a single column when the form column itself gets narrow. */
+@media (max-width: 860px) {
+  .pb-settings-panel {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── Section cards ────────────────────────────────────────────────────────── */

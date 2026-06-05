@@ -677,9 +677,9 @@ function StreamerSetupSection({ accountId }) {
 }
 
 // ── Helper: Press Box section card ────────────────────────────────────────────
-function SettingsCard({ eyebrow, title, description, children }) {
+function SettingsCard({ eyebrow, title, description, children, wide = false }) {
   return (
-    <div className="pb-card pb-settings-card">
+    <div className={`pb-card pb-settings-card${wide ? ' pb-settings-card--wide' : ''}`}>
       <div className="pb-settings-card-head">
         {eyebrow && <div className="pb-eyebrow">{eyebrow}</div>}
         <div className="pb-settings-card-title">{title}</div>
@@ -977,33 +977,34 @@ export default function SettingsProfile() {
       {loading && <div className="loading">Loading…</div>}
 
       {!loading && (
+        <>
+        {/* Tab list — spans the full width above the form + preview split */}
+        <div
+          role="tablist"
+          aria-label="Profile settings sections"
+          className="pb-settings-tablist"
+        >
+          {SETTINGS_TABS.map(t => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              id={`pbs-tab-${t.id}`}
+              aria-selected={activeTab === t.id}
+              aria-controls={`pbs-panel-${t.id}`}
+              onClick={() => setActiveTab(t.id)}
+              className="pb-settings-tab"
+            >
+              <span className="pb-settings-tab-icon" aria-hidden="true">{t.icon}</span>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         <div className="pb-settings-layout">
 
           {/* ── Left: form column ── */}
           <div className="pb-settings-form-col">
-
-            {/* Tab list */}
-            <div
-              role="tablist"
-              aria-label="Profile settings sections"
-              className="pb-settings-tablist"
-            >
-              {SETTINGS_TABS.map(t => (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="tab"
-                  id={`pbs-tab-${t.id}`}
-                  aria-selected={activeTab === t.id}
-                  aria-controls={`pbs-panel-${t.id}`}
-                  onClick={() => setActiveTab(t.id)}
-                  className="pb-settings-tab"
-                >
-                  <span className="pb-settings-tab-icon" aria-hidden="true">{t.icon}</span>
-                  {t.label}
-                </button>
-              ))}
-            </div>
 
             {/* ── IDENTITY panel ── */}
             <div
@@ -1016,6 +1017,7 @@ export default function SettingsProfile() {
             >
               {/* Bio */}
               <SettingsCard
+                wide
                 eyebrow="Identity"
                 title="Bio"
                 description="A short description shown at the top of your public profile page."
@@ -1269,6 +1271,7 @@ export default function SettingsProfile() {
 
               {/* Inhouse voice pack */}
               <SettingsCard
+                wide
                 eyebrow="Appearance · Pro"
                 title="Inhouse Voice Pack"
                 description={
@@ -1598,6 +1601,7 @@ export default function SettingsProfile() {
             >
               {/* Discord */}
               <SettingsCard
+                wide
                 eyebrow="Connections"
                 title="Discord"
                 description="Links your Steam account to your Discord user so the bot can DM you, mention you, and assign your league roles."
@@ -1607,6 +1611,7 @@ export default function SettingsProfile() {
 
               {/* Social links */}
               <SettingsCard
+                wide
                 eyebrow="Connections"
                 title="Social Links"
                 description="Shown as chips on your public profile card. Only https URLs on the official Twitch / YouTube / Steam domains are accepted."
@@ -1651,6 +1656,7 @@ export default function SettingsProfile() {
 
               {/* Share card */}
               <SettingsCard
+                wide
                 eyebrow="Connections"
                 title="Share Card"
                 description="Hero portrait and tagline shown when your profile link is pasted into Discord, Twitter, Slack, etc."
@@ -1666,6 +1672,7 @@ export default function SettingsProfile() {
 
               {/* Streamer setup */}
               <SettingsCard
+                wide
                 eyebrow="Connections"
                 title="Streamer Setup"
                 description="OBS browser-source URLs for live lobby, scoreboard, and ticker overlays, plus stream privacy controls."
@@ -1675,6 +1682,7 @@ export default function SettingsProfile() {
 
               {/* Twitch extension */}
               <SettingsCard
+                wide
                 eyebrow="Connections"
                 title="Twitch Extension"
                 description="Show your OCE Inhouse rank, streak, and recent matches in a panel under your Twitch stream."
@@ -1733,6 +1741,7 @@ export default function SettingsProfile() {
           </div>
 
         </div>
+        </>
       )}
     </div>
   );
