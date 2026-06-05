@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate, Navigate } from 'react-router-dom';
 import { getH2HDetailed, getAllPlayers } from '../api';
 import { useSteamAuth } from '../context/SteamAuthContext';
@@ -303,6 +303,19 @@ export default function H2H() {
   const [error, setError] = useState(null);
   const [paywall, setPaywall] = useState(null);
   const [tab, setTab] = useState('heroes');
+  const h2hTabRefs = useRef([]);
+  const onTabKeyDown = useCallback((e, i) => {
+    const last = TAB_DEFS.length - 1;
+    let next = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = i === last ? 0 : i + 1;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = i === 0 ? last : i - 1;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = last;
+    if (next === null) return;
+    e.preventDefault();
+    setTab(TAB_DEFS[next].id);
+    h2hTabRefs.current[next]?.focus();
+  }, []);
   const [allPlayers, setAllPlayers] = useState([]);
   const [swapping, setSwapping] = useState(false);
 
@@ -462,15 +475,18 @@ export default function H2H() {
       {/* Tabs */}
       <div role="tablist" aria-label="Head-to-head sections"
         style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border, #2a2d3a)', marginBottom: 20, flexWrap: 'wrap' }}>
-        {TAB_DEFS.map(t => (
+        {TAB_DEFS.map((t, i) => (
           <button
             key={t.id}
             type="button"
             role="tab"
+            ref={(el) => { h2hTabRefs.current[i] = el; }}
             aria-selected={tab === t.id}
             aria-controls={`h2h-panel-${t.id}`}
             id={`h2h-tab-${t.id}`}
+            tabIndex={tab === t.id ? 0 : -1}
             onClick={() => setTab(t.id)}
+            onKeyDown={(e) => onTabKeyDown(e, i)}
             style={{
               background: 'transparent',
               color: tab === t.id ? 'var(--accent, #c5a975)' : 'var(--text-muted)',

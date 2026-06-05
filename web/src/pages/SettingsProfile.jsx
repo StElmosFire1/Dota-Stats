@@ -696,6 +696,19 @@ export default function SettingsProfile() {
   const enabled = true;
 
   const [activeTab, setActiveTab] = useState('identity');
+  const settingsTabRefs = useRef([]);
+  const onTabKeyDown = useCallback((e, i) => {
+    const last = SETTINGS_TABS.length - 1;
+    let next = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = i === last ? 0 : i + 1;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = i === 0 ? last : i - 1;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = last;
+    if (next === null) return;
+    e.preventDefault();
+    setActiveTab(SETTINGS_TABS[next].id);
+    settingsTabRefs.current[next]?.focus();
+  }, []);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -984,15 +997,18 @@ export default function SettingsProfile() {
           aria-label="Profile settings sections"
           className="pb-settings-tablist"
         >
-          {SETTINGS_TABS.map(t => (
+          {SETTINGS_TABS.map((t, i) => (
             <button
               key={t.id}
               type="button"
               role="tab"
               id={`pbs-tab-${t.id}`}
+              ref={(el) => { settingsTabRefs.current[i] = el; }}
               aria-selected={activeTab === t.id}
               aria-controls={`pbs-panel-${t.id}`}
+              tabIndex={activeTab === t.id ? 0 : -1}
               onClick={() => setActiveTab(t.id)}
+              onKeyDown={(e) => onTabKeyDown(e, i)}
               className="pb-settings-tab"
             >
               <span className="pb-settings-tab-icon" aria-hidden="true">{t.icon}</span>

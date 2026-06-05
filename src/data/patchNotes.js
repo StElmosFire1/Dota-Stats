@@ -1,5 +1,14 @@
 module.exports = [
   {
+    "version": "9.48",
+    "title": "Arrow keys now move between tab bars",
+    "published_at": "2026-06-05",
+    "notes": [
+      "**Full keyboard tab navigation.** The Edit Profile tab bar (Identity / Appearance / Showcase / Connections) and the Head-to-Head tab bar (Hero matchups / Lane matchups / Side breakdown / Timeline) now follow the standard WAI-ARIA tabs pattern — Left/Right (and Up/Down) arrow keys move focus between tabs and switch sections, Home/End jump to the first/last tab, and only the active tab sits in the Tab order (roving tabindex). Mouse and Enter/Space behaviour is unchanged. a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.47",
     "title": "Edit Profile page tabs work again — and read much cleaner",
     "published_at": "2026-06-05",
