@@ -8,6 +8,7 @@ import { formatHeroName } from '../utils/heroes';
 import { Link } from 'react-router-dom';
 import { useSeason } from '../context/SeasonContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
+import useRovingTabs from '../hooks/useRovingTabs';
 
 const ALL_HEROES = {
   1: 'Anti-Mage', 2: 'Axe', 3: 'Bane', 4: 'Bloodseeker', 5: 'Crystal Maiden',
@@ -1018,6 +1019,8 @@ export default function Heroes({ defaultTab }) {
     { key: 'breakdown', label: '★ Hero Breakdown', pro: true },
   ];
 
+  const { setRef: setTabRef, onKeyDown: onTabKeyDown } = useRovingTabs(TABS, (_, idx) => setTab(TABS[idx].key));
+
   return (
     <div>
       <h1 className="page-title">Heroes</h1>
@@ -1052,7 +1055,7 @@ export default function Heroes({ defaultTab }) {
         aria-label="Hero stats views"
         style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 0, flexWrap: 'wrap' }}
       >
-        {TABS.map(t => {
+        {TABS.map((t, ti) => {
           const isActive = tab === t.key;
           // Gold-tint Pro tabs so members see at-a-glance which features are part of their subscription.
           const proColor = '#fbbf24';
@@ -1064,10 +1067,12 @@ export default function Heroes({ defaultTab }) {
               id={`heroes-tab-${t.key}`}
               role="tab"
               type="button"
+              ref={setTabRef(ti)}
               aria-selected={isActive}
               aria-controls={`heroes-tabpanel-${t.key}`}
               tabIndex={isActive ? 0 : -1}
               onClick={() => setTab(t.key)}
+              onKeyDown={(e) => onTabKeyDown(e, ti)}
               title={t.pro ? 'Pro feature' : undefined}
               style={{
                 padding: '8px 18px', cursor: 'pointer', fontSize: 14, fontWeight: isActive || t.pro ? 700 : 400,

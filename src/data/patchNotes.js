@@ -1,5 +1,14 @@
 module.exports = [
   {
+    "version": "9.49",
+    "title": "Arrow-key tab navigation now everywhere",
+    "published_at": "2026-06-05",
+    "notes": [
+      "**Consistent keyboard tabs across the whole site.** Five more tab bars now use the same shared roving-tabindex behaviour as Edit Profile and Head-to-Head: the Hero stats views (Heroes page), the Players page (All players / Live now), the Team profile sections (Roster / Schedule / Recent matches / Manage), the hero-build picker on a player's profile, and the Season Wrapped card dots. Left/Right (and Up/Down) arrows move between tabs and switch sections, Home/End jump to the first/last tab, only the active tab sits in the Tab order, and focus follows selection. Mouse, hover, and Enter/Space behaviour is unchanged. a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.48",
     "title": "Arrow keys now move between tab bars",
     "published_at": "2026-06-05",

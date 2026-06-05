@@ -11,6 +11,7 @@ import {
   listTeams, proposeRosterTransfer, getMyRosterTransfers, respondRosterTransfer,
 } from '../api';
 import { useSteamAuth } from '../context/SteamAuthContext';
+import useRovingTabs from '../hooks/useRovingTabs';
 
 const TABS = [
   { id: 'roster',   label: 'Roster' },
@@ -45,6 +46,7 @@ export default function TeamProfile() {
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('roster');
+  const { setRef: setTabRef, onKeyDown: onTabKeyDown } = useRovingTabs(TABS, setTab);
 
   const refresh = async () => {
     try {
@@ -126,16 +128,18 @@ export default function TeamProfile() {
       {err ? <p style={{ color: 'crimson' }}>{err}</p> : null}
 
       <div role="tablist" aria-label="Team sections" style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 16 }}>
-        {TABS.map(t => (
+        {TABS.map((t, i) => (
           <button
             type="button"
             key={t.id}
             role="tab"
             id={`tab-${t.id}`}
+            ref={setTabRef(i)}
             aria-selected={tab === t.id}
             aria-controls={`tabpanel-${t.id}`}
             tabIndex={tab === t.id ? 0 : -1}
             onClick={() => setTab(t.id)}
+            onKeyDown={(e) => onTabKeyDown(e, i)}
             style={{
               padding: '8px 14px',
               background: 'transparent',

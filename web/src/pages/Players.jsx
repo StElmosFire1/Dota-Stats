@@ -5,8 +5,14 @@ import HeroIcon from '../components/HeroIcon';
 import { getAllPlayers, setNickname, setPlayerDiscordId, getLivePresences } from '../api';
 import { useSeason } from '../context/SeasonContext';
 import { useSuperuser } from '../context/SuperuserContext';
+import useRovingTabs from '../hooks/useRovingTabs';
 
 const POS_SHORT = { 1: 'Pos 1', 2: 'Pos 2', 3: 'Pos 3', 4: 'Pos 4', 5: 'Pos 5' };
+
+const PLAYER_TABS = [
+  { id: 'all' },
+  { id: 'live' },
+];
 
 export default function Players() {
   const { seasonId } = useSeason();
@@ -48,6 +54,7 @@ export default function Players() {
       setTab(prev => (prev === wanted ? prev : wanted));
     } catch { /* noop */ }
   }, [location.search]);
+  const { setRef: setTabRef, onKeyDown: onTabKeyDown } = useRovingTabs(PLAYER_TABS, setTab);
   const [livePlayers, setLivePlayers] = useState([]);
   const [liveLoading, setLiveLoading] = useState(false);
   useEffect(() => {
@@ -221,15 +228,21 @@ export default function Players() {
         <button
           type="button"
           role="tab"
+          ref={setTabRef(0)}
           aria-selected={tab === 'all'}
+          tabIndex={tab === 'all' ? 0 : -1}
           onClick={() => setTab('all')}
+          onKeyDown={(e) => onTabKeyDown(e, 0)}
           style={tabBtnStyle(tab === 'all')}
         >All players</button>
         <button
           type="button"
           role="tab"
+          ref={setTabRef(1)}
           aria-selected={tab === 'live'}
+          tabIndex={tab === 'live' ? 0 : -1}
           onClick={() => setTab('live')}
+          onKeyDown={(e) => onTabKeyDown(e, 1)}
           style={tabBtnStyle(tab === 'live')}
         >
           <span aria-hidden="true" style={{

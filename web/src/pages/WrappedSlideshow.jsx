@@ -4,6 +4,7 @@ import {
   getSeasonWrappedCards,
   getMyLatestWrapped,
 } from '../api';
+import useRovingTabs from '../hooks/useRovingTabs';
 
 // Task #443 — Personal Season Wrapped slideshow. Spotify-Wrapped style
 // 8–10 card retrospective for one (player, season) pair. Used in three
@@ -81,6 +82,8 @@ function SlideCard({ card, index, total }) {
 }
 
 function DotNav({ count, index, onPick }) {
+  const tabs = Array.from({ length: count }, (_, i) => ({ id: i }));
+  const { setRef: setTabRef, onKeyDown: onTabKeyDown } = useRovingTabs(tabs, (_, idx) => onPick(idx));
   return (
     <div role="tablist" aria-label="Wrapped cards" style={{
       display: 'flex', gap: 6, justifyContent: 'center', marginTop: 18,
@@ -90,9 +93,12 @@ function DotNav({ count, index, onPick }) {
           key={i}
           type="button"
           role="tab"
+          ref={setTabRef(i)}
           aria-selected={i === index}
+          tabIndex={i === index ? 0 : -1}
           aria-label={`Go to card ${i + 1}`}
           onClick={() => onPick(i)}
+          onKeyDown={(e) => onTabKeyDown(e, i)}
           style={{
             width: i === index ? 28 : 10,
             height: 10,
@@ -163,6 +169,9 @@ export default function WrappedSlideshow({ resolveLatest = false }) {
   useEffect(() => {
     function onKey(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      // The DotNav tablist handles its own arrow/Home/End keys via the shared
+      // roving-tabindex hook — don't double-step when a dot has focus.
+      if (e.target.getAttribute && e.target.getAttribute('role') === 'tab') return;
       if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); next(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
       else if (e.key === 'Home') { e.preventDefault(); setIdx(0); }

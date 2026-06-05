@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getHeroName, getHeroImageUrl } from '../heroNames';
+import useRovingTabs from '../hooks/useRovingTabs';
 import { formatHeroName } from '../utils/heroes';
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -140,6 +141,7 @@ export function HeroItemsPanel({ data }) {
   // can be driven by either pointer hover OR keyboard focus on the same button.
   const heroes = data?.heroes || [];
   const [hoveredIdx, setHoveredIdx] = useState(0);
+  const { setRef: setTabRef, onKeyDown: onTabKeyDown } = useRovingTabs(heroes, (_, idx) => setHoveredIdx(idx));
 
   if (!heroes.length) {
     return (
@@ -163,11 +165,14 @@ export function HeroItemsPanel({ data }) {
                 key={h.hero_id}
                 type="button"
                 role="tab"
+                ref={setTabRef(idx)}
                 aria-selected={isActive}
+                tabIndex={isActive ? 0 : -1}
                 className={`v3-hero-items-btn${isActive ? ' is-active' : ''}`}
                 onMouseEnter={() => setHoveredIdx(idx)}
                 onFocus={() => setHoveredIdx(idx)}
                 onClick={() => setHoveredIdx(idx)}
+                onKeyDown={(e) => onTabKeyDown(e, idx)}
                 title={`${name} — ${h.games}g · ${wr}% WR`}
                 aria-label={`${name}, ${h.games} games, ${wr} percent win rate`}
               >
