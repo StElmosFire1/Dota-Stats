@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link, useNavigate, Navigate } from 'react-router-dom';
 import { getH2HDetailed, getAllPlayers } from '../api';
+import useRovingTabs from '../hooks/useRovingTabs';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { useSeason } from '../context/SeasonContext';
 import HeroIcon from '../components/HeroIcon';
@@ -303,19 +304,7 @@ export default function H2H() {
   const [error, setError] = useState(null);
   const [paywall, setPaywall] = useState(null);
   const [tab, setTab] = useState('heroes');
-  const h2hTabRefs = useRef([]);
-  const onTabKeyDown = useCallback((e, i) => {
-    const last = TAB_DEFS.length - 1;
-    let next = null;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = i === last ? 0 : i + 1;
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = i === 0 ? last : i - 1;
-    else if (e.key === 'Home') next = 0;
-    else if (e.key === 'End') next = last;
-    if (next === null) return;
-    e.preventDefault();
-    setTab(TAB_DEFS[next].id);
-    h2hTabRefs.current[next]?.focus();
-  }, []);
+  const { setRef: setTabRef, onKeyDown: onTabKeyDown } = useRovingTabs(TAB_DEFS, setTab);
   const [allPlayers, setAllPlayers] = useState([]);
   const [swapping, setSwapping] = useState(false);
 
@@ -480,7 +469,7 @@ export default function H2H() {
             key={t.id}
             type="button"
             role="tab"
-            ref={(el) => { h2hTabRefs.current[i] = el; }}
+            ref={setTabRef(i)}
             aria-selected={tab === t.id}
             aria-controls={`h2h-panel-${t.id}`}
             id={`h2h-tab-${t.id}`}

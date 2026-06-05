@@ -17,6 +17,7 @@ import {
 } from '../profileCosmetics';
 import { Link } from 'react-router-dom';
 import { getOwnedFrames, purchaseFrameCheckout } from '../api';
+import useRovingTabs from '../hooks/useRovingTabs';
 import { createVoicePackPlayer, VOICE_PACK_EVENTS } from '../lib/voicePack';
 import VanitySlugPicker from '../components/VanitySlugPicker';
 import { oauthErrorMessage } from '../components/DiscordLinkModal';
@@ -696,19 +697,7 @@ export default function SettingsProfile() {
   const enabled = true;
 
   const [activeTab, setActiveTab] = useState('identity');
-  const settingsTabRefs = useRef([]);
-  const onTabKeyDown = useCallback((e, i) => {
-    const last = SETTINGS_TABS.length - 1;
-    let next = null;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = i === last ? 0 : i + 1;
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = i === 0 ? last : i - 1;
-    else if (e.key === 'Home') next = 0;
-    else if (e.key === 'End') next = last;
-    if (next === null) return;
-    e.preventDefault();
-    setActiveTab(SETTINGS_TABS[next].id);
-    settingsTabRefs.current[next]?.focus();
-  }, []);
+  const { setRef: setTabRef, onKeyDown: onTabKeyDown } = useRovingTabs(SETTINGS_TABS, setActiveTab);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -1003,7 +992,7 @@ export default function SettingsProfile() {
               type="button"
               role="tab"
               id={`pbs-tab-${t.id}`}
-              ref={(el) => { settingsTabRefs.current[i] = el; }}
+              ref={setTabRef(i)}
               aria-selected={activeTab === t.id}
               aria-controls={`pbs-panel-${t.id}`}
               tabIndex={activeTab === t.id ? 0 : -1}
