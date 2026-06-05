@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.50",
+    "title": "Edit Profile page is readable again — big live preview, roomy controls",
+    "published_at": "2026-06-05",
+    "notes": [
+      "**The live preview is no longer crushed.** The profile preview was pinned to a fixed 340px rail, which squashed the Magazine cover and wrapped your name onto two lines (e.g. \"Majin Dabu​ra\") so you couldn't tell what your page actually looked like. The preview rail is now much wider, and the cover's name and title scale to the rail itself instead of the browser window, so the preview is a faithful, never-broken miniature of your public profile at any size.",
+      "**Controls have room to breathe.** Editing cards were forced into a rigid two-column grid that jammed things like Profile Title and Vanity URL into cramped narrow columns. They now lay out in full-width, single-column cards (going two-up only when there's genuinely room), so it's clear what each control does.",
+      "**More space for the whole editor.** The Edit Profile page now uses a wider shell so the form and live preview sit side-by-side comfortably; the other settings panes keep their tighter layout. Presentation only — every control and its save path is unchanged. Full edition only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.49",
     "title": "Arrow-key tab navigation now everywhere",
     "published_at": "2026-06-05",

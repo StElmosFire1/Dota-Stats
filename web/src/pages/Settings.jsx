@@ -47,9 +47,13 @@ export default function Settings() {
   }
 
   const isIndex = location.pathname === '/settings' || location.pathname === '/settings/';
+  // The profile editor is a two-column form + live-preview layout and needs more
+  // room than the simpler settings panes; widen the shell only on that route so a
+  // 240px sub-nav doesn't crush the preview rail. Other panes keep the tighter cap.
+  const isProfile = location.pathname.startsWith('/settings/profile');
 
   return (
-    <div className="container" style={{ maxWidth: 1080, padding: '24px 16px' }}>
+    <div className="container" style={{ maxWidth: isProfile ? 1340 : 1080, padding: '24px 16px' }}>
       <h1 style={{ marginBottom: 4 }}>Settings</h1>
       <p style={{ color: 'var(--text-muted)', marginTop: 0, marginBottom: 20 }}>
         Manage your profile, notifications, linked accounts, and billing in one place.
