@@ -1,0 +1,65 @@
+root@Dota-Stats:~/Dota-Stats-Full# echo "=== your current SSH source IP ==="; echo "$SSH_CLIENT"
+echo "=== ufw ==="; ufw status verbose 2>/dev/null || echo "(ufw not installed / inactive)"
+echo "=== iptables ==="; iptables -S 2>/dev/null | head -40
+echo "=== listeners (22 / 27015 / 27020) ==="; ss -lntup | grep -E ':(22|27015|27020)'
+=== your current SSH source IP ===
+162.243.190.66 21112 22
+=== ufw ===
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), disabled (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22                         ALLOW IN    Anywhere                  
+5000                       ALLOW IN    Anywhere                  
+80,443/tcp (Nginx Full)    ALLOW IN    Anywhere                  
+22 (v6)                    ALLOW IN    Anywhere (v6)             
+5000 (v6)                  ALLOW IN    Anywhere (v6)             
+80,443/tcp (Nginx Full (v6)) ALLOW IN    Anywhere (v6)             
+
+=== iptables ===
+-P INPUT DROP
+-P FORWARD DROP
+-P OUTPUT ACCEPT
+-N ufw-after-forward
+-N ufw-after-input
+-N ufw-after-logging-forward
+-N ufw-after-logging-input
+-N ufw-after-logging-output
+-N ufw-after-output
+-N ufw-before-forward
+-N ufw-before-input
+-N ufw-before-logging-forward
+-N ufw-before-logging-input
+-N ufw-before-logging-output
+-N ufw-before-output
+-N ufw-logging-allow
+-N ufw-logging-deny
+-N ufw-not-local
+-N ufw-reject-forward
+-N ufw-reject-input
+-N ufw-reject-output
+-N ufw-skip-to-policy-forward
+-N ufw-skip-to-policy-input
+-N ufw-skip-to-policy-output
+-N ufw-track-forward
+-N ufw-track-input
+-N ufw-track-output
+-N ufw-user-forward
+-N ufw-user-input
+-N ufw-user-limit
+-N ufw-user-limit-accept
+-N ufw-user-logging-forward
+-N ufw-user-logging-input
+-N ufw-user-logging-output
+-N ufw-user-output
+-A INPUT -j ufw-before-logging-input
+-A INPUT -j ufw-before-input
+-A INPUT -j ufw-after-input
+-A INPUT -j ufw-after-logging-input
+-A INPUT -j ufw-reject-input
+=== listeners (22 / 27015 / 27020) ===
+tcp   LISTEN 0      4096         0.0.0.0:22        0.0.0.0:*    users:(("sshd",pid=1235,fd=3),("systemd",pid=1,fd=190))                              
+tcp   LISTEN 0      4096            [::]:22           [::]:*    users:(("sshd",pid=1235,fd=4),("systemd",pid=1,fd=195))               
