@@ -50,7 +50,7 @@ Spectate (/spectate/:id) [public] — live spectator dashboard: draft, kill feed
 Twitch live (/live) [public] — community streamers currently live on Twitch
 Replay viewer (/replay/:id) [pro] — 2D replay playback, minimap tracking, teamfight detection, coach annotations
 Pro replay browser (/pro-replays) [pro] — browse/download high-skill replays (feature-flagged)
-Overlays (/overlay/live/:lobby, /overlay/scoreboard/:match, /overlay/ticker/:account) [public] — OBS stream overlays
+Overlays (/overlay/live/:lobby, /overlay/scoreboard/:match, /overlay/ticker/:account, /overlay/draft/:lobbyId, /overlay/recap/:matchId, /overlay/season/:accountId) [public] — OBS stream overlays (live lobby, scoreboard, ticker, draft, match recap, season)
 
 === MONETISATION & COSMETICS ===
 Pro (/pro) [public] — subscription marketing/management
