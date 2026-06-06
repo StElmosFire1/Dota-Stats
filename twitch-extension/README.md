@@ -1,7 +1,9 @@
 # OCE Inhouse — Twitch extension companion
 
-Read-only Twitch extension that surfaces an OCE Inhouse player's rank, win/loss
-streak, and last 5 matches from inside the Twitch player. Built for Task #380.
+Read-only Twitch extension that surfaces an OCE Inhouse player's rank, season
+win rate, best hero, rank trend, win/loss streak, last 5 matches, and a compact
+leaderboard from inside the Twitch player — with deep-links back to
+oceinhouse.gg. Built for Task #380, expanded for Task #826.
 
 ## Surfaces
 
@@ -20,7 +22,7 @@ the Twitch dashboard.
 | File | Twitch view | What it does |
 |---|---|---|
 | `config/index.html`        | Broadcaster config page | Paste your `oceinhouse.gg` account id; saved into Twitch's `configuration` service so the panel + overlay can read it on every viewer load. |
-| `panel/index.html`         | Panel (always under the player) | Rank chip, W/L streak, last 5 matches; first row hover-expands to KDA / GPM / XPM. |
+| `panel/index.html`         | Panel (always under the player) | Rank, season win rate, W/L, streak, best hero, rank trend, last 5 matches (first row hover-expands to KDA / GPM / XPM), compact leaderboard with the streamer's own standing, and deep-links to oceinhouse.gg. |
 | `video_overlay/index.html` | Video overlay (viewer opt-in) | Tiny floating chip — live presence + current rank — pinned to the top-right corner of the player. |
 | `test/index.html`          | Local smoke harness | Hosts all three iframes side-by-side and simulates the Twitch helper (`window.Twitch.ext.*`) so you can develop without packaging. |
 
@@ -32,14 +34,20 @@ uploaded to Twitch is well under the 10 MB ceiling.
 The extension never holds any secret. It hits these unauthenticated, read-only
 endpoints on the OCE Inhouse production server:
 
+- `GET https://oceinhouse.gg/api/overlay/season/<accountId>` — season win
+  rate, W/L, MMR/tier, best hero, and rank trend (respects the streamer's
+  privacy + element toggles). Primary source for the panel's stat bars.
 - `GET https://oceinhouse.gg/api/overlay/ticker/<accountId>` — rank, tier,
   win-rate, current streak, MMR (respects the streamer's privacy toggles).
+  Used for the streak value.
 - `GET https://oceinhouse.gg/api/players/<accountId>/recent-matches?limit=5`
   — last 5 matches (hero, KDA, GPM, XPM, result).
+- `GET https://oceinhouse.gg/api/overlay/leaderboard?limit=5&for=<accountId>`
+  — top N players plus the streamer's own standing (rank + MMR).
 - `GET https://oceinhouse.gg/api/overlay/live/current?for=<accountId>` —
   current inhouse lobby presence (used by the video overlay's "live now" dot).
 
-All three set `Cache-Control: no-store`. The extension polls each one on a
+All set `Cache-Control: no-store`. The extension polls each one on a
 **30 s tick** (Twitch extension policy is one request per ≥2 s; we are well
 inside that). The production CORS allowlist accepts any `*.ext-twitch.tv`
 origin (added in `src/web/server.js` for Task #380) so the iframes can read

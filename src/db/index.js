@@ -1401,6 +1401,10 @@ async function init() {
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS stream_hide_mmr BOOLEAN NOT NULL DEFAULT false`);
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS stream_hide_region BOOLEAN NOT NULL DEFAULT false`);
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS stream_alias TEXT`);
+    // Task #826 — per-account overlay customisation (theme/accent + which
+    // stat rows each overlay shows). JSONB so the shape can grow without a
+    // migration; NULL → server defaults so existing streamers are unchanged.
+    await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS stream_overlay_prefs JSONB`);
     await p.query(`
       CREATE TABLE IF NOT EXISTS coin_transactions (
         id BIGSERIAL PRIMARY KEY,

@@ -1386,6 +1386,9 @@ function createServer(startupStatus = {}) {
     '/api/overlay/ticker/:accountId',
     '/api/overlay/live/current',
     '/api/players/:accountId/recent-matches',
+    // Task #826 — richer Twitch panel surfaces (season stats + leaderboard).
+    '/api/overlay/season/:accountId',
+    '/api/overlay/leaderboard',
   ], twitchExtCors);
 
   // When SESSION_SECRET isn't supplied via env (e.g. NODE_ENV isn't
@@ -15325,7 +15328,7 @@ NOTES
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
       const pool = db.getPool();
       const r = await pool.query(
-        `SELECT stream_hide_mmr, stream_hide_region, stream_alias FROM player_profiles WHERE account_id = $1`,
+        `SELECT stream_hide_mmr, stream_hide_region, stream_alias, stream_overlay_prefs FROM player_profiles WHERE account_id = $1`,
         [String(accountId)]
       );
       const row = r.rows[0] || {};
@@ -15333,6 +15336,7 @@ NOTES
         stream_hide_mmr: !!row.stream_hide_mmr,
         stream_hide_region: !!row.stream_hide_region,
         stream_alias: row.stream_alias || '',
+        stream_overlay_prefs: _sanitizeOverlayPrefs(row.stream_overlay_prefs),
       });
     } catch (err) {
       console.error('[API] me/stream-prefs GET:', err.message);
@@ -15355,22 +15359,27 @@ NOTES
       } else {
         alias = null;
       }
+      // Task #826 — overlay customisation. Sanitise to the canonical shape so
+      // a malformed/oversized body can never poison the public overlay routes.
+      const overlay = _sanitizeOverlayPrefs(req.body?.stream_overlay_prefs);
       const pool = db.getPool();
       await pool.query(
-        `INSERT INTO player_profiles (account_id, stream_hide_mmr, stream_hide_region, stream_alias, updated_at)
-         VALUES ($1, $2, $3, $4, NOW())
+        `INSERT INTO player_profiles (account_id, stream_hide_mmr, stream_hide_region, stream_alias, stream_overlay_prefs, updated_at)
+         VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
          ON CONFLICT (account_id) DO UPDATE
            SET stream_hide_mmr = EXCLUDED.stream_hide_mmr,
                stream_hide_region = EXCLUDED.stream_hide_region,
                stream_alias = EXCLUDED.stream_alias,
+               stream_overlay_prefs = EXCLUDED.stream_overlay_prefs,
                updated_at = NOW()`,
-        [String(accountId), hideMmr, hideRegion, alias]
+        [String(accountId), hideMmr, hideRegion, alias, JSON.stringify(overlay)]
       );
       res.json({
         ok: true,
         stream_hide_mmr: hideMmr,
         stream_hide_region: hideRegion,
         stream_alias: alias || '',
+        stream_overlay_prefs: overlay,
       });
     } catch (err) {
       console.error('[API] me/stream-prefs PUT:', err.message);
@@ -15389,7 +15398,7 @@ NOTES
       if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
       const pool = db.getPool();
       const r = await pool.query(
-        `SELECT stream_hide_mmr, stream_hide_region, stream_alias FROM player_profiles WHERE account_id = $1`,
+        `SELECT stream_hide_mmr, stream_hide_region, stream_alias, stream_overlay_prefs FROM player_profiles WHERE account_id = $1`,
         [String(accountId)]
       );
       const row = r.rows[0] || {};
@@ -15400,6 +15409,7 @@ NOTES
           stream_hide_mmr: !!row.stream_hide_mmr,
           stream_hide_region: !!row.stream_hide_region,
           stream_alias: row.stream_alias || '',
+          stream_overlay_prefs: _sanitizeOverlayPrefs(row.stream_overlay_prefs),
         },
         notifications: categories,
       });
@@ -15409,6 +15419,48 @@ NOTES
     }
   });
 
+  // Task #826 — canonical overlay-customisation shape. Theme presets +
+  // a custom accent (used when theme === 'custom') + a per-element
+  // visibility map shared across all overlay types. Defined as a function
+  // declaration so it's hoisted above the /me/stream-prefs handlers that
+  // call it. The element keys are a superset across overlays; each overlay
+  // reads only the ones it renders.
+  const _OVERLAY_THEME_KEYS = ['court', 'pitch', 'amber', 'crimson', 'mono', 'custom'];
+  const _OVERLAY_ELEMENT_KEYS = [
+    'mmr', 'tier', 'winRate', 'streak', 'region',       // ticker / season
+    'bestHero', 'rankTrend',                            // season
+    'kda', 'netWorth', 'gpm', 'xpm', 'lasthits',        // scoreboard / recap
+    'bans',                                             // draft / live
+    'mvp', 'records',                                   // recap
+  ];
+  function _defaultOverlayPrefs() {
+    const elements = {};
+    for (const k of _OVERLAY_ELEMENT_KEYS) elements[k] = true;
+    return { theme: 'court', accent: '#c5a975', elements };
+  }
+  function _sanitizeOverlayPrefs(raw) {
+    const def = _defaultOverlayPrefs();
+    // pg returns JSONB as an object already; tolerate a stringified blob too.
+    let obj = raw;
+    if (typeof raw === 'string') {
+      try { obj = JSON.parse(raw); } catch (_) { obj = null; }
+    }
+    if (!obj || typeof obj !== 'object') return def;
+    const theme = (typeof obj.theme === 'string' && _OVERLAY_THEME_KEYS.includes(obj.theme))
+      ? obj.theme : def.theme;
+    let accent = def.accent;
+    if (typeof obj.accent === 'string' && /^#[0-9a-fA-F]{6}$/.test(obj.accent.trim())) {
+      accent = obj.accent.trim().toLowerCase();
+    }
+    const elements = { ...def.elements };
+    if (obj.elements && typeof obj.elements === 'object') {
+      for (const k of _OVERLAY_ELEMENT_KEYS) {
+        if (k in obj.elements) elements[k] = obj.elements[k] !== false;
+      }
+    }
+    return { theme, accent, elements };
+  }
+
   // Helper: load a single account's stream prefs. Used by every public
   // overlay endpoint when `?for=<accountId>` is set so the overlay
   // respects the streamer's privacy choices without requiring auth.
@@ -15417,17 +15469,34 @@ NOTES
     try {
       const pool = db.getPool();
       const r = await pool.query(
-        `SELECT stream_hide_mmr, stream_hide_region, stream_alias FROM player_profiles WHERE account_id = $1`,
+        `SELECT stream_hide_mmr, stream_hide_region, stream_alias, stream_overlay_prefs FROM player_profiles WHERE account_id = $1`,
         [String(accountId)]
       );
       const row = r.rows[0];
-      if (!row) return { hideMmr: false, hideRegion: false, alias: null };
+      if (!row) return { hideMmr: false, hideRegion: false, alias: null, overlay: _sanitizeOverlayPrefs(null) };
       return {
         hideMmr: !!row.stream_hide_mmr,
         hideRegion: !!row.stream_hide_region,
         alias: row.stream_alias || null,
+        overlay: _sanitizeOverlayPrefs(row.stream_overlay_prefs),
       };
-    } catch (_) { return { hideMmr: false, hideRegion: false, alias: null }; }
+    } catch (_) { return { hideMmr: false, hideRegion: false, alias: null, overlay: _sanitizeOverlayPrefs(null) }; }
+  }
+  // Task #826 — the public-facing prefs blob every overlay endpoint returns.
+  // Privacy toggles (hideMmr/hideRegion/alias) + the streamer's chosen overlay
+  // theme/accent + per-element visibility map. Always safe to expose: contains
+  // no secrets and no fields the streamer hasn't opted to publish.
+  function _publicPrefs(prefs) {
+    if (!prefs) return null;
+    const ov = prefs.overlay || _sanitizeOverlayPrefs(null);
+    return {
+      hideMmr: !!prefs.hideMmr,
+      hideRegion: !!prefs.hideRegion,
+      alias: prefs.alias || null,
+      theme: ov.theme,
+      accent: ov.accent,
+      elements: ov.elements,
+    };
   }
   function _applyOverlayPrivacy(player, prefs, ownerAccountId) {
     if (!player || !prefs) return player;
@@ -15543,7 +15612,7 @@ NOTES
         live.players = live.players.map(p => _applyOverlayPrivacy(p, prefs, forAccount));
       }
       if (prefs?.hideRegion) live.region = null;
-      res.json({ lobbyId: String(req.params.lobbyId), ...live, prefs: prefs ? { hideMmr: prefs.hideMmr, hideRegion: prefs.hideRegion, alias: prefs.alias } : null });
+      res.json({ lobbyId: String(req.params.lobbyId), ...live, prefs: _publicPrefs(prefs) });
     } catch (err) {
       res.json({ lobbyId: String(req.params.lobbyId), matchId: null, players: [], radiant_score: null, dire_score: null, draft: { radiant_picks: [], dire_picks: [], radiant_bans: [], dire_bans: [] } });
     }
@@ -15583,7 +15652,7 @@ NOTES
         radiant_score: match.radiant_score || null,
         dire_score: match.dire_score || null,
         players,
-        prefs: prefs ? { hideMmr: prefs.hideMmr, hideRegion: prefs.hideRegion, alias: prefs.alias } : null,
+        prefs: _publicPrefs(prefs),
       });
     } catch (err) {
       console.error('[API] overlay/scoreboard:', err.message);
@@ -15642,7 +15711,7 @@ NOTES
         mmr: prefs?.hideMmr ? null : (rating?.mmr ? Math.round(rating.mmr) : null),
         tier: prefs?.hideMmr ? null : (rating?.tier || null),
         region: prefs?.hideRegion ? null : (stats?.region || null),
-        prefs: { hideMmr: !!prefs?.hideMmr, hideRegion: !!prefs?.hideRegion, alias: prefs?.alias || null },
+        prefs: _publicPrefs(prefs),
       };
       res.json(payload);
     } catch (err) {
@@ -15685,6 +15754,296 @@ NOTES
     } catch (err) {
       console.error('[API] players/recent-matches:', err.message);
       res.status(500).json({ error: 'Failed to load recent matches' });
+    }
+  });
+
+  // ===== Task #826 — expanded overlay surfaces =====
+  // All read-only + public (no auth) so OBS browser sources and the Twitch
+  // extension panel can load them directly. Each honours the streamer's
+  // privacy + customisation prefs via `?for=` (or, where the path already
+  // identifies the streamer, that account's prefs).
+
+  // GET /api/overlay/draft/:lobbyId — live draft / pick-ban board for the
+  // current lobby. `:lobbyId` accepts "current". Mirrors the draft slice of
+  // /overlay/live but is a dedicated, draft-only surface streamers can place
+  // standalone. Honours `?for=<accountId>` for theme/element prefs.
+  router.get('/overlay/draft/:lobbyId', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const forAccount = req.query.for ? String(req.query.for) : null;
+      const prefs = await _loadStreamPrefs(forAccount);
+      const out = {
+        lobbyId: String(req.params.lobbyId),
+        matchId: null, lobbyName: null, state: null,
+        radiant_name: 'Radiant', dire_name: 'Dire',
+        draft: { radiant_picks: [], dire_picks: [], radiant_bans: [], dire_bans: [] },
+        prefs: _publicPrefs(prefs),
+      };
+      try {
+        const { getLobbyManager } = require('../lobby/lobbyManager');
+        const lm = getLobbyManager && getLobbyManager();
+        const cl = lm && lm.currentLobby;
+        if (cl) {
+          out.matchId = cl.matchId ? String(cl.matchId) : null;
+          out.lobbyName = cl.name || null;
+          out.state = (lm && lm.state) || cl.state || null;
+          if (cl.radiantTeamName) out.radiant_name = String(cl.radiantTeamName);
+          if (cl.direTeamName) out.dire_name = String(cl.direTeamName);
+          if (cl.draft && typeof cl.draft === 'object') {
+            out.draft = {
+              radiant_picks: Array.isArray(cl.draft.radiant_picks) ? cl.draft.radiant_picks.slice(0, 5) : [],
+              dire_picks:    Array.isArray(cl.draft.dire_picks)    ? cl.draft.dire_picks.slice(0, 5)    : [],
+              radiant_bans:  Array.isArray(cl.draft.radiant_bans)  ? cl.draft.radiant_bans              : [],
+              dire_bans:     Array.isArray(cl.draft.dire_bans)     ? cl.draft.dire_bans                 : [],
+            };
+          }
+        }
+      } catch (_) {}
+      res.json(out);
+    } catch (err) {
+      console.error('[API] overlay/draft:', err.message);
+      res.status(500).json({ error: 'Failed to load draft' });
+    }
+  });
+
+  // GET /api/overlay/recap/:matchId — post-match recap card: final result,
+  // MVP, and a few notable per-match records (most kills, highest net worth,
+  // best GPM). Public. Honours `?for=<accountId>` privacy + customisation.
+  router.get('/overlay/recap/:matchId', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const match = await db.getMatch(req.params.matchId);
+      if (!match) return res.status(404).json({ error: 'Match not found' });
+      const forAccount = req.query.for ? String(req.query.for) : null;
+      const prefs = await _loadStreamPrefs(forAccount);
+      const players = (match.players || []).map(p => _applyOverlayPrivacy({
+        account_id: p.account_id ? String(p.account_id) : null,
+        persona_name: p.persona_name || '',
+        team: _normTeam(p),
+        hero_id: p.hero_id, hero_name: p.hero_name,
+        kills: p.kills, deaths: p.deaths, assists: p.assists,
+        net_worth: p.net_worth, gpm: p.gpm, xpm: p.xpm,
+      }, prefs, forAccount));
+
+      // Notable records — pick the single leader for each category. Guards
+      // against an empty roster so the card still renders the result line.
+      const pick = (key) => {
+        let best = null;
+        for (const p of players) {
+          const v = p[key];
+          if (v == null) continue;
+          if (!best || v > best[key]) best = p;
+        }
+        return best ? { persona_name: best.persona_name, hero_name: best.hero_name, value: best[key] } : null;
+      };
+      const records = [];
+      if (players.length) {
+        const k = pick('kills');     if (k) records.push({ label: 'Most kills', ...k });
+        const nw = pick('net_worth'); if (nw) records.push({ label: 'Richest', ...nw });
+        const g = pick('gpm');       if (g) records.push({ label: 'Top GPM', ...g });
+      }
+
+      // MVP — getMatch resolves the per-match MVP vote winner.
+      let mvp = null;
+      if (match.mvp_account_id) {
+        const m = players.find(p => String(p.account_id) === String(match.mvp_account_id));
+        if (m) mvp = { persona_name: m.persona_name, hero_name: m.hero_name, account_id: m.account_id, votes: match.mvp_vote_count || 0 };
+      }
+
+      res.json({
+        match_id: String(match.match_id),
+        date: match.date,
+        duration: match.duration,
+        radiant_win: match.radiant_win,
+        radiant_score: match.radiant_score || null,
+        dire_score: match.dire_score || null,
+        lobby_name: match.lobby_name || null,
+        mvp,
+        records,
+        players,
+        prefs: _publicPrefs(prefs),
+      });
+    } catch (err) {
+      console.error('[API] overlay/recap:', err.message);
+      res.status(500).json({ error: 'Failed to load recap' });
+    }
+  });
+
+  // GET /api/overlay/season/:accountId — season-stats ticker + the richer
+  // stat blob the Twitch panel renders (season win rate, best hero, rank
+  // trend). The path account IS the streamer, so their prefs always apply.
+  router.get('/overlay/season/:accountId', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const accountId = String(req.params.accountId);
+      if (!/^\d+$/.test(accountId)) return res.status(400).json({ error: 'Invalid account id' });
+      if (await db.isAccountHidden(accountId).catch(() => false)) {
+        return res.status(404).json({ error: 'Account not available' });
+      }
+      const prefs = await _loadStreamPrefs(accountId);
+      const season = await db.getActiveSeason().catch(() => null);
+      const seasonId = season?.id || null;
+      // Prefer current-season stats; fall back to all-time when the player
+      // has no games yet this season so a fresh season never shows a blank.
+      let stats = seasonId ? await db.getPlayerStats(accountId, seasonId).catch(() => null) : null;
+      if (!stats || !stats.games_played) {
+        stats = await db.getPlayerStats(accountId, null).catch(() => null);
+      }
+      let rating = null;
+      try { rating = await db.getPlayerRating(accountId); } catch (_) {}
+
+      // Best hero — most-played with its win rate.
+      let bestHero = null;
+      try {
+        const heroes = await db.getPlayerHeroes(accountId);
+        if (Array.isArray(heroes) && heroes.length) {
+          const top = heroes[0];
+          const games = parseInt(top.games) || 0;
+          const wins = parseInt(top.wins) || 0;
+          // hero_name from getPlayerHeroes can be in either the npc_ form
+          // (`npc_dota_hero_morphling`) or a display form, so normalise to a
+          // human name for display and resolve a CDN slug from hero_id for
+          // the portrait (the slug map handles legacy codenames like furion).
+          let heroSlug = null;
+          try { heroSlug = require('./../services/profileOgCard').heroSlug(top.hero_id, top.hero_name); } catch (_) {}
+          const humanHero = (typeof top.hero_name === 'string' && top.hero_name)
+            ? top.hero_name.replace('npc_dota_hero_', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+            : null;
+          bestHero = {
+            hero_id: top.hero_id,
+            hero_name: humanHero || top.hero_name || `Hero ${top.hero_id}`,
+            hero_slug: heroSlug,
+            games,
+            win_rate: games > 0 ? Math.round((wins / games) * 1000) / 10 : null,
+          };
+        }
+      } catch (_) {}
+
+      // Rank trend — MMR delta across the recent rating-history window.
+      let rankTrend = null;
+      if (!prefs?.hideMmr) {
+        try {
+          const hist = await db.getPlayerRecentRatingHistory(accountId, 15);
+          if (Array.isArray(hist) && hist.length >= 2) {
+            const from = Math.round(parseFloat(hist[0].mmr));
+            const to = Math.round(parseFloat(hist[hist.length - 1].mmr));
+            const delta = to - from;
+            rankTrend = { from, to, delta, direction: delta > 0 ? 'up' : (delta < 0 ? 'down' : 'flat') };
+          }
+        } catch (_) {}
+      }
+
+      // Current win/loss streak from the most-recent decided matches.
+      // Positive = win streak, negative = loss streak, 0 = none. Mirrors the
+      // ticker endpoint so the season ticker can rotate a streak highlight.
+      let streak = 0;
+      try {
+        const pool = db.getPool();
+        const sr = await pool.query(
+          `SELECT m.radiant_win, ps.team
+             FROM player_stats ps
+             JOIN matches m ON m.match_id = ps.match_id
+            WHERE ps.account_id = $1
+            ORDER BY m.date DESC
+            LIMIT 20`,
+          [String(accountId)]
+        );
+        for (const row of sr.rows) {
+          const isRadiant = row.team === 'radiant' || row.team === 0 || row.team === '0';
+          const won = isRadiant === !!row.radiant_win;
+          if (streak === 0) streak = won ? 1 : -1;
+          else if ((won && streak > 0) || (!won && streak < 0)) streak += won ? 1 : -1;
+          else break;
+        }
+      } catch (_) { streak = 0; }
+
+      const wins = stats?.wins || 0;
+      const losses = stats?.losses || 0;
+      const games = stats?.games_played || (wins + losses);
+      const winRate = stats?.win_rate ?? (games > 0 ? Math.round((wins / games) * 1000) / 10 : null);
+      const persona = (prefs?.alias) || stats?.persona_name || stats?.display_name || '';
+
+      // Rotating highlight items for the OBS ticker overlay.
+      const elements = prefs?.overlay?.elements || {};
+      const highlights = [];
+      if (elements.winRate !== false && winRate != null) {
+        highlights.push({ label: 'Win rate', value: `${winRate}%`, sub: `${wins}W · ${losses}L` });
+      }
+      if (elements.mmr !== false && !prefs?.hideMmr && rating?.mmr) {
+        highlights.push({ label: 'MMR', value: String(Math.round(rating.mmr)), sub: rating.tier || null });
+      }
+      if (elements.bestHero !== false && bestHero) {
+        highlights.push({ label: 'Best hero', value: bestHero.hero_name, sub: bestHero.win_rate != null ? `${bestHero.games}g · ${bestHero.win_rate}% WR` : `${bestHero.games}g` });
+      }
+      if (elements.streak !== false && streak !== 0) {
+        highlights.push({ label: 'Streak', value: streak > 0 ? `${streak}W` : `${Math.abs(streak)}L`, sub: streak > 0 ? 'on a roll' : 'cold streak' });
+      }
+      if (elements.rankTrend !== false && rankTrend) {
+        const sign = rankTrend.delta >= 0 ? '+' : '';
+        highlights.push({ label: 'Recent trend', value: `${sign}${rankTrend.delta}`, sub: `${rankTrend.from} → ${rankTrend.to}` });
+      }
+
+      res.json({
+        account_id: accountId,
+        persona_name: persona,
+        season: season ? { id: season.id, name: season.name } : null,
+        games_played: games,
+        wins, losses,
+        win_rate: winRate,
+        best_hero: bestHero,
+        rank_trend: rankTrend,
+        streak,
+        mmr: prefs?.hideMmr ? null : (rating?.mmr ? Math.round(rating.mmr) : null),
+        tier: prefs?.hideMmr ? null : (rating?.tier || null),
+        region: prefs?.hideRegion ? null : (stats?.region || null),
+        highlights,
+        prefs: _publicPrefs(prefs),
+      });
+    } catch (err) {
+      console.error('[API] overlay/season:', err.message);
+      res.status(500).json({ error: 'Failed to load season stats' });
+    }
+  });
+
+  // GET /api/overlay/leaderboard?for=<accountId>&limit=5 — compact public
+  // leaderboard for the Twitch panel: the top N plus the streamer's own
+  // standing (rank + record) so viewers see where the streamer sits.
+  router.get('/overlay/leaderboard', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 10);
+      const forAccount = req.query.for ? String(req.query.for) : null;
+      // Honour the streamer's privacy prefs: if they hide MMR / use an alias,
+      // their own row must reflect that wherever it appears (top list + the
+      // "me" standing). Other players' rows are public leaderboard data.
+      const prefs = await _loadStreamPrefs(forAccount);
+      const full = await db.getLeaderboard(100).catch(() => []);
+      const applyOwner = (row) => {
+        if (!forAccount || !prefs || String(row.account_id) !== forAccount) return row;
+        return {
+          ...row,
+          name: prefs.alias || row.name,
+          mmr: prefs.hideMmr ? null : row.mmr,
+        };
+      };
+      const ranked = (full || []).map((r, i) => applyOwner({
+        rank: i + 1,
+        account_id: r.player_id ? String(r.player_id) : null,
+        name: r.nickname || r.display_name || (r.player_id ? String(r.player_id) : '—'),
+        mmr: r.mmr != null ? Math.round(r.mmr) : null,
+        wins: r.wins || 0,
+        losses: r.losses || 0,
+        games_played: r.games_played || 0,
+      }));
+      const top = ranked.slice(0, limit);
+      let me = null;
+      if (forAccount) {
+        me = ranked.find(r => String(r.account_id) === forAccount) || null;
+      }
+      res.json({ top, me, total: ranked.length, prefs: _publicPrefs(prefs) });
+    } catch (err) {
+      console.error('[API] overlay/leaderboard:', err.message);
+      res.status(500).json({ error: 'Failed to load leaderboard' });
     }
   });
 

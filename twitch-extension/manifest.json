@@ -2,11 +2,11 @@
   "$schema_note": "Twitch hosts the canonical extension manifest inside the Developer Console — the upload .zip itself does not contain one. This file is the source of truth for what to enter into the Console so panel / video overlay / config asset paths, anchors, allowlisted fetch domains, and version metadata don't drift between submissions.",
 
   "name": "OCE Inhouse",
-  "summary": "Show a Dota 2 streamer's OCE Inhouse rank, current W/L streak, and last 5 matches without leaving Twitch.",
-  "description": "Read-only Twitch panel + video overlay for the OCE Inhouse community. Viewers see the broadcaster's current rank/tier, MMR, win/loss streak, and last 5 inhouse matches (hero, KDA, GPM, XPM, result). All data comes from public, unauthenticated endpoints on oceinhouse.gg — no Twitch OAuth, no secrets, no chat interaction.",
+  "summary": "Show a Dota 2 streamer's OCE Inhouse rank, season win rate, best hero, rank trend, last 5 matches, and a live leaderboard without leaving Twitch.",
+  "description": "Read-only Twitch panel + video overlay for the OCE Inhouse community. Viewers see the broadcaster's current rank/tier, MMR, season win rate, best hero, rank trend, win/loss streak, last 5 inhouse matches (hero, KDA, GPM, XPM, result), and a compact leaderboard with the streamer's own standing — plus deep-links back to oceinhouse.gg. All data comes from public, unauthenticated endpoints on oceinhouse.gg — no Twitch OAuth, no secrets, no chat interaction.",
   "author_email": "admin@oceinhouse.gg",
 
-  "version": "0.0.1",
+  "version": "0.0.2",
   "anchor": ["panel", "video_overlay"],
   "supports_chat": false,
   "supports_bits": false,
@@ -24,7 +24,7 @@
     "live_config":   "config/index.html"
   },
 
-  "panel_height": 480,
+  "panel_height": 500,
 
   "required_broadcaster_abilities": ["broadcaster_configuration"],
   "viewer_summary": "Shows the broadcaster's OCE Inhouse stats — read-only, polls every 30 seconds.",

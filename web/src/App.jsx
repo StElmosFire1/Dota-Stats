@@ -119,6 +119,11 @@ const Spectate = lazy(() => import('./pages/Spectate'));
 const OverlayLive = lazy(() => import('./pages/OverlayLive'));
 const OverlayScoreboard = lazy(() => import('./pages/OverlayScoreboard'));
 const OverlayTicker = lazy(() => import('./pages/OverlayTicker'));
+// Task #826 — additional overlay surfaces: live draft, post-match recap,
+// season-stats ticker.
+const OverlayDraft = lazy(() => import('./pages/OverlayDraft'));
+const OverlayRecap = lazy(() => import('./pages/OverlayRecap'));
+const OverlaySeason = lazy(() => import('./pages/OverlaySeason'));
 const Social = lazy(() => import('./pages/Social'));
 const HallOfFame = lazy(() => import('./pages/HallOfFame'));
 const PlayerBenchmarks = lazy(() => import('./pages/PlayerBenchmarks'));
@@ -1320,6 +1325,9 @@ function AppShell() {
               <Route path="/overlay/live/:lobbyId" element={<OverlayLive />} />
               <Route path="/overlay/scoreboard/:matchId" element={<OverlayScoreboard />} />
               <Route path="/overlay/ticker/:accountId" element={<OverlayTicker />} />
+              <Route path="/overlay/draft/:lobbyId" element={<OverlayDraft />} />
+              <Route path="/overlay/recap/:matchId" element={<OverlayRecap />} />
+              <Route path="/overlay/season/:accountId" element={<OverlaySeason />} />
               <Route path="/*" element={<AppRoutes />} />
             </Routes>
           </Suspense>

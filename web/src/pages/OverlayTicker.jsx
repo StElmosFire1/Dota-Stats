@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { overlayRootStyle, elementShown } from '../overlayTheme';
 
 export default function OverlayTicker() {
   const { accountId } = useParams();
@@ -30,17 +31,17 @@ export default function OverlayTicker() {
   const streakClass = streak > 0 ? 'streak-win' : streak < 0 ? 'streak-loss' : 'streak-none';
 
   return (
-    <div className="overlay-root overlay-ticker-root" role="region" aria-label="Player ticker overlay">
+    <div className="overlay-root overlay-ticker-root" role="region" aria-label="Player ticker overlay" style={overlayRootStyle(data.prefs)}>
       <div className="overlay-ticker-card">
         <div className="overlay-ticker-name">{data.persona_name || '—'}</div>
         <div className="overlay-ticker-stats">
-          {data.mmr != null && (
+          {data.mmr != null && elementShown(data.prefs, 'mmr') && (
             <div className="overlay-ticker-stat">
               <div className="overlay-ticker-stat-label">MMR</div>
               <div className="overlay-ticker-stat-value">{data.mmr}</div>
             </div>
           )}
-          {data.tier && (
+          {data.tier && elementShown(data.prefs, 'tier') && (
             <div className="overlay-ticker-stat">
               <div className="overlay-ticker-stat-label">Tier</div>
               <div className="overlay-ticker-stat-value">{data.tier}</div>
@@ -50,15 +51,19 @@ export default function OverlayTicker() {
             <div className="overlay-ticker-stat-label">W / L</div>
             <div className="overlay-ticker-stat-value">{data.wins ?? 0} – {data.losses ?? 0}</div>
           </div>
-          <div className="overlay-ticker-stat">
-            <div className="overlay-ticker-stat-label">Win Rate</div>
-            <div className="overlay-ticker-stat-value">{wr}%</div>
-          </div>
-          <div className="overlay-ticker-stat">
-            <div className="overlay-ticker-stat-label">Streak</div>
-            <div className={`overlay-ticker-stat-value ${streakClass}`}>{streakLabel}</div>
-          </div>
-          {data.region && (
+          {elementShown(data.prefs, 'winRate') && (
+            <div className="overlay-ticker-stat">
+              <div className="overlay-ticker-stat-label">Win Rate</div>
+              <div className="overlay-ticker-stat-value">{wr}%</div>
+            </div>
+          )}
+          {elementShown(data.prefs, 'streak') && (
+            <div className="overlay-ticker-stat">
+              <div className="overlay-ticker-stat-label">Streak</div>
+              <div className={`overlay-ticker-stat-value ${streakClass}`}>{streakLabel}</div>
+            </div>
+          )}
+          {data.region && elementShown(data.prefs, 'region') && (
             <div className="overlay-ticker-stat">
               <div className="overlay-ticker-stat-label">Region</div>
               <div className="overlay-ticker-stat-value">{data.region}</div>

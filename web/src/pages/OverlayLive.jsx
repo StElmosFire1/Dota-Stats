@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { overlayRootStyle, elementShown } from '../overlayTheme';
 
 export default function OverlayLive() {
   const { lobbyId } = useParams();
@@ -33,11 +34,13 @@ export default function OverlayLive() {
   const showDraft = (draft.radiant_picks?.length || 0) + (draft.dire_picks?.length || 0)
                   + (draft.radiant_bans?.length || 0) + (draft.dire_bans?.length || 0) > 0;
 
-  const fmtKda = (p) => (p.kills != null || p.deaths != null || p.assists != null)
+  const showKda = elementShown(data?.prefs, 'kda');
+  const showBans = elementShown(data?.prefs, 'bans');
+  const fmtKda = (p) => (showKda && (p.kills != null || p.deaths != null || p.assists != null))
     ? ` · ${p.kills ?? 0}/${p.deaths ?? 0}/${p.assists ?? 0}` : '';
 
   return (
-    <div className="overlay-root" role="region" aria-label="Live lobby overlay">
+    <div className="overlay-root" role="region" aria-label="Live lobby overlay" style={overlayRootStyle(data?.prefs)}>
       <div className="overlay-live-card">
         <div className="overlay-live-header">
           <div className="overlay-live-title">{data?.lobbyName || 'Inhouse Lobby'}</div>
@@ -62,7 +65,7 @@ export default function OverlayLive() {
               <span className="overlay-live-draft-label">D picks</span>
               <span>{(draft.dire_picks || []).map(h => h.hero_name || h.name || `H${h.hero_id || h}`).join(' · ') || '—'}</span>
             </div>
-            {(draft.radiant_bans?.length || draft.dire_bans?.length) ? (
+            {showBans && (draft.radiant_bans?.length || draft.dire_bans?.length) ? (
               <div className="overlay-live-draft-row overlay-live-draft-bans">
                 <span className="overlay-live-draft-label">Bans</span>
                 <span>{[...(draft.radiant_bans || []), ...(draft.dire_bans || [])].map(h => h.hero_name || h.name || `H${h.hero_id || h}`).join(' · ')}</span>

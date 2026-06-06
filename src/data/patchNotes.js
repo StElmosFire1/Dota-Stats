@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "9.52",
+    "title": "Bigger streamer kit — three new overlays, customisable look, richer Twitch panel",
+    "published_at": "2026-06-06",
+    "notes": [
+      "**Three new OBS overlays.** On top of the existing live-lobby, scoreboard and ticker overlays, you can now drop in a **live draft board** (`/overlay/draft/...`, a standalone pick/ban surface), a **post-match recap** card (`/overlay/recap/...` — final result, MVP and notable records), and a **season-stats ticker** (`/overlay/season/...` — rotates through win rate, best hero and MMR trend). Grab the URLs from Settings → Edit Profile → Streamer setup.",
+      "**Customise how your overlays look.** A new Overlay appearance panel in Streamer setup lets you pick a colour theme (Court brass, Pitch green, Amber, Crimson, Mono, or a custom accent colour) and toggle individual elements on or off — MMR, tier, win rate, streak, region, best hero, rank trend, scoreboard stats, recap MVP/records and draft bans. Your choices are saved server-side and applied to every overlay, with a live preview right in the settings page.",
+      "**Richer Twitch panel.** The Twitch extension panel now shows your season win rate, best hero, rank trend and a compact leaderboard with your own standing highlighted — alongside the existing rank, streak and last-5-matches — plus deep-links back to oceinhouse.gg. It stays read-only and secret-free, and honours all your streamer privacy + element toggles.",
+      "Full edition only · paywall-free · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.51",
     "title": "Owner perk — your account now has every cosmetic unlocked",
     "published_at": "2026-06-06",

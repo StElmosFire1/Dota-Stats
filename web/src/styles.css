@@ -2694,6 +2694,71 @@ body.overlay-mode {
 .overlay-ticker-stat-value.streak-loss { color: var(--dire-color, #f87171); }
 .overlay-ticker-stat-value.streak-none { color: var(--text-muted); }
 
+/* ===== Task #826 — draft / recap / season overlays ===== */
+/* Draft board — centred pick/ban card */
+.overlay-draft-card {
+  position: absolute;
+  top: 32px; left: 50%; transform: translateX(-50%);
+  background: rgba(13, 20, 36, 0.86);
+  border: 1px solid var(--brass, #c5a975);
+  border-radius: 12px;
+  padding: 16px 24px;
+  min-width: 720px;
+  backdrop-filter: blur(6px);
+}
+.overlay-draft-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 8px; }
+.overlay-draft-picks { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.overlay-draft-pick {
+  font-size: 15px; font-weight: 600; padding: 4px 10px;
+  border: 1px solid rgba(197, 169, 117, 0.3); border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.overlay-draft-pick.is-empty { color: var(--text-muted); font-weight: 400; font-style: italic; }
+.overlay-draft-bans { display: flex; gap: 8px; align-items: baseline; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+
+/* Recap card — bottom-centre summary */
+.overlay-recap-card {
+  position: absolute;
+  left: 50%; bottom: 32px; transform: translateX(-50%);
+  background: rgba(13, 20, 36, 0.88);
+  border: 1px solid var(--brass, #c5a975);
+  border-radius: 12px;
+  padding: 16px 24px;
+  min-width: 640px;
+  backdrop-filter: blur(6px);
+}
+.overlay-recap-header { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; margin-bottom: 10px; }
+.overlay-recap-mvp {
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 8px 12px; margin-bottom: 12px;
+  background: rgba(197, 169, 117, 0.12); border-radius: 8px;
+}
+.overlay-recap-mvp-tag {
+  font-family: var(--font-condensed, 'Oswald'); text-transform: uppercase;
+  letter-spacing: 0.16em; font-size: 11px; color: var(--brass); font-weight: 700;
+}
+.overlay-recap-mvp-name { font-family: var(--font-serif, Georgia); font-size: 18px; font-weight: 700; }
+.overlay-recap-mvp-hero { font-size: 14px; color: var(--text-muted); }
+.overlay-recap-mvp-votes { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.overlay-recap-records { display: flex; gap: 20px; flex-wrap: wrap; }
+.overlay-recap-record { text-align: center; min-width: 96px; }
+.overlay-recap-record-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--text-muted);
+}
+.overlay-recap-record-value { font-size: 18px; font-weight: 700; color: var(--brass); }
+.overlay-recap-record-who { font-size: 12px; color: var(--text-primary); }
+
+/* Season ticker — reuses the round ticker card with a rotating value */
+.overlay-season-card { flex-direction: column; align-items: flex-start; gap: 6px; min-width: 360px; }
+.overlay-season-head { display: flex; align-items: baseline; gap: 12px; width: 100%; }
+.overlay-season-label {
+  font-family: var(--font-condensed, 'Oswald'); text-transform: uppercase;
+  letter-spacing: 0.12em; font-size: 11px; color: var(--text-muted); margin-left: auto;
+}
+.overlay-season-rotator { text-align: left; }
+.overlay-season-value { font-size: 24px; }
+.overlay-season-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
 /* ===== Task #586 — Global search + ⌘K command palette ===== */
 .global-search-trigger {
   display: inline-flex;

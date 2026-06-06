@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { overlayRootStyle, elementShown } from '../overlayTheme';
 
 function fmtDur(secs) {
   if (!secs && secs !== 0) return '—';
@@ -8,16 +9,16 @@ function fmtDur(secs) {
   return `${m}:${s}`;
 }
 
-function PlayerRow({ p }) {
+function PlayerRow({ p, cols }) {
   return (
     <tr>
       <td className="ov-name">{p.persona_name || '—'}</td>
       <td>{p.hero_name?.replace(/^npc_dota_hero_/, '') || '—'}</td>
-      <td>{p.kills ?? 0}/{p.deaths ?? 0}/{p.assists ?? 0}</td>
-      <td>{p.last_hits ?? 0}/{p.denies ?? 0}</td>
-      <td>{p.gpm ?? 0}</td>
-      <td>{p.xpm ?? 0}</td>
-      <td>{p.net_worth ?? 0}</td>
+      {cols.kda && <td>{p.kills ?? 0}/{p.deaths ?? 0}/{p.assists ?? 0}</td>}
+      {cols.lasthits && <td>{p.last_hits ?? 0}/{p.denies ?? 0}</td>}
+      {cols.gpm && <td>{p.gpm ?? 0}</td>}
+      {cols.xpm && <td>{p.xpm ?? 0}</td>}
+      {cols.netWorth && <td>{p.net_worth ?? 0}</td>}
     </tr>
   );
 }
@@ -51,8 +52,16 @@ export default function OverlayScoreboard() {
   const radiant = (data.players || []).filter(p => p.team === 'radiant');
   const dire = (data.players || []).filter(p => p.team === 'dire');
 
+  const cols = {
+    kda: elementShown(data.prefs, 'kda'),
+    lasthits: elementShown(data.prefs, 'lasthits'),
+    gpm: elementShown(data.prefs, 'gpm'),
+    xpm: elementShown(data.prefs, 'xpm'),
+    netWorth: elementShown(data.prefs, 'netWorth'),
+  };
+
   return (
-    <div className="overlay-root" role="region" aria-label="Match scoreboard overlay">
+    <div className="overlay-root" role="region" aria-label="Match scoreboard overlay" style={overlayRootStyle(data.prefs)}>
       <div className="overlay-scoreboard-card">
         <div className="overlay-scoreboard-header">
           <div className="overlay-scoreboard-title">Match {data.match_id}</div>
@@ -70,15 +79,15 @@ export default function OverlayScoreboard() {
               <tr>
                 <th scope="col">Player</th>
                 <th scope="col">Hero</th>
-                <th scope="col">K/D/A</th>
-                <th scope="col">LH/DN</th>
-                <th scope="col">GPM</th>
-                <th scope="col">XPM</th>
-                <th scope="col">NW</th>
+                {cols.kda && <th scope="col">K/D/A</th>}
+                {cols.lasthits && <th scope="col">LH/DN</th>}
+                {cols.gpm && <th scope="col">GPM</th>}
+                {cols.xpm && <th scope="col">XPM</th>}
+                {cols.netWorth && <th scope="col">NW</th>}
               </tr>
             </thead>
             <tbody>
-              {team.rows.map(p => <PlayerRow key={p.slot ?? p.account_id} p={p} />)}
+              {team.rows.map(p => <PlayerRow key={p.slot ?? p.account_id} p={p} cols={cols} />)}
             </tbody>
           </table>
         ))}

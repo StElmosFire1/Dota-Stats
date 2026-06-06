@@ -15,14 +15,48 @@
   </div>
   <div class="stat-bar" id="stat-bar" aria-live="polite">
     <div class="stat"><div class="label">Rank</div><div class="value" id="rank">—</div></div>
-    <div class="stat"><div class="label">W / L</div><div class="value" id="wl">—</div></div>
     <div class="stat"><div class="label">Win rate</div><div class="value" id="wr">—</div></div>
+    <div class="stat"><div class="label">W / L</div><div class="value" id="wl">—</div></div>
     <div class="stat"><div class="label">Streak</div><div class="value" id="streak">—</div></div>
   </div>
+
+  <!-- Season highlights — best hero + rank trend pulled from the season
+       overlay endpoint. Hidden until there's something to show. -->
+  <div class="season-bar" id="season-bar" style="display:none;">
+    <div class="season-cell" id="cell-besthero" style="display:none;">
+      <div class="label">Best hero</div>
+      <div class="season-hero">
+        <img id="besthero-img" class="hero" alt="" />
+        <div>
+          <div class="value" id="besthero-name">—</div>
+          <div class="sub" id="besthero-sub"></div>
+        </div>
+      </div>
+    </div>
+    <div class="season-cell" id="cell-ranktrend" style="display:none;">
+      <div class="label">Rank trend</div>
+      <div class="value" id="ranktrend-value">—</div>
+      <div class="sub" id="ranktrend-sub"></div>
+    </div>
+  </div>
+
   <div class="body">
-    <div class="muted" id="empty">Loading the streamer\u2019s last 5 matches\u2026</div>
+    <div class="section-title">Last matches</div>
+    <div class="muted" id="empty">Loading the streamer&rsquo;s last 5 matches&hellip;</div>
     <ul id="matches" style="list-style:none;margin:0;padding:0;display:none;"></ul>
   </div>
+
+  <!-- Compact leaderboard — top players plus the streamer's own standing. -->
+  <div class="body lb-body" id="lb-body" style="display:none;">
+    <div class="section-title">Leaderboard</div>
+    <ul id="leaderboard" style="list-style:none;margin:0;padding:0;"></ul>
+  </div>
+
+  <div class="panel-links">
+    <a id="link-profile" href="https://oceinhouse.gg" target="_blank" rel="noopener noreferrer">View full profile ↗</a>
+    <a id="link-leaderboard" href="https://oceinhouse.gg/leaderboard" target="_blank" rel="noopener noreferrer">Leaderboard ↗</a>
+  </div>
+
   <script src="./panel.js"></script>
 </body>
 </html>

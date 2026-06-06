@@ -24,6 +24,9 @@ import { oauthErrorMessage } from '../components/DiscordLinkModal';
 import ProfileCard from '../components/ProfileCard';
 import MagazineCover from '../components/MagazineCover';
 import '../components/MagazineCover.css';
+import {
+  OVERLAY_THEME_OPTIONS, OVERLAY_ELEMENT_GROUPS, defaultOverlayPrefs,
+} from '../overlayTheme';
 import '../styles/pressbox-settings.css';
 
 // Short labels for voice-pack event sample buttons.
@@ -473,8 +476,10 @@ function TwitchExtensionSection({ accountId }) {
     <div>
       <p style={{ color: 'var(--pb-faint)', fontSize: 13, marginBottom: 14 }}>
         Install the OCE Inhouse Twitch extension on your channel to show your rank,
-        win/loss streak, and last 5 matches in the panel under your stream.
-        It&rsquo;s read-only and uses public endpoints &mdash; no secrets, no Twitch OAuth.
+        season win rate, best hero, MMR trend, last 5 matches, and a compact
+        leaderboard in the panel under your stream &mdash; with deep-links back to
+        oceinhouse.gg. It&rsquo;s read-only and uses public endpoints &mdash; no
+        secrets, no Twitch OAuth.
       </p>
       <ol style={{ margin: '0 0 14px 18px', padding: 0, fontSize: 13, color: 'var(--pb-faint)', lineHeight: 1.6 }}>
         <li>Open <strong>Creator Dashboard → Extensions</strong> on Twitch and search for <em>OCE Inhouse</em>.</li>
@@ -513,12 +518,17 @@ function TwitchExtensionSection({ accountId }) {
 
 // Streamer setup — OBS overlay URLs and stream privacy prefs.
 function StreamerSetupSection({ accountId }) {
-  const [prefs, setPrefs] = React.useState({ stream_hide_mmr: false, stream_hide_region: false, stream_alias: '' });
+  const [prefs, setPrefs] = React.useState({
+    stream_hide_mmr: false, stream_hide_region: false, stream_alias: '',
+    stream_overlay_prefs: defaultOverlayPrefs(),
+  });
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [msg, setMsg] = React.useState(null);
   const [copied, setCopied] = React.useState(null);
   const [activePreview, setActivePreview] = React.useState('ticker');
+  // Bump on save so the live-preview iframe reloads with the latest prefs.
+  const [previewNonce, setPreviewNonce] = React.useState(0);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -531,6 +541,8 @@ function StreamerSetupSection({ accountId }) {
           stream_hide_mmr: !!j.stream_hide_mmr,
           stream_hide_region: !!j.stream_hide_region,
           stream_alias: j.stream_alias || '',
+          stream_overlay_prefs: { ...defaultOverlayPrefs(), ...(j.stream_overlay_prefs || {}),
+            elements: { ...defaultOverlayPrefs().elements, ...((j.stream_overlay_prefs || {}).elements || {}) } },
         });
       } catch (_) {
         if (!cancelled) setMsg('Could not load your stream prefs.');
@@ -538,6 +550,15 @@ function StreamerSetupSection({ accountId }) {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  const overlay = prefs.stream_overlay_prefs || defaultOverlayPrefs();
+  const setOverlay = (patch) => setPrefs(p => ({
+    ...p, stream_overlay_prefs: { ...(p.stream_overlay_prefs || defaultOverlayPrefs()), ...patch },
+  }));
+  const toggleElement = (key) => setPrefs(p => {
+    const cur = p.stream_overlay_prefs || defaultOverlayPrefs();
+    return { ...p, stream_overlay_prefs: { ...cur, elements: { ...cur.elements, [key]: cur.elements?.[key] === false } } };
+  });
 
   const save = async () => {
     setSaving(true); setMsg(null);
@@ -550,6 +571,7 @@ function StreamerSetupSection({ accountId }) {
       });
       if (!r.ok) throw new Error('http ' + r.status);
       setMsg('Saved.');
+      setPreviewNonce(n => n + 1);
     } catch (e) { setMsg('Save failed: ' + (e.message || e)); }
     finally { setSaving(false); }
   };
@@ -559,10 +581,16 @@ function StreamerSetupSection({ accountId }) {
   const urls = [
     { key: 'live', label: 'Live lobby overlay', url: `${origin}/overlay/live/current?for=${aid}`,
       hint: 'Shows the current inhouse lobby (Radiant/Dire rosters) when the bot is monitoring one.' },
+    { key: 'draft', label: 'Live draft overlay', url: `${origin}/overlay/draft/current?for=${aid}`,
+      hint: 'Standalone pick/ban board for the current lobby — drop it above your draft screen.' },
     { key: 'scoreboard', label: 'Scoreboard overlay', url: `${origin}/overlay/scoreboard/<MATCH_ID>?for=${aid}`,
       hint: 'Replace <MATCH_ID> with a real match id. Shows K/D/A, LH/DN, GPM, XPM, Net Worth per player.' },
+    { key: 'recap', label: 'Post-match recap overlay', url: `${origin}/overlay/recap/<MATCH_ID>?for=${aid}`,
+      hint: 'Replace <MATCH_ID> with a real match id. Shows the result, MVP, and notable records.' },
     { key: 'ticker', label: 'Player ticker overlay', url: `${origin}/overlay/ticker/${aid}`,
       hint: 'Compact MMR / W-L / win-rate strip scoped to your account. Honours all privacy toggles below.' },
+    { key: 'season', label: 'Season-stats ticker', url: `${origin}/overlay/season/${aid}`,
+      hint: 'Rotating season highlights — win rate, best hero, MMR trend. Honours the element toggles below.' },
   ];
 
   const copy = async (key, url) => {
@@ -574,8 +602,11 @@ function StreamerSetupSection({ accountId }) {
   };
 
   const previewUrl = (() => {
-    if (activePreview === 'ticker') return `${origin}/overlay/ticker/${aid}`;
-    if (activePreview === 'live') return `${origin}/overlay/live/current?for=${aid}`;
+    const bust = previewNonce ? `&_=${previewNonce}` : '';
+    if (activePreview === 'ticker') return `${origin}/overlay/ticker/${aid}?_=${previewNonce}`;
+    if (activePreview === 'season') return `${origin}/overlay/season/${aid}?_=${previewNonce}`;
+    if (activePreview === 'live') return `${origin}/overlay/live/current?for=${aid}${bust}`;
+    if (activePreview === 'draft') return `${origin}/overlay/draft/current?for=${aid}${bust}`;
     return null;
   })();
 
@@ -590,6 +621,7 @@ function StreamerSetupSection({ accountId }) {
       {loading ? (
         <div style={{ color: 'var(--pb-faint)', fontSize: 13 }}>Loading your privacy prefs…</div>
       ) : (
+        <>
         <div style={{ background: 'var(--pb-surface-2)', border: '1px solid var(--pb-line)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
           <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 13 }}>Stream privacy</div>
           <label className="pb-settings-check-row" style={{ marginBottom: 10 }}>
@@ -610,13 +642,57 @@ function StreamerSetupSection({ accountId }) {
               onChange={(e) => setPrefs(p => ({ ...p, stream_alias: e.target.value }))}
               placeholder="Leave blank to use your Steam name" />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
-              {saving ? 'Saving…' : 'Save privacy prefs'}
-            </button>
-            {msg && <span style={{ fontSize: 13, color: 'var(--pb-faint)' }} role="status">{msg}</span>}
-          </div>
         </div>
+
+        <div style={{ background: 'var(--pb-surface-2)', border: '1px solid var(--pb-line)', borderRadius: 10, padding: 14, marginBottom: 14 }}>
+          <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 13 }}>Overlay appearance</div>
+          <div style={{ marginBottom: 12 }}>
+            <label htmlFor="overlay-theme-select" style={{ display: 'block', fontSize: 13, color: 'var(--pb-faint)', marginBottom: 4 }}>
+              Colour theme
+            </label>
+            <select id="overlay-theme-select" value={overlay.theme}
+              onChange={(e) => setOverlay({ theme: e.target.value })}
+              style={{ maxWidth: 220 }}>
+              {OVERLAY_THEME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          {overlay.theme === 'custom' && (
+            <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <label htmlFor="overlay-accent-input" style={{ fontSize: 13, color: 'var(--pb-faint)' }}>
+                Custom accent colour
+              </label>
+              <input id="overlay-accent-input" type="color"
+                value={/^#[0-9a-fA-F]{6}$/.test(overlay.accent || '') ? overlay.accent : '#c5a975'}
+                onChange={(e) => setOverlay({ accent: e.target.value })}
+                style={{ width: 44, height: 32, padding: 0, border: '1px solid var(--pb-line)', borderRadius: 6, background: 'none' }}
+                aria-label="Custom accent colour" />
+              <code style={{ fontSize: 12, color: 'var(--pb-text)' }}>{overlay.accent}</code>
+            </div>
+          )}
+          <div style={{ fontSize: 13, color: 'var(--pb-faint)', marginBottom: 8 }}>Show / hide elements</div>
+          {OVERLAY_ELEMENT_GROUPS.map(group => (
+            <div key={group.title} style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--pb-faint)', marginBottom: 6 }}>{group.title}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
+                {group.items.map(it => (
+                  <label key={it.key} className="pb-settings-check-row" style={{ marginBottom: 0 }}>
+                    <input type="checkbox" checked={overlay.elements?.[it.key] !== false}
+                      onChange={() => toggleElement(it.key)} />
+                    <span>{it.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Saving…' : 'Save streamer settings'}
+          </button>
+          {msg && <span style={{ fontSize: 13, color: 'var(--pb-faint)' }} role="status">{msg}</span>}
+        </div>
+        </>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
@@ -642,7 +718,9 @@ function StreamerSetupSection({ accountId }) {
           <div style={{ fontWeight: 600, fontSize: 13, marginRight: 4 }}>Preview:</div>
           {[
             { id: 'ticker', label: 'Ticker' },
+            { id: 'season', label: 'Season' },
             { id: 'live', label: 'Live lobby' },
+            { id: 'draft', label: 'Draft' },
             { id: 'none', label: 'Off' },
           ].map(opt => (
             <button key={opt.id} type="button"
@@ -660,6 +738,7 @@ function StreamerSetupSection({ accountId }) {
         {previewUrl ? (
           <div style={{ background: '#1a1a1a', borderRadius: 8, overflow: 'hidden', aspectRatio: '16 / 9' }}>
             <iframe
+              key={`${activePreview}-${previewNonce}`}
               title={`Overlay preview (${activePreview})`}
               src={previewUrl}
               style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
@@ -670,7 +749,7 @@ function StreamerSetupSection({ accountId }) {
           <p style={{ fontSize: 13, color: 'var(--pb-faint)', margin: 0 }}>Preview off.</p>
         )}
         <p style={{ fontSize: 11, color: 'var(--pb-faint)', marginTop: 8, marginBottom: 0 }}>
-          The preview iframe is scaled to fit; OBS renders these at full 1920×1080 with a transparent background.
+          Save your settings to refresh the preview. OBS renders these at full 1920×1080 with a transparent background.
         </p>
       </div>
     </div>
