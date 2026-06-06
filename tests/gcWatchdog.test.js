@@ -86,6 +86,51 @@ test('GC watchdog no-op when not logged in', async () => {
   assert.strictEqual(calls.length, 0, 'must not kick when not logged in');
 });
 
+test('GC watchdog probes a quiet GC and stays quiet when it responds', async () => {
+  const { c, calls } = buildClient();
+  let now = 1_000_000;
+  c._lastGcActivityAt = now;
+  c.isGCReady = true;
+  let pings = 0;
+  // Simulate a healthy GC: the probe elicits a response that bumps the clock.
+  c.gcClient = {
+    requestProfileCard: () => { pings++; now += 1; c._lastGcActivityAt = now; return Promise.resolve(null); },
+  };
+  c.steamClient.steamID = { accountid: 4242 };
+  let kicked = false;
+  c.on('gcWatchdogKick', () => { kicked = true; });
+  c._startGcWatchdog({ intervalMs: 5, thresholdMs: 100, pingThresholdMs: 40, now: () => now });
+  now += 60; // past the ping threshold, still under the kick threshold
+  await new Promise((r) => setTimeout(r, 40));
+  c._stopGcWatchdog();
+  assert.ok(pings >= 1, 'a quiet GC should have been probed');
+  assert.strictEqual(kicked, false, 'a responsive GC must never be kicked');
+  assert.strictEqual(calls.length, 0, 'no gamesPlayed re-hello for a healthy GC');
+});
+
+test('GC watchdog probes then still kicks when the GC never responds', async () => {
+  const { c, calls } = buildClient();
+  let now = 1_000_000;
+  c._lastGcActivityAt = now;
+  c.isGCReady = true;
+  let pings = 0;
+  // Dead GC: probe is sent but no response ever bumps the clock.
+  c.gcClient = { requestProfileCard: () => { pings++; return Promise.resolve(null); } };
+  c.steamClient.steamID = { accountid: 4242 };
+  let kicked = false;
+  c.on('gcWatchdogKick', () => { kicked = true; });
+  c._startGcWatchdog({ intervalMs: 5, thresholdMs: 100, pingThresholdMs: 40, now: () => now });
+  now += 60; // probe window (>= pingThreshold, < threshold)
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(pings >= 1, 'a quiet GC should have been probed before kicking');
+  assert.strictEqual(kicked, false, 'must not kick while still under the threshold');
+  now += 60; // now past the kick threshold with no response
+  await new Promise((r) => setTimeout(r, 20));
+  c._stopGcWatchdog();
+  assert.strictEqual(kicked, true, 'a truly silent GC must still be kicked');
+  assert.deepStrictEqual(calls[0], [], 'kick clears gamesPlayed (re-hello start)');
+});
+
 test('GC watchdog is single-flight (second start is no-op)', () => {
   const { c } = buildClient();
   c._startGcWatchdog({ intervalMs: 100000, thresholdMs: 1, now: () => 0 });

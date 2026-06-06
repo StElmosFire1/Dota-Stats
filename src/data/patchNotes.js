@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "9.53",
+    "title": "Bot stops re-opening Dota every 5 minutes on a healthy connection",
+    "published_at": "2026-06-06",
+    "notes": [
+      "**Fixed the constant Dota relaunch loop.** The GC reliability watchdog was watching for connection events the Dota client never actually emits, so its \"last heard from the Game Coordinator\" timer was never reset by normal traffic. On any idle-but-healthy bot it would conclude the GC was dead after 5 minutes and \"kick\" the session — which is what made the bot visibly close and re-open Dota roughly every 5 minutes. The watchdog now resets its liveness clock on the real signals of a live GC (lobby updates, match-detail responses, GC ready, and every raw message received from the Dota GC).",
+      "**Idle bots now stay put.** To keep a quiet-but-healthy session from drifting toward a false kick, the watchdog now sends a lightweight self profile-card lookup once it's been silent for a while; a healthy GC replies within seconds and resets the clock on its own. The disruptive re-hello kick only fires when the GC genuinely stops responding, so real silent drops still recover exactly as before. Full edition only (Steam/Dota GC)."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.52",
     "title": "Bigger streamer kit — three new overlays, customisable look, richer Twitch panel",
     "published_at": "2026-06-06",
