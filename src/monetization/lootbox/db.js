@@ -16,6 +16,8 @@
 'use strict';
 
 const catalog = require('./catalog');
+// Owner perk — superusers own every collectible cosmetic for free.
+const { isSuperuserAccountId } = require('../../auth/superusers');
 
 function createLootboxDb({ getPool }) {
   if (typeof getPool !== 'function') {
@@ -689,11 +691,14 @@ function createLootboxDb({ getPool }) {
     const item = catalog.getItem(`${kind}:${value}`);
     if (!item) { const e = new Error('Unknown cosmetic'); e.code = 'BAD_SKU'; throw e; }
     // Must own it (granted via box / wildcard / free box → coin_owned_cosmetics).
-    const owned = await p.query(
-      `SELECT 1 FROM coin_owned_cosmetics WHERE account_id = $1 AND kind = $2 AND value = $3 LIMIT 1`,
-      [accountId, kind, value]
-    );
-    if (!owned.rows.length) { const e = new Error('You do not own that cosmetic'); e.code = 'NOT_OWNED'; throw e; }
+    // Owner perk — superusers own every cosmetic, so skip the ownership lookup.
+    if (!isSuperuserAccountId(accountId)) {
+      const owned = await p.query(
+        `SELECT 1 FROM coin_owned_cosmetics WHERE account_id = $1 AND kind = $2 AND value = $3 LIMIT 1`,
+        [accountId, kind, value]
+      );
+      if (!owned.rows.length) { const e = new Error('You do not own that cosmetic'); e.code = 'NOT_OWNED'; throw e; }
+    }
     await p.query(`UPDATE player_profiles SET ${col} = $2, updated_at = NOW() WHERE account_id = $1`, [accountId, value]);
     return { kind, value };
   }
@@ -715,10 +720,14 @@ function createLootboxDb({ getPool }) {
    */
   async function getCollection(accountId) {
     const p = getPool();
-    const ownedRows = accountId
+    // Owner perk — superusers own every collectible cosmetic.
+    const superuser = isSuperuserAccountId(accountId);
+    const ownedRows = (accountId && !superuser)
       ? (await p.query(`SELECT kind, value FROM coin_owned_cosmetics WHERE account_id = $1`, [accountId])).rows
       : [];
-    const owned = new Set(ownedRows.map((r) => `${r.kind}:${r.value}`));
+    const owned = superuser
+      ? new Set(catalog.ITEMS.filter((it) => catalog.isCosmeticKind(it.kind)).map((it) => it.sku))
+      : new Set(ownedRows.map((r) => `${r.kind}:${r.value}`));
     const equipped = accountId ? await getEquipped(accountId) : {};
     const retired = new Set(await getRetiredSetIds());
 

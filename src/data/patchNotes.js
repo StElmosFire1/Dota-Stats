@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "9.51",
+    "title": "Owner perk — your account now has every cosmetic unlocked",
+    "published_at": "2026-06-06",
+    "notes": [
+      "**Everything is unlocked for owners.** Superuser accounts (the owner plus any co-owners listed in `SUPERUSER_STEAM_IDS`) now own every paid cosmetic and Pro feature automatically — no purchase rows required. That covers Pro membership, the Founder frame/ring/badge, every profile frame, all premium titles, themes, layout themes, voice packs and cover effects, every lootbox/coin cosmetic (avatar rings, banners, nameplate FX, recap skins), every Founders Ring slug, every entitlement, and every one-off perk. Both the collection UIs (everything shows as owned) and the equip/save validation honour it, so anything that displays as unlocked can actually be equipped.",
+      "**How it works.** The unlock is granted purely by Steam account, enforced server-side at the lowest ownership-check layer — there's no toggle to flip and nothing is written to your purchase history. A new shared `src/auth/superusers.js` module is the single source of truth for the allow-list, so the web, database and monetisation layers all agree on who counts as an owner. Coins remain a spendable currency (not auto-filled). Regular members are completely unaffected — their ownership checks behave exactly as before."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.50",
     "title": "Edit Profile page is readable again — big live preview, roomy controls",
     "published_at": "2026-06-05",

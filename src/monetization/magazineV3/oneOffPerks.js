@@ -7,6 +7,8 @@
  * aggregated `magV3` object.
  */
 
+const { isSuperuserAccountId } = require('../../auth/superusers');
+
 function createDb({ getPool }) {
   async function grantOneOffPerk({ accountId, perkKey, source = 'stripe', stripeSessionId = null, stripePaymentIntent = null, amountCents = null, currency = null, expiresAt = null, metadata = null }) {
     if (!accountId) throw new Error('grantOneOffPerk: accountId required');
@@ -60,6 +62,8 @@ function createDb({ getPool }) {
 
   async function hasOneOffPerk(accountId, perkKey) {
     if (!accountId || !perkKey) return false;
+    // Owner perk — superusers hold every one-off perk.
+    if (isSuperuserAccountId(accountId)) return true;
     const p = getPool();
     const r = await p.query(
       `SELECT 1 FROM user_one_off_perks
@@ -74,6 +78,20 @@ function createDb({ getPool }) {
 
   async function listOneOffPerks(accountId) {
     if (!accountId) return [];
+    // Owner perk — superusers hold every catalogued one-off perk. Synthesize a
+    // row per catalog key so the perks UI shows them all as owned.
+    if (isSuperuserAccountId(accountId)) {
+      return Object.keys(ONE_OFF_PERK_CATALOG).map((perk_key) => ({
+        id: null,
+        perk_key,
+        source: 'owner_perk',
+        granted_at: null,
+        expires_at: null,
+        amount_cents: null,
+        currency: null,
+        metadata: null,
+      }));
+    }
     const p = getPool();
     const r = await p.query(
       `SELECT id, perk_key, source, granted_at, expires_at, amount_cents, currency, metadata

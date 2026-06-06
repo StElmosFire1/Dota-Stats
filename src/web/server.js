@@ -1234,26 +1234,16 @@ async function logEnvForcedLockdownOnBoot() {
 // added, so the Set is never empty. Module-scoped so both createServer()
 // (lockdown gate) and createApiRouter() (auth/role helpers) share one source of
 // truth.
-// The historical/default owner Steam 32-bit account id (the value stored on
-// req.session.accountId). Mirrors the OWNER_DISCORD_ID fallback in
-// src/discord/bot.js so a missing / mistyped SUPERUSER_STEAM_IDS on a prod host
-// can never hard-lock the owner out of the admin panel or the FULL_SITE_LOCKDOWN
-// gate. Co-owners are added via SUPERUSER_STEAM_IDS — this default is always
-// included on top of whatever the env var lists. Not a secret: it's the owner's
-// public 32-bit account id (the number in their /profile URL), and access still
-// requires actually being signed in as that Steam account (verified server-side
-// via Steam OpenID, signed session cookie).
-const DEFAULT_OWNER_STEAM_ACCOUNT_ID = '35944021';
-
-function parseSuperuserSteamIds() {
-  const raw = process.env.SUPERUSER_STEAM_IDS || '';
-  const ids = new Set(
-    raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
-  );
-  // Always allow-list the owner so a missed env var can't lock them out.
-  ids.add(DEFAULT_OWNER_STEAM_ACCOUNT_ID);
-  return ids;
-}
+// The superuser allow-list (owner default + SUPERUSER_STEAM_IDS) now lives in
+// src/auth/superusers.js — a dependency-free leaf module so the db /
+// monetization layers can share the exact same source of truth for the
+// owner-perk unlocks (they have no req/session to consult). Re-exported below
+// for back-compat with existing importers of these names from this file.
+const {
+  DEFAULT_OWNER_STEAM_ACCOUNT_ID,
+  parseSuperuserSteamIds,
+  isSuperuserAccountId,
+} = require('../auth/superusers');
 
 // Superuser is granted PURELY by Steam account — no password. Returns true when
 // the caller has an authenticated Steam session whose 32-bit accountId is on the

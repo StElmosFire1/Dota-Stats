@@ -1,4 +1,8 @@
 const { Pool } = require('pg');
+// Owner-perk unlocks: superusers (owner + allow-listed co-owners) own every
+// paid cosmetic / Pro feature for free. Shared, dependency-free allow-list so
+// these low-level ownership reads agree with the web layer's session checks.
+const { isSuperuserAccountId } = require('../auth/superusers');
 
 let pool = null;
 
@@ -16548,6 +16552,16 @@ async function ensureAutoSpotlight({ windowDays = 7, recentLookbackDays = 28, mi
 // Generic one-time entitlement table. First SKU is 'founders_pass_ring'.
 async function getOwnedEntitlements(accountId) {
   if (!accountId) return [];
+  // Owner perk — superusers hold every entitlement (Founders Pack ring + each
+  // individually-sold founder_ring slug).
+  if (isSuperuserAccountId(accountId)) {
+    const cosm = require('../profileCosmetics');
+    // Canonical SKU per ring slug (inscribed → founders_pass_ring; everything
+    // else → founder_ring:<slug>), de-duped so there's no phantom SKU.
+    const skus = new Set([cosm.FOUNDERS_RING_SKU]);
+    for (const s of cosm.FOUNDER_RING_SLUGS) skus.add(cosm.founderRingSku(s));
+    return [...skus];
+  }
   const p = getPool();
   const r = await p.query(
     `SELECT sku FROM entitlements WHERE account_id = $1`,
@@ -16558,6 +16572,8 @@ async function getOwnedEntitlements(accountId) {
 
 async function hasEntitlement(accountId, sku) {
   if (!accountId || !sku) return false;
+  // Owner perk — superusers hold every entitlement.
+  if (isSuperuserAccountId(accountId)) return true;
   const p = getPool();
   const r = await p.query(
     `SELECT 1 FROM entitlements WHERE account_id = $1 AND sku = $2 LIMIT 1`,
@@ -16687,6 +16703,15 @@ async function listCoinTransactions(accountId, limit = 20) {
 
 async function getCoinOwnedCosmetics(accountId) {
   if (!accountId) return [];
+  // Owner perk — superusers own every lootbox/coin cosmetic. Return the full
+  // catalogue (all equippable kinds; pro_time is not a cosmetic) so the
+  // collection UI shows everything as owned.
+  if (isSuperuserAccountId(accountId)) {
+    const lootcat = require('../monetization/lootbox/catalog');
+    return lootcat.ITEMS
+      .filter((it) => lootcat.isCosmeticKind(it.kind))
+      .map((it) => ({ kind: it.kind, value: it.value }));
+  }
   const p = getPool();
   const r = await p.query(
     `SELECT kind, value FROM coin_owned_cosmetics WHERE account_id = $1`,
@@ -16697,6 +16722,8 @@ async function getCoinOwnedCosmetics(accountId) {
 
 async function hasCoinCosmetic(accountId, kind, value) {
   if (!accountId || !kind || !value) return false;
+  // Owner perk — superusers own every coin-unlockable cosmetic.
+  if (isSuperuserAccountId(accountId)) return true;
   const p = getPool();
   const r = await p.query(
     `SELECT 1 FROM coin_owned_cosmetics WHERE account_id = $1 AND kind = $2 AND value = $3 LIMIT 1`,
@@ -17309,6 +17336,8 @@ async function getPlayerHomeData(accountId) {
 async function listOwnedFounderRings(accountId) {
   if (!accountId) return [];
   const cosm = require('../profileCosmetics');
+  // Owner perk — superusers own every Founders Ring slug.
+  if (isSuperuserAccountId(accountId)) return [...cosm.FOUNDER_RING_SLUGS];
   const owned = new Set();
   // (1) Stripe-bought entitlements — match the legacy founders pack SKU as
   // "inscribed", and any `founder_ring:<slug>` row as its slug.
@@ -17537,6 +17566,8 @@ async function confirmFramePurchase(stripeSessionId, accountId, frameId) {
 const PRO_BUNDLED_FRAMES = ['gold'];
 
 async function hasFrameUnlocked(accountId, frameId, isPro = false) {
+  // Owner perk — superusers have every frame unlocked.
+  if (isSuperuserAccountId(accountId)) return true;
   if (isPro && PRO_BUNDLED_FRAMES.includes(frameId)) return true;
   // Task #313 / v6.79 — coin-purchased frames count as unlocked. Checked before
   // the Stripe purchase lookup so the lighter query wins for coin buyers.
@@ -17552,6 +17583,10 @@ async function hasFrameUnlocked(accountId, frameId, isPro = false) {
 }
 
 async function getOwnedFrames(accountId, isPro = false) {
+  // Owner perk — superusers own the full frame catalogue.
+  if (isSuperuserAccountId(accountId)) {
+    return [...require('../profileCosmetics').ALL_FRAMES];
+  }
   const p = getPool();
   const r = await p.query(
     `SELECT frame_id FROM frame_purchases WHERE account_id = $1 AND status = 'active'`,
@@ -17618,6 +17653,8 @@ async function grantSeasonPassXpGift({ recipientAccountId, seasonId, xpAmount, s
 // request.
 async function isProMember(accountId) {
   if (!accountId) return false;
+  // Owner perk — superusers are always Pro (no row required).
+  if (isSuperuserAccountId(accountId)) return true;
   const p = getPool();
   // Task #318 — monthly subscriptions grant Pro while active/past_due
   // (past_due is a Stripe-driven grace window for failed invoices).
@@ -17639,6 +17676,8 @@ async function isProMember(accountId) {
 // Task #318 — true iff the player has ever held a lifetime (Founder) row.
 async function isFounder(accountId) {
   if (!accountId) return false;
+  // Owner perk — superusers hold every Founder-gated cosmetic (frame/ring/badge).
+  if (isSuperuserAccountId(accountId)) return true;
   // Task #318 — Founder entitlement must require a *live* lifetime row, not
   // just the historical is_founder flag. Otherwise a refunded lifetime
   // purchase (status flips to 'refunded' via markProRefunded, but the
