@@ -31,6 +31,7 @@ export const modules: ModuleMap = {
   "./components/mockups/shop-redesign/Editorial.tsx": () => import("../components/mockups/shop-redesign/Editorial.tsx"),
   "./components/mockups/shop-redesign/FoundersRingPicker.tsx": () => import("../components/mockups/shop-redesign/FoundersRingPicker.tsx"),
   "./components/mockups/shop-redesign/Tabbed.tsx": () => import("../components/mockups/shop-redesign/Tabbed.tsx"),
+  "./components/mockups/stream-studio/StreamStudio.tsx": () => import("../components/mockups/stream-studio/StreamStudio.tsx"),
   "./components/mockups/upscale-2026/Home.tsx": () => import("../components/mockups/upscale-2026/Home.tsx"),
   "./components/mockups/upscale-2026/HomeSignedOut.tsx": () => import("../components/mockups/upscale-2026/HomeSignedOut.tsx"),
   "./components/mockups/upscale-2026/Inhouse.tsx": () => import("../components/mockups/upscale-2026/Inhouse.tsx"),

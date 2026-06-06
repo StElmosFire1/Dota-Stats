@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&family=Oswald:wght@500;600;700&family=Newsreader:wght@500;600;700&display=swap');
+
+.ss-num { font-family: 'Newsreader', Georgia, serif; font-variant-numeric: tabular-nums lining-nums; }
+.ss-serif { font-family: 'Playfair Display', Georgia, serif; }
+.ss-cond { font-family: 'Oswald', 'Inter', sans-serif; }
+.ss-body { font-family: 'Inter', system-ui, sans-serif; }
+
+.ss-check {
+  background-image:
+    linear-gradient(45deg, rgba(245,239,226,0.06) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(245,239,226,0.06) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(245,239,226,0.06) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(245,239,226,0.06) 75%);
+  background-size: 22px 22px;
+  background-position: 0 0, 0 11px, 11px -11px, -11px 0;
+}
