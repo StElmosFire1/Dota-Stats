@@ -17,6 +17,14 @@ const FRIEND_POLL_INTERVAL_MS = 60 * 1000;
 const GC_WATCHDOG_INTERVAL_MS = 60 * 1000;
 const GC_SILENCE_THRESHOLD_MS = 5 * 60 * 1000;
 
+// Task #834 — the kick is a genuine last resort. We only replay the
+// `gamesPlayed` re-hello (which is what visibly re-opens Dota and fires the
+// "Dota Bot is now playing Dota 2" popup) once the keep-alive health ping has
+// demonstrably failed to get a response this many times in a row. Mere
+// idleness — a healthy-but-quiet GC — can never trigger it, because a healthy
+// GC answers the probe and resets its own clock long before this is reached.
+const GC_MAX_PING_FAILURES = 2;
+
 // Events the Dota2GCClient genuinely emits whenever the Game Coordinator is
 // alive and talking to us. Observing any of these resets the silence clock.
 // (The watchdog originally listened for `message`/`receive`/`connectionStatus`,
@@ -50,6 +58,18 @@ class SteamDotaClient extends EventEmitter {
   }
 
   _setupListeners() {
+    // Task #834 — the raw GC-message liveness bump is registered ONCE here,
+    // on the long-lived inner SteamUser socket, rather than inside the
+    // `loggedOn` handler. `loggedOn` can fire repeatedly (re-login), and the
+    // old code re-added this listener every time, accumulating duplicates and
+    // risking a MaxListeners warning. The SteamUser instance survives logins,
+    // so a single registration always sees current GC traffic.
+    try {
+      this.steamClient.on('receivedFromGC', (appid) => {
+        if (appid === DOTA2_APPID) this._lastGcActivityAt = Date.now();
+      });
+    } catch (_) { /* optional; safe to skip */ }
+
     this.steamClient.on('loggedOn', () => {
       console.log('[Steam] Logged in successfully.');
       try { require('../web/opsState').reportSteam({ connected: true, event: 'loggedOn' }); } catch (_) {}
@@ -62,22 +82,26 @@ class SteamDotaClient extends EventEmitter {
         console.log('[Steam] Dota 2 GC is ready!');
         this.isGCReady = true;
         this._lastGcActivityAt = Date.now();
+        // Fresh GC session — clear any stale health-ping failure state left
+        // over from a previous (now-recovered) silence window so the new
+        // session starts from a clean slate.
+        this._gcConsecutivePingFailures = 0;
+        this._gcPingInFlight = false;
+        this._lastHealthPingOutcome = null;
         this.emit('gcReady');
         this._startGcWatchdog();
       });
 
       // Any GC traffic resets the silence clock. Bump on the high-level events
-      // the GC client actually emits (see GC_LIVENESS_EVENTS) and, as a
-      // belt-and-suspenders, on every raw message received from the Dota GC.
+      // the GC client actually emits (see GC_LIVENESS_EVENTS). These listeners
+      // are bound to the *current* gcClient, which is recreated on every
+      // `loggedOn`; the old client is discarded so its listeners go with it.
+      // The raw `receivedFromGC` bump lives once on the SteamUser socket (see
+      // _setupListeners) so it survives re-login without accumulating.
       const bump = () => { this._lastGcActivityAt = Date.now(); };
       for (const ev of GC_LIVENESS_EVENTS) {
         try { this.gcClient.on(ev, bump); } catch (_) { /* optional; safe to skip */ }
       }
-      try {
-        this.steamClient.on('receivedFromGC', (appid) => {
-          if (appid === DOTA2_APPID) this._lastGcActivityAt = Date.now();
-        });
-      } catch (_) { /* optional; safe to skip */ }
 
       this.steamClient.gamesPlayed([DOTA2_APPID]);
     });
@@ -349,11 +373,12 @@ class SteamDotaClient extends EventEmitter {
     // Probe a quiet GC well before the kick threshold so a healthy-but-idle
     // session gets a chance to respond (and reset the clock) on its own.
     const pingThresholdMs = opts.pingThresholdMs || Math.floor(thresholdMs / 2);
+    const maxPingFailures = opts.maxPingFailures || GC_MAX_PING_FAILURES;
     const now = opts.now || (() => Date.now());
     if (this._lastGcActivityAt == null) this._lastGcActivityAt = now();
     this._gcWatchdogTimer = setInterval(() => {
       try {
-        this._checkGcLiveness({ thresholdMs, pingThresholdMs, now });
+        this._checkGcLiveness({ thresholdMs, pingThresholdMs, maxPingFailures, now });
       } catch (err) {
         console.warn('[Steam] GC watchdog tick failed:', err.message);
       }
@@ -361,49 +386,116 @@ class SteamDotaClient extends EventEmitter {
     if (this._gcWatchdogTimer.unref) this._gcWatchdogTimer.unref();
   }
 
-  // Send a lightweight GC request whose response counts as liveness activity
-  // (a self profile-card lookup). A healthy GC replies within seconds, which
-  // bumps `_lastGcActivityAt` via the `receivedFromGC` listener and keeps the
-  // watchdog quiet for an idle-but-healthy bot. A dead GC never replies, so
-  // silence keeps growing until the kick fires. Best-effort; never throws.
-  _sendGcHealthPing() {
+  // Send a lightweight GC request (a self profile-card lookup) and AWAIT its
+  // result, which is the authoritative liveness signal: a live GC answers
+  // within seconds (a non-null card), a dead one never does (resolves null on
+  // an 8s internal timeout). Task #834 — we no longer rely solely on the
+  // generic `receivedFromGC` listener firing for the response; the awaited
+  // outcome itself bumps `_lastGcActivityAt` on success and increments the
+  // consecutive-failure counter that the kick decision is gated on. One probe
+  // is in flight at a time. Best-effort; never throws.
+  async _sendGcHealthPing(now) {
+    if (this._gcPingInFlight) return; // a probe is already outstanding
+    const gc = this.gcClient;
+    if (!gc || typeof gc.requestProfileCard !== 'function') return;
+    let accountId = null;
+    try { accountId = this.steamClient?.steamID?.accountid; } catch (_) { /* ignore */ }
+    if (accountId == null) {
+      console.warn('[Steam] GC watchdog health ping skipped — own Steam account id unavailable.');
+      return;
+    }
+    const clock = () => (typeof now === 'function' ? now() : Date.now());
+    this._gcPingInFlight = true;
+    this._lastHealthPingOutcome = 'sent';
+    console.log('[Steam] GC watchdog health ping sent (self profile-card lookup).');
+    try { require('../web/opsState').reportGcWatchdog({ pingOutcome: 'sent' }); } catch (_) {}
+    let responded = false;
     try {
-      const gc = this.gcClient;
-      if (!gc || !this.isGCReady) return;
-      if (typeof gc.requestProfileCard !== 'function') return;
-      let accountId = null;
-      try { accountId = this.steamClient?.steamID?.accountid; } catch (_) { /* ignore */ }
-      if (accountId == null) return;
-      Promise.resolve(gc.requestProfileCard(accountId)).catch(() => {});
-      console.log('[Steam] GC watchdog health ping sent (self profile-card lookup).');
-    } catch (err) {
-      console.warn('[Steam] GC watchdog health ping failed:', err.message);
+      const res = await Promise.resolve(gc.requestProfileCard(accountId));
+      responded = res != null;
+    } catch (_) {
+      responded = false;
+    }
+    this._gcPingInFlight = false;
+    if (responded) {
+      this._lastGcActivityAt = clock();
+      this._gcConsecutivePingFailures = 0;
+      this._lastHealthPingOutcome = 'responded';
+      console.log('[Steam] GC watchdog health ping responded — GC is alive, silence clock reset.');
+      try { require('../web/opsState').reportGcWatchdog({ pingOutcome: 'responded', consecutivePingFailures: 0 }); } catch (_) {}
+    } else {
+      this._gcConsecutivePingFailures = (this._gcConsecutivePingFailures || 0) + 1;
+      this._lastHealthPingOutcome = 'timed_out';
+      console.warn(`[Steam] GC watchdog health ping got no response (consecutive failures: ${this._gcConsecutivePingFailures}).`);
+      try { require('../web/opsState').reportGcWatchdog({ pingOutcome: 'timed_out', consecutivePingFailures: this._gcConsecutivePingFailures }); } catch (_) {}
     }
   }
 
-  _checkGcLiveness({ thresholdMs, pingThresholdMs, now }) {
+  _checkGcLiveness({ thresholdMs, pingThresholdMs, maxPingFailures, now }) {
     if (!this.isLoggedIn) return; // can't kick GC without Steam
-    const last = this._lastGcActivityAt || now();
-    const silentFor = now() - last;
-    if (silentFor < thresholdMs) {
-      // Still within the tolerance window. If the GC has been quiet long
-      // enough, proactively probe it once per silence window so a healthy
-      // idle session resets its own clock before we ever consider a kick.
-      const pingAt = pingThresholdMs || Math.floor(thresholdMs / 2);
-      if (silentFor >= pingAt && this._lastGcPingForActivityAt !== last) {
-        this._lastGcPingForActivityAt = last; // one probe per silence window
-        this._sendGcHealthPing();
-      }
+    const nowMs = now();
+    const last = this._lastGcActivityAt || nowMs;
+    const silentFor = nowMs - last;
+    const failures = this._gcConsecutivePingFailures || 0;
+    const maxFailures = maxPingFailures || GC_MAX_PING_FAILURES;
+
+    // Per-tick diagnostic + telemetry so the live host can confirm the
+    // keep-alive is working without code spelunking.
+    console.log(
+      `[Steam] GC watchdog tick — silent ${(silentFor / 1000).toFixed(0)}s, ` +
+      `last health ping: ${this._lastHealthPingOutcome || 'none'}, consecutive failures: ${failures}.`
+    );
+    try {
+      require('../web/opsState').reportGcWatchdog({
+        tick: true,
+        silenceMs: silentFor,
+        pingOutcome: this._lastHealthPingOutcome || null,
+        consecutivePingFailures: failures,
+      });
+    } catch (_) {}
+
+    // Healthy / recently active — nothing to do. Clear failure tracking so a
+    // brief blip never carries over toward a kick.
+    if (silentFor < pingThresholdMs) {
+      this._gcConsecutivePingFailures = 0;
       return;
     }
-    console.warn(`[Steam] GC silent for ${(silentFor / 1000).toFixed(0)}s — kicking session (gamesPlayed re-hello).`);
+
+    // The GC has been quiet long enough to be suspicious. Kick ONLY when it
+    // has both been silent past the hard threshold AND demonstrably failed to
+    // answer repeated health pings. Mere idleness can never satisfy the second
+    // condition, so a healthy bot is never kicked.
+    if (silentFor >= thresholdMs && failures >= maxFailures) {
+      this._kickGcSession({ silentFor, now });
+      return;
+    }
+
+    // Otherwise probe the GC. A healthy GC answers and resets its own clock
+    // (via the awaited ping); a dead one increments the failure counter until
+    // the kick condition above is finally met.
+    this._sendGcHealthPing(now);
+  }
+
+  // The recovery kick: replay `gamesPlayed([])` then `gamesPlayed([570])` a
+  // second later to force the GC client to re-hello. This is what visibly
+  // re-opens Dota, so it must only run when the GC is genuinely unresponsive.
+  _kickGcSession({ silentFor, now }) {
+    const nowMs = typeof now === 'function' ? now() : Date.now();
+    console.warn(
+      `[Steam] GC unresponsive — silent for ${(silentFor / 1000).toFixed(0)}s with ` +
+      `${this._gcConsecutivePingFailures || 0} consecutive failed health pings. ` +
+      `Kicking session (gamesPlayed re-hello).`
+    );
     this.isGCReady = false;
     try {
       this.steamClient.gamesPlayed([]);
       setTimeout(() => {
         try { this.steamClient.gamesPlayed([DOTA2_APPID]); } catch (_) { /* swallow */ }
       }, 1000);
-      this._lastGcActivityAt = now(); // reset clock so we don't re-fire every tick
+      this._lastGcActivityAt = nowMs;          // reset clock so we don't re-fire every tick
+      this._gcConsecutivePingFailures = 0;     // start the next window clean
+      this._lastHealthPingOutcome = null;
+      try { require('../web/opsState').reportGcWatchdog({ kick: true, silenceMs: silentFor }); } catch (_) {}
       this.emit('gcWatchdogKick', { silentForMs: silentFor });
     } catch (err) {
       console.error('[Steam] GC re-hello failed:', err.message);

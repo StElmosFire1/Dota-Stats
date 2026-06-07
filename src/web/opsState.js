@@ -25,6 +25,20 @@ const state = {
     lastLobbyEventAt: null,
     lastEvent: null,
     lastDisconnectReason: null,
+    // Task #834 — GC reliability watchdog visibility. Each tick records the
+    // current GC silence age and the outcome of the last keep-alive health
+    // ping, so operators can confirm on the live host that the keep-alive is
+    // working (and see when a recovery kick actually fires) without code
+    // spelunking.
+    watchdog: {
+      lastTickAt: null,
+      lastSilenceMs: null,
+      lastPingOutcome: null,        // 'sent' | 'responded' | 'timed_out' | null
+      lastPingAt: null,
+      consecutivePingFailures: 0,
+      lastKickAt: null,
+      kickTotal: 0,
+    },
   },
   discord: {
     connected: false,
@@ -131,6 +145,33 @@ function reportSteam({ connected, event, disconnectReason }) {
   if (disconnectReason !== undefined) {
     state.steam.lastDisconnectReason = disconnectReason ? String(disconnectReason).slice(0, 200) : null;
     if (disconnectReason) pushLog('steam', 'error', `steam error: ${disconnectReason}`);
+  }
+}
+
+// Task #834 — GC reliability watchdog telemetry. Called from the steam
+// client's watchdog tick / health-ping / kick paths. All fields optional;
+// only the provided ones are updated.
+function reportGcWatchdog({ tick, silenceMs, pingOutcome, consecutivePingFailures, kick } = {}) {
+  const w = state.steam.watchdog;
+  if (tick) {
+    w.lastTickAt = Date.now();
+  }
+  if (typeof silenceMs === 'number' && Number.isFinite(silenceMs)) {
+    w.lastSilenceMs = Math.max(0, Math.round(silenceMs));
+  }
+  if (pingOutcome) {
+    w.lastPingOutcome = String(pingOutcome).slice(0, 20);
+    w.lastPingAt = Date.now();
+  }
+  if (typeof consecutivePingFailures === 'number' && Number.isFinite(consecutivePingFailures)) {
+    w.consecutivePingFailures = Math.max(0, Math.round(consecutivePingFailures));
+  }
+  if (kick) {
+    w.lastKickAt = Date.now();
+    w.kickTotal += 1;
+    w.consecutivePingFailures = 0;
+    const secs = typeof silenceMs === 'number' ? ` after ${Math.round(silenceMs / 1000)}s silence` : '';
+    pushLog('steam', 'warn', `GC watchdog kicked session${secs} (re-hello)`);
   }
 }
 
@@ -399,6 +440,7 @@ async function readHistory(db, { hours = 24 } = {}) {
 module.exports = {
   reportParser,
   reportSteam,
+  reportGcWatchdog,
   reportDiscord,
   reportStripeWebhook,
   reportProvisioner,

@@ -1,5 +1,17 @@
 module.exports = [
   {
+    "version": "9.55",
+    "title": "Bot no longer re-opens Dota every few minutes on a healthy connection",
+    "published_at": "2026-06-07",
+    "notes": [
+      "**Fixed the recurring \"Dota Bot is now playing Dota 2\" popup.** The GC reliability watchdog could still conclude an idle-but-healthy bot's Game Coordinator connection was dead and run its recovery kick (`gamesPlayed` re-hello), which is what re-opened Dota and spammed the Steam \"now playing\" popup for everyone friended with the bot — even when no inhouse game was running. The earlier keep-alive relied on a generic message listener firing for the health-ping response, which wasn't reliably registering as liveness on the live host.",
+      "**The keep-alive now proves the GC is alive by itself.** The watchdog's self profile-card health ping is now awaited directly: a reply (within seconds on a healthy GC) resets the silence clock on its own, independent of any background event listener. The listeners are also bound so they survive re-login without piling up duplicates.",
+      "**The recovery kick is now a genuine last resort.** It only fires after the health ping has failed to get a response several times in a row across the silence window — never on mere idleness. A truly dead GC still recovers exactly as before.",
+      "**Operator visibility.** Each watchdog tick now records the current GC silence age and the last health-ping outcome (sent / responded / timed out), and kicks are logged to the ops dashboard, so the keep-alive can be confirmed working on the live host without digging through code. Full edition only (Steam/Dota GC)."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.54",
     "title": "Leaderboard rank circles now sit centered in each row",
     "published_at": "2026-06-07",
