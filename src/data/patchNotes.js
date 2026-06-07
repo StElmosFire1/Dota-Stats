@@ -1,5 +1,14 @@
 module.exports = [
   {
+    "version": "9.54",
+    "title": "Leaderboard rank circles now sit centered in each row",
+    "published_at": "2026-06-07",
+    "notes": [
+      "**Centered the rank markers on the Seasonal Rankings table.** On the Global Standings table the numbered rank discs and the top-rank emblem rings were sitting low and off-center in their rows, because the rank column cell fell back to default table-cell baseline alignment. The rank column now vertically and horizontally centers its contents, and the disc/emblem wrappers align to the row centerline, so plain-disc rows and the larger emblem rows line up consistently with no change to row heights. Full edition only · presentation only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.53",
     "title": "Bot stops re-opening Dota every 5 minutes on a healthy connection",
     "published_at": "2026-06-06",

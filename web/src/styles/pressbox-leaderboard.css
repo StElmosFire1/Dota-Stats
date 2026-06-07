@@ -48,11 +48,20 @@
   color: var(--pb-brass-bright);
 }
 
+/* Center the rank marker (disc or emblem) within its column cell. Default
+   table-cell baseline alignment otherwise drops the inline-flex disc/emblem
+   onto the text baseline, sitting it low and off-center in the row. */
+.pb-leaderboard .col-rank {
+  text-align: center;
+  vertical-align: middle;
+}
+
 /* Framed rank disc — mirrors the mockup's FramedRank treatment. */
 .pb-leaderboard .col-rank .pb-rank-disc {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  vertical-align: middle;
   width: 30px;
   height: 30px;
   border-radius: 50%;
@@ -79,6 +88,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  vertical-align: middle;
   height: 30px;
   overflow: visible;
 }
