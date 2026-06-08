@@ -1,5 +1,15 @@
 module.exports = [
   {
+    "version": "9.56",
+    "title": "Discord post-match summary no longer attaches the recap card",
+    "published_at": "2026-06-08",
+    "notes": [
+      "**The branded recap card is no longer auto-posted to Discord.** When a match finishes, the bot used to post three things: the text summary embed (highlights + KDA), the plain scoreboard table image, and the large branded recap card (\"RADIANT VICTORY\" with PERF rows and the site footer). The recap card auto-post has been removed — only the text embed and the scoreboard image are posted now, and cross-posts to additional stats channels carry the embed only.",
+      "**Everything else about the recap card is untouched.** It still renders on the web match-detail page, is still served by the recap-card image endpoint, and can still be shared to the highlights channel manually from the web. The `MATCH_RECAP_VARIANT` env var no longer affects Discord posts. This brings the full edition in line with the community edition, which already stopped posting the card."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.55",
     "title": "Bot no longer re-opens Dota every few minutes on a healthy connection",
     "published_at": "2026-06-07",
