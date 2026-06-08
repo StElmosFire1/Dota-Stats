@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.57",
+    "title": "Weekly recap is now readable and lives on the Home page",
+    "published_at": "2026-06-08",
+    "notes": [
+      "**Fun highlights now read as sentences.** The \"This week in inhouse\" recap used to dump the raw highlight data (e.g. `{\"name\":\"CosmicPanda\",\"kills\":2,...}`) on screen. Every highlight — best KDA, most kills, rampages, vision, healing, tower damage, fastest/longest game, bloodbath and more — now reads as a plain sentence naming the player (linked to their profile), the hero where relevant, and the headline stat. Unknown or empty highlights are skipped cleanly.",
+      "**Top performers show set nicknames.** The recap's Top performers list (and every highlight line) now shows each player's community nickname instead of falling back to `Player #<id>` when a name is known.",
+      "**Recap surfaced on Home.** The weekly recap now appears as a section on the Home page — a short blurb plus a few top performers and highlights, with a link through to the full `/this-week` page. \"This Week\" has been removed from the Stats dropdown (the page itself still works). Full edition only · a11y gate green."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.56",
     "title": "Discord post-match summary no longer attaches the recap card",
     "published_at": "2026-06-08",

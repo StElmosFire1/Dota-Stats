@@ -5,6 +5,7 @@ import { fmtDate } from '../utils/dates';
 import { useSeason } from '../context/SeasonContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { formatHeroName } from '../utils/heroes';
+import { buildHighlightItems, recapPerformerName } from '../utils/recapHighlights';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import QuestTracker from '../components/QuestTracker';
 import CommunityChallengeTile from '../components/CommunityChallengeTile';
@@ -1039,6 +1040,8 @@ export default function Home() {
           recentMatches={recentMatches}
           top5={top5}
         />
+
+        <WeeklyRecapSection recap={recap} />
       </div>
     );
   }
@@ -1072,6 +1075,8 @@ export default function Home() {
         top5={top5}
       />
 
+      <WeeklyRecapSection recap={recap} />
+
       <HowItWorks />
 
       <WhyPlayHere />
@@ -1097,6 +1102,106 @@ function fmtAgo(dateStr) {
 function fmtDurMmSs(s) {
   if (!s) return '—';
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function WeeklyRecapSection({ recap }) {
+  if (!recap || !recap.generated_at) return null;
+
+  const blurb = recap.ai_blurb && String(recap.ai_blurb).trim();
+  const performers = Array.isArray(recap.top_performers) ? recap.top_performers.slice(0, 3) : [];
+  const highlights = buildHighlightItems(recap.fun_highlights, 3);
+
+  // Nothing worth surfacing — skip the whole section rather than render an
+  // empty card.
+  if (!blurb && performers.length === 0 && highlights.length === 0) return null;
+
+  const ago = recap.generated_at
+    ? new Date(recap.generated_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
+    : null;
+
+  return (
+    <section style={{ marginBottom: 32 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 6 }}>
+        <div>
+          <h2 className="font-serif" style={{
+            margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)',
+            fontFamily: 'var(--font-serif, serif)',
+          }}>This Week in Inhouse</h2>
+          <p className="font-serif" style={{
+            margin: '2px 0 0', fontSize: 13, fontStyle: 'italic',
+            color: 'var(--text-muted)', fontFamily: 'var(--font-serif, serif)',
+          }}>
+            {ago ? `Recap from ${ago}` : 'Weekly recap'}
+            {recap.matches_count ? ` · ${recap.matches_count} match${Number(recap.matches_count) === 1 ? '' : 'es'}` : ''}
+          </p>
+        </div>
+        <Link to="/this-week" className="uppercase-wide" style={{
+          fontSize: 12, color: 'var(--brass, var(--accent))', textDecoration: 'none',
+          fontFamily: 'var(--font-condensed, inherit)', textTransform: 'uppercase',
+          letterSpacing: '0.12em', fontWeight: 600,
+        }}>Full recap →</Link>
+      </div>
+      <div className="oa-rule-double" style={{ marginBottom: 14 }} />
+
+      <div className="oa-card pb-card" style={{ padding: '20px 22px' }}>
+        {blurb && (
+          <p style={{
+            margin: 0, fontSize: 15, lineHeight: 1.7, color: 'var(--text-primary)',
+            whiteSpace: 'pre-wrap',
+          }}>{blurb}</p>
+        )}
+
+        {(performers.length > 0 || highlights.length > 0) && (
+          <div style={{
+            display: 'grid', gridTemplateColumns: performers.length && highlights.length ? '1fr 1fr' : '1fr',
+            gap: 24, marginTop: blurb ? 18 : 0,
+          }} className="oa-home-twocol">
+            {performers.length > 0 && (
+              <div>
+                <div className="uppercase-wide" style={{
+                  fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-condensed, inherit)',
+                  textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700, marginBottom: 8,
+                }}>Top performers</div>
+                <ol style={{ paddingLeft: 18, margin: 0 }}>
+                  {performers.map((p, i) => (
+                    <li key={p.account_id || i} style={{ marginBottom: 5, color: 'var(--text-primary)', fontSize: 14 }}>
+                      {p.account_id ? (
+                        <Link to={`/player/${p.account_id}`} style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                          {recapPerformerName(p)}
+                        </Link>
+                      ) : (
+                        <span style={{ fontWeight: 600 }}>{recapPerformerName(p)}</span>
+                      )}
+                      {p.avg_kda != null && (
+                        <span style={{ color: 'var(--text-muted)' }}> — {Number(p.avg_kda).toFixed(2)} KDA</span>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {highlights.length > 0 && (
+              <div>
+                <div className="uppercase-wide" style={{
+                  fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-condensed, inherit)',
+                  textTransform: 'uppercase', letterSpacing: '0.14em', fontWeight: 700, marginBottom: 8,
+                }}>Highlights</div>
+                <ul style={{ paddingLeft: 18, margin: 0, color: 'var(--text-secondary)' }}>
+                  {highlights.map((item) => (
+                    <li key={item.key} style={{ marginBottom: 5, fontSize: 14, lineHeight: 1.55 }}>
+                      <strong style={{ color: 'var(--text-primary)' }}>{item.label}:</strong>{' '}
+                      <span>{item.body}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function CourtPitchHomeLanding({ loading, totals, recentMatches, top5 }) {

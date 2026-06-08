@@ -759,7 +759,6 @@ function Nav() {
         <DropdownMenu label="Stats">
           <DropdownItem to="/stats">Player Stats</DropdownItem>
           <DropdownItem to="/positions">Positions</DropdownItem>
-          <DropdownItem to="/this-week">This Week</DropdownItem>
           <DropdownItem to="/records">Records &amp; Hall of Fame</DropdownItem>
           <DropdownItem to="/benchmarks">Benchmarks</DropdownItem>
           <DropdownItem to="/player-tools">Head-to-Head &amp; Compare</DropdownItem>
