@@ -1,0 +1,91 @@
+.hero-card-enter {
+  animation: cardEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes cardEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.hero-card {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(245, 158, 11, 0.4); /* amber tint */
+  box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.8), 0 0 20px -8px rgba(245, 158, 11, 0.15);
+}
+
+.hero-card .hero-portrait-overlay {
+  background: linear-gradient(180deg, rgba(21, 32, 54, 0) 50%, var(--bg-elevated) 100%);
+  transition: opacity 0.3s ease;
+}
+
+.hero-card:hover .hero-portrait-overlay {
+  opacity: 0.8;
+}
+
+.hero-card:hover .hero-portrait {
+  transform: scale(1.05);
+}
+
+.hero-portrait {
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.filter-pill {
+  transition: all 0.2s ease;
+}
+.filter-pill[data-active="true"] {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.filter-pill[data-active="false"] {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--text-muted);
+}
+.filter-pill[data-active="false"]:hover {
+  border-color: var(--brass);
+  color: var(--text-primary);
+}
+
+.sparkline-path {
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 2px 4px rgba(245, 158, 11, 0.4));
+}
+.sparkline-bg {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Base custom scrollbar for the atlas */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}

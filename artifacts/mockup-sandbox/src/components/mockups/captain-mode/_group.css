@@ -1,0 +1,67 @@
+/* Captain's Mode — Court & Pitch design tokens (mirrors web/src/styles.css :root dark theme).
+   Every Captain's Mode mockup imports this file: import "./_group.css"; */
+
+.cm-root {
+  /* Core palette */
+  --bg-primary: #0d1424;
+  --bg-card: #152036;
+  --bg-elevated: #1a2744;
+  --ink-navy: #0d1424;
+
+  --text-primary: #eef2f8;
+  --text-secondary: #aab8cf;
+  --text-muted: #6c7e9c;
+
+  --accent: #c5a975;
+  --accent-hover: #d4bb87;
+  --gold: #c5a975;
+  --brass: #c5a975;
+  --brass-bright: #e1c79a;
+  --amber: #f59e0b;
+  --parchment: #f5efe2;
+  --border: #2a3b5c;
+
+  --radiant: #6cc04a;
+  --dire: #d24b4b;
+  --accent-green: #34d399;
+  --accent-red: #f87171;
+
+  --line: rgba(197, 169, 117, 0.18);
+  --line-soft: rgba(255, 255, 255, 0.06);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 24px 60px -28px rgba(0, 0, 0, 0.75);
+
+  --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-num: 'Newsreader', Georgia, serif;
+  --font-condensed: 'Oswald', 'Inter', sans-serif;
+
+  font-family: var(--font);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+/* Press Box helpers (scoped to .cm-root so they never leak into other mockups) */
+.cm-root .pb-eyebrow {
+  font-family: var(--font-condensed);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brass);
+}
+.cm-root .pb-serif { font-family: var(--font-serif); }
+.cm-root .pb-cond { font-family: var(--font-condensed); }
+.cm-root .pb-num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+.cm-root .pb-card {
+  background: linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-card) 100%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.cm-root .pb-card-sm { border-radius: var(--radius-sm); }

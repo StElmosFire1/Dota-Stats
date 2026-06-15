@@ -1,5 +1,6 @@
 - [Dialog focus-trap & options](dialog-focus-trap.md) — shared <Dialog> trap treats every enabled <button> as focusable regardless of tabIndex=-1; listbox options must be non-button.
 - [Headless site capture](playwright-site-capture.md) — Nix libs + first-visit modal dismiss needed for headless oceinhouse.gg screenshots; /inhouse blank & /hall-of-fame errors for anon.
+- [Mockup/canvas gotchas](mockup-canvas-gotchas.md) — DESIGN subagents emit over-escaped template literals (\` \${) breaking vite; external_url screenshots cache (bust with ?cb=N); presentArtifact id is `artifacts/mockup-sandbox`.
 - [Press Box vs purchasable themes](pressbox-theme-rewire.md) — upscale-2026 uses standalone --pb-* tokens; purchasable themes need rewiring if design ships.
 - [Draft order_num sources](draft-order-num-sources.md) — order_num base differs by source (replay 1-24, OpenDota 0-23); never blindly +1, rank by sorted position keyed by entry ref.
 - [Patch-notes version uniqueness](patch-notes-versions.md) — versions aren't monotonic; grep the whole patchNotes.js for your candidate version before committing or the gate fails.

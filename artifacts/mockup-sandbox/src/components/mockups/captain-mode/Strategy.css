@@ -1,0 +1,115 @@
+.cm-root .strategy-slider-track {
+  height: 4px;
+  background: var(--line);
+  border-radius: 2px;
+  position: relative;
+  width: 100%;
+}
+
+.cm-root .strategy-slider-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  background: var(--amber);
+  border-radius: 2px;
+  transition: width 0.3s ease, left 0.3s ease;
+}
+
+.cm-root .strategy-slider-knob {
+  width: 16px;
+  height: 16px;
+  background: var(--amber);
+  border: 2px solid var(--bg-card);
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cm-root .strategy-slider-knob:hover {
+  transform: translate(-50%, -50%) scale(1.2);
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.8);
+}
+
+.cm-root .strategy-slider-knob:active {
+  cursor: grabbing;
+  transform: translate(-50%, -50%) scale(0.9);
+}
+
+.cm-root .strategy-meter-track {
+  height: 8px;
+  background: var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.cm-root .strategy-meter-fill {
+  height: 100%;
+  background: var(--amber);
+  border-radius: 4px;
+  animation: meterFill 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  transform-origin: left;
+}
+
+@keyframes meterFill {
+  0% { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
+}
+
+.cm-root .strategy-btn {
+  background: var(--amber);
+  color: #000;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  transition: all 0.2s ease;
+}
+
+.cm-root .strategy-btn:hover {
+  background: #fcd34d;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.cm-root .hero-card {
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.cm-root .hero-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--amber);
+}
+
+.cm-root .role-dropdown {
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  color: var(--text-primary);
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23c5a975%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+  background-size: 12px;
+  padding-right: 20px;
+}
+
+.cm-root .role-dropdown:hover {
+  border-color: var(--amber);
+}
+
+.cm-root .strategy-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--amber), transparent);
+  opacity: 0.5;
+}

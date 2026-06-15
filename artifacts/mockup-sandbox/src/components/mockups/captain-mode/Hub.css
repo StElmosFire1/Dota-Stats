@@ -1,0 +1,99 @@
+@keyframes progress-shrink {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.animate-timer-bar {
+  animation: progress-shrink 28s linear infinite;
+}
+
+@keyframes fade-in-out {
+  0%, 10% { opacity: 0; transform: scale(0.95); }
+  20%, 80% { opacity: 1; transform: scale(1); }
+  90%, 100% { opacity: 0; transform: scale(0.95); }
+}
+
+/* 4 slots, 10s loop */
+.slot-anim-1 { animation: fade-in-out 10s infinite 0s; }
+.slot-anim-2 { animation: fade-in-out 10s infinite 2.5s; }
+.slot-anim-3 { animation: fade-in-out 10s infinite 5s; }
+.slot-anim-4 { animation: fade-in-out 10s infinite 7.5s; }
+
+.slot-placeholder {
+  border: 1px dashed var(--line);
+  background: rgba(0,0,0,0.2);
+}
+
+.ambient-bg {
+  background: 
+    radial-gradient(circle at 30% 30%, rgba(245, 158, 11, 0.05) 0%, transparent 60%),
+    radial-gradient(circle at 70% 70%, rgba(197, 169, 117, 0.03) 0%, transparent 50%),
+    linear-gradient(rgba(197, 169, 117, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(197, 169, 117, 0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+  background-position: 0 0, 0 0, -1px -1px, -1px -1px;
+}
+
+.carousel-container {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  gap: 24px;
+  padding-bottom: 16px;
+}
+
+.carousel-container::-webkit-scrollbar {
+  display: none;
+}
+
+.carousel-card {
+  flex: 0 0 85%;
+  max-width: 400px;
+  scroll-snap-align: start;
+}
+
+.strike-through {
+  position: relative;
+}
+.strike-through::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom right, transparent 45%, var(--dire) 45%, var(--dire) 55%, transparent 55%);
+  pointer-events: none;
+}
+
+.btn-amber {
+  background: var(--amber);
+  color: #000;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 12px 24px;
+  transition: all 0.2s;
+}
+.btn-amber:hover {
+  background: #fcd34d;
+}
+
+.btn-ghost {
+  border: 1px solid var(--line);
+  color: var(--parchment);
+  font-weight: 500;
+  border-radius: 4px;
+  padding: 12px 24px;
+  transition: all 0.2s;
+}
+.btn-ghost:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: var(--brass);
+}
+
+.hero-portrait {
+  object-fit: cover;
+  width: 100%;
+  height: 100%;
+}
