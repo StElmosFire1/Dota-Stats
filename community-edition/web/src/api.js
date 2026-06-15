@@ -619,7 +619,7 @@ export async function getPlayerCommunityRatings(accountId) {
 
 // Task #314 — post-match QOL bundle.
 export async function getNemesisSpotlight(matchId) {
-  const r = await fetch(`${BASE_URL}/matches/${encodeURIComponent(matchId)}/nemesis-spotlight`, { credentials: 'include' });
+  const r = await fetch(`${BASE}/matches/${encodeURIComponent(matchId)}/nemesis-spotlight`, { credentials: 'include' });
   if (r.status === 401) return { spotlight: null };
   if (!r.ok) throw new Error('Failed to fetch nemesis spotlight');
   return r.json();
@@ -628,7 +628,7 @@ export async function getNemesisSpotlight(matchId) {
 export function recapCardUrl(matchId, { size = 'og', variant = 'classic', download = false } = {}) {
   const q = new URLSearchParams({ size, variant });
   if (download) q.set('download', '1');
-  return `${BASE_URL}/matches/${encodeURIComponent(matchId)}/recap-card.png?${q.toString()}`;
+  return `${BASE}/matches/${encodeURIComponent(matchId)}/recap-card.png?${q.toString()}`;
 }
 
 export async function getMatchRatings(matchId) {

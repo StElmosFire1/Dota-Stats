@@ -94,5 +94,11 @@ module.exports = [
     "title": "Discord post-match summary no longer attaches the recap card",
     "published_at": "2026-06-05",
     "content": "When a match finishes, the Discord bot used to post three things: a text embed (highlights + KDA), a scoreboard image, and the branded recap card graphic (\"RADIANT VICTORY\" with PERF rows and the site footer). The recap card is no longer posted to Discord — only the text embed and scoreboard image are sent. The recap card itself is untouched everywhere else: it still renders on the web match detail page and is still served by GET /api/matches/:matchId/recap-card.png. This change is community-edition only."
+  },
+  {
+    "version": "2.0",
+    "title": "Match page no longer crashes with \"BASE_URL is not defined\"",
+    "published_at": "2026-06-15",
+    "content": "Clicking into any match on the community site threw \"BASE_URL is not defined\" and showed the Match page error screen. Two helper functions in the frontend API client (getNemesisSpotlight and recapCardUrl, both part of the post-match QOL bundle) referenced a BASE_URL variable that doesn't exist in this module — the rest of the file uses BASE ('/api'). Fixed both to use BASE, matching the full edition. Match detail pages load again."
   }
 ];
