@@ -205,6 +205,10 @@ class Dota2GCClient extends EventEmitter {
     this.dota2.on('disconnectedFromGC', (reason) => {
       console.warn(`[Dota2 GC] Disconnected from GC: ${reason}`);
       this.isReady = false;
+      // Task #840 — surface GC-only drops (Steam socket still up) to the outer
+      // SteamDotaClient so its `isGCReady` flag stays accurate; that flag gates
+      // whether a Steam reconnect re-opens Dota.
+      this.emit('disconnectedFromGC', reason);
     });
 
     this.dota2.router.on(EDOTAGCMsg.k_EMsgGCPracticeLobbyResponse, (data) => {

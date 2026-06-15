@@ -21,3 +21,4 @@
 - [AdminPanel tab render guards](adminpanel-tab-render-guards.md) — sections gated only by `{activeTab==='x'}`; same-tab fragments consolidate safely if concatenated in file order; TAB_META is single source.
 - [Dota dedicated server topology](dota-dedicated-server-topology.md) — game server is a SEPARATE droplet (134.199.166.223) from the bot host (170.64.182.110); DEDICATED_SERVER_* + pm2 oi-bot live on the bot host, not the droplet.
 - [Owner-perk unlock chokepoints](owner-perk-unlock-chokepoints.md) — superuser "own everything" must short-circuit ownership in db/index.js, oneOffPerks.js AND lootbox/db.js (equip+collection) or display/equip disagree.
+- [Dota2 GC reconnect](dota2-gc-reconnect.md) — "now playing Dota" popup: dota2-user hooks listeners on the persistent SteamUser socket in its ctor; build the GC client ONCE & gate/debounce the gamesPlayed re-hello.

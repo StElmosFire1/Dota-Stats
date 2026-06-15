@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.58",
+    "title": "Bot no longer re-opens Dota on every Steam reconnect",
+    "published_at": "2026-06-15",
+    "notes": [
+      "**Fixed the remaining \"Dota Bot is now playing Dota 2\" popup.** Earlier fixes stopped the GC watchdog from re-opening Dota on a healthy-but-idle connection, but the popup could still recur every few minutes. The real culprit was the Steam reconnect path: every time Steam dropped and re-logged in, the bot built a brand-new Game Coordinator client while the previous one's listeners stayed attached to the long-lived Steam socket. Each reconnect stacked another full set of handlers, so a single `gamesPlayed` hello fanned out across all the stale clients and each one re-announced Dota — multiplying the popup.",
+      "**The Game Coordinator client is now created once and reused.** Re-logins reuse the existing client instead of leaking a new one, so listeners can no longer accumulate across reconnects.",
+      "**The Dota re-launch is now gated and logged.** On a Steam reconnect the bot only re-opens Dota when the GC session was genuinely lost; a transient blip that didn't drop the GC no longer triggers a relaunch. Rapid reconnect storms are debounced into a single recovery, and every relaunch (or skip) is logged with its reason and surfaced to the ops dashboard. Full edition only (Steam/Dota GC)."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.57",
     "title": "Weekly recap is now readable and lives on the Home page",
     "published_at": "2026-06-08",

@@ -25,6 +25,13 @@ const GC_SILENCE_THRESHOLD_MS = 5 * 60 * 1000;
 // GC answers the probe and resets its own clock long before this is reached.
 const GC_MAX_PING_FAILURES = 2;
 
+// Task #840 — a Steam-level reconnect re-fires `loggedOn`, which is the OTHER
+// path (besides the watchdog kick) that re-sends the `gamesPlayed([570])` GC
+// hello and visibly re-opens Dota. We coalesce rapid `loggedOn` storms so a
+// flapping Steam socket can't translate into a burst of Dota relaunches: once
+// a hello has been sent, another within this window is suppressed.
+const GAMES_PLAYED_HELLO_DEBOUNCE_MS = 10 * 1000;
+
 // Events the Dota2GCClient genuinely emits whenever the Game Coordinator is
 // alive and talking to us. Observing any of these resets the silence clock.
 // (The watchdog originally listened for `message`/`receive`/`connectionStatus`,
@@ -70,41 +77,7 @@ class SteamDotaClient extends EventEmitter {
       });
     } catch (_) { /* optional; safe to skip */ }
 
-    this.steamClient.on('loggedOn', () => {
-      console.log('[Steam] Logged in successfully.');
-      try { require('../web/opsState').reportSteam({ connected: true, event: 'loggedOn' }); } catch (_) {}
-      this.isLoggedIn = true;
-      this.steamClient.setPersona(SteamUser.EPersonaState.Online, 'Dota Bot');
-
-      this.gcClient = new Dota2GCClient(this.steamClient);
-
-      this.gcClient.on('ready', () => {
-        console.log('[Steam] Dota 2 GC is ready!');
-        this.isGCReady = true;
-        this._lastGcActivityAt = Date.now();
-        // Fresh GC session — clear any stale health-ping failure state left
-        // over from a previous (now-recovered) silence window so the new
-        // session starts from a clean slate.
-        this._gcConsecutivePingFailures = 0;
-        this._gcPingInFlight = false;
-        this._lastHealthPingOutcome = null;
-        this.emit('gcReady');
-        this._startGcWatchdog();
-      });
-
-      // Any GC traffic resets the silence clock. Bump on the high-level events
-      // the GC client actually emits (see GC_LIVENESS_EVENTS). These listeners
-      // are bound to the *current* gcClient, which is recreated on every
-      // `loggedOn`; the old client is discarded so its listeners go with it.
-      // The raw `receivedFromGC` bump lives once on the SteamUser socket (see
-      // _setupListeners) so it survives re-login without accumulating.
-      const bump = () => { this._lastGcActivityAt = Date.now(); };
-      for (const ev of GC_LIVENESS_EVENTS) {
-        try { this.gcClient.on(ev, bump); } catch (_) { /* optional; safe to skip */ }
-      }
-
-      this.steamClient.gamesPlayed([DOTA2_APPID]);
-    });
+    this.steamClient.on('loggedOn', () => this._handleLoggedOn());
 
     this.steamClient.on('steamGuard', (domain, callback, lastCodeWrong) => {
       if (config.steam.sharedSecret) {
@@ -206,6 +179,98 @@ class SteamDotaClient extends EventEmitter {
       this.isLoggedIn = false;
       this.isGCReady = false;
     });
+  }
+
+  // Task #840 — handle `loggedOn`. This fires on the very first login AND on
+  // every Steam-level auto-reconnect (`steam-user` re-logs after any socket
+  // drop). Two things matter for keeping Dota from re-opening every few
+  // minutes:
+  //
+  //  1. The GC client is created EXACTLY ONCE and reused. The dota2-user
+  //     instance hooks all its listeners (`receivedFromGC`, `appLaunched`,
+  //     `appQuit`, `disconnected`, `error`) onto the long-lived SteamUser
+  //     socket in its constructor. The old code built a fresh Dota2GCClient on
+  //     every `loggedOn`, so each reconnect left another full set of those
+  //     listeners attached — every subsequent `gamesPlayed` then fired N stale
+  //     clients, each re-helloing the GC. Reusing one client eliminates that
+  //     accumulation entirely.
+  //  2. The `gamesPlayed([570])` re-hello (what visibly re-opens Dota) is
+  //     gated — see `_sendGamesPlayedHello`.
+  _handleLoggedOn() {
+    console.log('[Steam] Logged in successfully.');
+    try { require('../web/opsState').reportSteam({ connected: true, event: 'loggedOn' }); } catch (_) {}
+    const isReLogin = !!this._everLoggedOn;
+    this.isLoggedIn = true;
+    this._everLoggedOn = true;
+    try { this.steamClient.setPersona(SteamUser.EPersonaState.Online, 'Dota Bot'); } catch (_) {}
+
+    if (!this.gcClient) {
+      this.gcClient = new Dota2GCClient(this.steamClient);
+
+      this.gcClient.on('ready', () => {
+        console.log('[Steam] Dota 2 GC is ready!');
+        this.isGCReady = true;
+        this._lastGcActivityAt = Date.now();
+        // Fresh GC session — clear any stale health-ping failure state left
+        // over from a previous (now-recovered) silence window so the new
+        // session starts from a clean slate.
+        this._gcConsecutivePingFailures = 0;
+        this._gcPingInFlight = false;
+        this._lastHealthPingOutcome = null;
+        this.emit('gcReady');
+        this._startGcWatchdog();
+      });
+
+      this.gcClient.on('disconnectedFromGC', () => { this.isGCReady = false; });
+
+      // Any GC traffic resets the silence clock. Bump on the high-level events
+      // the GC client actually emits (see GC_LIVENESS_EVENTS). Bound once to the
+      // single, reused gcClient. The raw `receivedFromGC` bump lives once on the
+      // SteamUser socket (see _setupListeners).
+      const bump = () => { this._lastGcActivityAt = Date.now(); };
+      for (const ev of GC_LIVENESS_EVENTS) {
+        try { this.gcClient.on(ev, bump); } catch (_) { /* optional; safe to skip */ }
+      }
+    }
+
+    this._sendGamesPlayedHello(isReLogin);
+  }
+
+  // Task #840 — send the `gamesPlayed([570])` GC hello that launches Dota, but
+  // only when it's actually warranted, and always with a logged reason.
+  //
+  //  • First login: always launch Dota.
+  //  • Steam reconnect with the GC session still established: a transient blip
+  //    that didn't actually drop the GC — do NOT re-open Dota.
+  //  • Steam reconnect with the GC gone (the normal case — a real socket drop
+  //    resets `_playingAppIds` and tears down the GC session): re-launch Dota
+  //    so the GC reconnects.
+  //  • Either way, coalesce rapid `loggedOn` storms via a short debounce so a
+  //    flapping socket can't fire a burst of relaunches.
+  _sendGamesPlayedHello(isReLogin) {
+    if (isReLogin && this.isGCReady) {
+      console.log('[Steam] Reconnected to Steam — Dota GC session still established; not re-opening Dota.');
+      try { require('../web/opsState').reportSteam({ event: 'reconnect:gc-alive' }); } catch (_) {}
+      return;
+    }
+
+    const nowMs = Date.now();
+    if (this._lastGamesPlayedHelloAt != null && (nowMs - this._lastGamesPlayedHelloAt) < GAMES_PLAYED_HELLO_DEBOUNCE_MS) {
+      const agoMs = nowMs - this._lastGamesPlayedHelloAt;
+      console.log(`[Steam] Suppressing Dota re-open — a gamesPlayed hello was already sent ${(agoMs / 1000).toFixed(1)}s ago (debounce).`);
+      try { require('../web/opsState').reportSteam({ event: 'reconnect:hello-debounced' }); } catch (_) {}
+      return;
+    }
+
+    const reason = isReLogin ? 'Steam reconnect (GC session was lost)' : 'initial login';
+    console.log(`[Steam] Opening Dota 2 — sending gamesPlayed([${DOTA2_APPID}]) hello. Reason: ${reason}.`);
+    try { require('../web/opsState').reportSteam({ event: isReLogin ? 'gamesPlayedHello:reconnect' : 'gamesPlayedHello:initial' }); } catch (_) {}
+    this._lastGamesPlayedHelloAt = nowMs;
+    try {
+      this.steamClient.gamesPlayed([DOTA2_APPID]);
+    } catch (err) {
+      console.error('[Steam] gamesPlayed hello failed:', err.message);
+    }
   }
 
   startFriendMonitor() {
