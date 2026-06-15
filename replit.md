@@ -131,8 +131,12 @@ interaction regressions the feature-health probe layer can't see.
   runner degrades gracefully when these aren't installed — the run records a
   single SKIPPED step with a clear message instead of throwing.
 
+## Steam/Dota connection: currently OFF
+Steam/Dota is **switched off in both editions via `DISABLE_STEAM=true`** (set in the Replit production + development environments; on the prod host it must also be set in each PM2 process's env). With it on, neither edition logs into Steam or sends `gamesPlayed([570])`, so the "Dota Bot is now playing Dota 2" presence stops. Web dashboard, Discord bot, Stripe, and the replay parser all keep running; Steam-dependent surfaces (`/inhouse` lobby flow, friend-lobby auto-detect) fail soft and stay dormant. Startup logs a clear `[Startup] Steam/Dota intentionally DISABLED (DISABLE_STEAM=true)` line. **To re-enable:** remove `DISABLE_STEAM` (or set it to anything other than the exact string `true`) and restart each process (`pm2 restart <name> --update-env` on the prod host). Re-enabling is when the separate reconnect-fix task (#840) applies. Full reference in `docs/env-vars.md`.
+
 ## Environment variables (security-relevant)
 Full per-variable reference lives in **`docs/env-vars.md`** (moved out to keep this README lean). Variables documented there:
+- `DISABLE_STEAM` — Steam/Dota connection kill-switch (both editions); currently `true` (Steam off). See the "Steam/Dota connection" section above.
 - `OWNER_DISCORD_ID` — owner-only Discord command override (both editions).
 - `OTEL_EXPORTER_OTLP_ENDPOINT` (+ `OTEL_*` companions) — OpenTelemetry; disabled when unset.
 - `attached_assets/*.json|*.pem|*.key` — `.gitignore`-blocked (leaked-secret incident); scrub before committing.

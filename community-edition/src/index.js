@@ -82,7 +82,11 @@ async function main() {
   // --- Steam login (kept for connectivity health check) ---
   let steamConnected = false;
   let steamLoggedInElsewhere = false;
-  if (config.steam.accountName && config.steam.password && process.env.DISABLE_STEAM !== 'true') {
+  const steamDisabled = process.env.DISABLE_STEAM === 'true';
+  if (steamDisabled) {
+    console.warn('[Startup] Steam/Dota intentionally DISABLED (DISABLE_STEAM=true). Skipping Steam login — no Dota GC connection, no "now playing Dota 2" presence. Web dashboard, Discord bot and the replay parser still run. Re-enable by removing DISABLE_STEAM (or setting it to anything other than "true") and restarting.');
+  }
+  if (config.steam.accountName && config.steam.password && !steamDisabled) {
     try {
       const { getSteamClient } = require('./steam/steamClient');
       const steamClient = getSteamClient();
@@ -112,7 +116,7 @@ async function main() {
         console.warn('[Startup] Another instance holds the Steam session — Discord commands will be silenced on this instance.');
       }
     }
-  } else {
+  } else if (!steamDisabled) {
     console.warn('[Startup] Steam credentials not set — Steam offline.');
   }
 

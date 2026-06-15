@@ -70,6 +70,9 @@ DEDICATED_SERVER_STEAM_ID = "90285031166742544"
 [userenv.development]
 DISABLE_STEAM = "true"
 
+[userenv.production]
+DISABLE_STEAM = "true"
+
 [[ports]]
 localPort = 3000
 externalPort = 3000

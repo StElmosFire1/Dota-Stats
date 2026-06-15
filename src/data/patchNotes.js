@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.59",
+    "title": "Steam/Dota connection switched off for now",
+    "published_at": "2026-06-15",
+    "notes": [
+      "**The bot no longer connects to Steam or re-opens Dota.** Steam/Dota is now intentionally switched off in both editions via `DISABLE_STEAM=true`, so the bot stops logging into Steam and stops sending the Dota \"now playing\" hello — the \"Dota Bot is now playing Dota 2\" popup stops entirely. This is a reversible \"for now\" change.",
+      "**The website and Discord bot stay fully up.** The web dashboard, Discord bot, Stripe, the replay parser, TrueSkill, and all schedulers keep running normally. Steam-dependent surfaces (the `/inhouse` lobby flow and friend-lobby auto-detect) stay dormant and report \"Steam not connected\" rather than erroring.",
+      "**Startup now says so clearly.** Instead of a misleading \"credentials not set\" warning, startup logs `Steam/Dota intentionally DISABLED (DISABLE_STEAM=true)` with re-enable instructions. To turn Steam back on, remove `DISABLE_STEAM` (or set it to anything other than `true`) and restart — that's when the separate reconnect fix applies."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.58",
     "title": "Bot no longer re-opens Dota on every Steam reconnect",
     "published_at": "2026-06-15",
