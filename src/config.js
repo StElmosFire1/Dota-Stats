@@ -16,6 +16,8 @@ const config = {
       ? process.env.PATCH_CHANNEL_IDS.split(',').map(s => s.trim()).filter(Boolean)
       : (process.env.ANNOUNCE_CHANNEL_ID ? [process.env.ANNOUNCE_CHANNEL_ID] : []),
     adminChannelId: process.env.ADMIN_CHANNEL_ID || null,
+    // Task #705 — channel for "player went live on Twitch" alerts. No-op when unset.
+    twitchLiveChannelId: process.env.TWITCH_LIVE_CHANNEL_ID || null,
     queueChannelId: process.env.QUEUE_CHANNEL_ID || null,
     queueTimeoutMinutes: parseInt(process.env.QUEUE_TIMEOUT_MINUTES || '10', 10),
     serverInvite: process.env.DISCORD_INVITE || null,

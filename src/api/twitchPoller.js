@@ -6,17 +6,23 @@
 // reads getLive() — it never calls Twitch on the request path, so the hub stays
 // fast and we stay well under Helix rate limits.
 
+const EventEmitter = require('events');
 const twitch = require('./twitch');
 
 const POLL_INTERVAL_MS = 60 * 1000;
 const FIRST_RUN_DELAY_MS = 8 * 1000;
 
-class TwitchPoller {
+class TwitchPoller extends EventEmitter {
   constructor(db) {
+    super();
     this._db = db;
     this._timer = null;
     this._polling = false;
     this._cache = { updatedAt: 0, live: [] };
+    // Task #705 — rising-edge detection for "went live" alerts.
+    // null until the first successful poll so a bot restart mid-stream
+    // doesn't re-announce everyone who is already live.
+    this._prevLiveLogins = null;
   }
 
   start() {
@@ -82,6 +88,20 @@ class TwitchPoller {
         });
       }
       live.sort((a, b) => (b.viewerCount || 0) - (a.viewerCount || 0));
+      // Task #705 — emit `streamLive` only on the offline -> live rising edge.
+      // The first poll after startup only seeds the baseline (no events), so a
+      // restart never re-announces channels that are already live.
+      const currentLogins = new Set(live.map(s => s.login));
+      if (this._prevLiveLogins) {
+        for (const stream of live) {
+          if (!this._prevLiveLogins.has(stream.login)) {
+            try { this.emit('streamLive', stream); } catch (e) {
+              console.warn('[TwitchPoller] streamLive listener error:', e.message);
+            }
+          }
+        }
+      }
+      this._prevLiveLogins = currentLogins;
       this._cache = { updatedAt: Date.now(), live };
     } catch (err) {
       console.warn('[TwitchPoller] poll failed:', err.message);

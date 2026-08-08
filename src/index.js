@@ -234,7 +234,14 @@ async function main() {
   try {
     const db = require('./db');
     const { getTwitchPoller } = require('./api/twitchPoller');
-    getTwitchPoller(db).start();
+    const twitchPoller = getTwitchPoller(db);
+    // Task #705 — post a Discord alert when a linked player goes live.
+    // No-op inside announceStreamLive when TWITCH_LIVE_CHANNEL_ID is unset.
+    twitchPoller.on('streamLive', (stream) => {
+      bot.announceStreamLive(stream).catch(err =>
+        console.warn('[TwitchLive] announce error:', err.message));
+    });
+    twitchPoller.start();
   } catch (err) {
     console.warn('[Startup] Twitch live poller not started:', err.message);
   }

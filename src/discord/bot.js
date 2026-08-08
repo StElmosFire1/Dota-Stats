@@ -431,6 +431,45 @@ class DiscordBot {
     });
   }
 
+  // Task #705 — post a "went live on Twitch" alert to the configured channel.
+  // No-op when TWITCH_LIVE_CHANNEL_ID is unset. Callers (TwitchPoller's
+  // rising-edge `streamLive` event) already dedupe, so this posts once per
+  // offline -> live transition.
+  async announceStreamLive(stream) {
+    const channelId = config.discord.twitchLiveChannelId;
+    if (!channelId || !stream?.login) return;
+    try {
+      const [channel] = await this._resolveChannels([channelId]);
+      if (!channel) {
+        console.warn(`[TwitchLive] Channel ${channelId} not found — skipping live alert for ${stream.login}`);
+        return;
+      }
+      const baseUrl = (process.env.SITE_URL || 'https://oceinhouse.gg').replace(/\/+$/, '');
+      const twitchUrl = `https://twitch.tv/${stream.login}`;
+      const name = stream.displayName || stream.userName || stream.login;
+      const embed = new EmbedBuilder()
+        .setColor(0x9146ff)
+        .setTitle(`🔴 ${name} is live on Twitch!`)
+        .setURL(twitchUrl)
+        .setDescription(
+          `${stream.title ? `**${stream.title}**\n` : ''}` +
+          `${stream.gameName ? `Playing **${stream.gameName}**\n` : ''}\n` +
+          `▶️ Watch: ${twitchUrl}\n` +
+          `📺 All live inhouse streams: ${baseUrl}/live`
+        )
+        .setTimestamp();
+      if (stream.thumbnailUrl) {
+        try {
+          embed.setImage(stream.thumbnailUrl.replace('{width}', '640').replace('{height}', '360'));
+        } catch (_) {}
+      }
+      await channel.send({ embeds: [embed] });
+      console.log(`[TwitchLive] Announced ${stream.login} live in channel ${channelId}`);
+    } catch (err) {
+      console.warn(`[TwitchLive] Failed to announce ${stream.login}:`, err.message);
+    }
+  }
+
   async _resolveChannels(ids) {
     const channels = [];
     for (const id of ids) {
