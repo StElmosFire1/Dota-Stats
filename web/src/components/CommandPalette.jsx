@@ -59,7 +59,7 @@ function HighlightedLabel({ text, query }) {
   );
 }
 
-function CommandPalette({ open, onClose }) {
+function CommandPalette({ open, onClose, initialQuery = '' }) {
   const navigate = useNavigate();
   const inputRef = useRef(null);
 
@@ -68,9 +68,12 @@ function CommandPalette({ open, onClose }) {
   const [results, setResults] = useState(EMPTY_RESULTS);
   const [loading, setLoading] = useState(false);
 
-  // Reset query + highlight + results each time the palette opens.
+  // Reset query + highlight + results each time the palette opens. When the
+  // header trigger forwarded a first keystroke (Task #679), seed the query
+  // with it so the user's typing flows straight into the palette.
   useEffect(() => {
-    if (open) { setQuery(''); setActiveIndex(0); setResults(EMPTY_RESULTS); setLoading(false); }
+    if (open) { setQuery(initialQuery); setActiveIndex(0); setResults(EMPTY_RESULTS); setLoading(false); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Reset highlight whenever the query changes.
@@ -329,11 +332,13 @@ function CommandPalette({ open, onClose }) {
 // the palette. Drop a single <GlobalSearch /> into the navbar.
 export default function GlobalSearch() {
   const [open, setOpen] = useState(false);
+  const [seed, setSeed] = useState('');
 
   useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
+        setSeed('');
         setOpen(o => !o);
       }
     };
@@ -341,12 +346,26 @@ export default function GlobalSearch() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Task #679 — the header trigger looks like a real search field, so typing
+  // while it is focused should "just work": open the palette and forward the
+  // first printable keystroke as the initial query. Modifier chords, function
+  // keys, Enter/Space (native button activation) etc. keep their default
+  // behaviour, so ⌘K and keyboard a11y are unchanged.
+  const onTriggerKeyDown = (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key.length !== 1 || e.key === ' ') return;
+    e.preventDefault();
+    setSeed(e.key);
+    setOpen(true);
+  };
+
   return (
     <>
       <button
         type="button"
         className="global-search-trigger"
-        onClick={() => setOpen(true)}
+        onClick={() => { setSeed(''); setOpen(true); }}
+        onKeyDown={onTriggerKeyDown}
         aria-label="Search (press Control K or Command K)"
         title="Search — ⌘K / Ctrl-K"
       >
@@ -354,7 +373,7 @@ export default function GlobalSearch() {
         <span className="gs-trigger-label">Search…</span>
         <span className="gs-trigger-kbd" aria-hidden="true">⌘K</span>
       </button>
-      <CommandPalette open={open} onClose={() => setOpen(false)} />
+      <CommandPalette open={open} onClose={() => setOpen(false)} initialQuery={seed} />
     </>
   );
 }
