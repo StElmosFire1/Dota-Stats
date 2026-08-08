@@ -45,6 +45,12 @@ pg_restore --clean --if-exists -d "$DATABASE_URL" ~/backups/pre-<stamp>.dump
 Write a paired `down` whenever the SQL is reversible; for irreversible SQL
 (data deletes), the pg_dump backup is the rollback path — take it first.
 
+Separate from these one-off pre-migration dumps, a **nightly automated
+pg_dump** ships off-host with retention + failure alerting (Task #896) — see
+`docs/db-backups.md` for setup, monitoring, and the tested restore procedure.
+Manual dumps in `~/backups/` are never pruned by the nightly job (it only
+manages `nightly-*.dump` files in its own staging dir).
+
 ## File naming
 
 `NNNN_short_description.sql` — sequential 4-digit prefix. `0000_baseline.sql`

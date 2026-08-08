@@ -70,6 +70,10 @@ fail-fast gate refuses to boot production with critical vars missing.
       else runs. Do not "fix" this.
 - [ ] `ERROR_ALERT_WEBHOOK_URL` — set so uncaught errors/500s ping a Discord
       channel.
+- [ ] `BACKUP_RCLONE_REMOTE` — nightly off-host DB backups configured and
+      proven end-to-end (`node scripts/run-db-backup.js` exits 0 and the dump
+      appears in `rclone ls`). Setup + restore drill: `docs/db-backups.md`.
+      Unset in production = nightly failure alert by design.
 - [ ] Lockdown: turn the site-lockdown toggle OFF (AdminPanel → Overview) at the
       go-live moment; leave `FULL_SITE_LOCKDOWN` unset so the DB toggle stays in
       control.
@@ -112,6 +116,10 @@ Notes:
 - Database migrations are forward-only; if a migration itself must be reverted,
   restore from the pre-deploy `pg_dump` backup per `migrations/README.md` BEFORE
   resetting the code.
+- If the database itself is lost or corrupted, restore last night's off-host
+  dump — full tested procedure (including a safe scratch-DB drill) in
+  `docs/db-backups.md` § Restore procedure. Nightly cadence means up to 24h
+  RPO; reconcile payments against the Stripe dashboard after restoring.
 - Emergency lock: set `FULL_SITE_LOCKDOWN=1` + `pm2 restart oi-bot --update-env`
   to gate the whole site behind owner sign-in while you repair.
 

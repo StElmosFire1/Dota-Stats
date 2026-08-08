@@ -380,6 +380,30 @@ async function main() {
       }
     }
 
+    // Task #896 — nightly full-database backup, shipped off-host. 02:30 OCE
+    // (quiet hours, before the 03:00 Sunday browser smoke). The job itself
+    // owns all failure alerting (reportError → ERROR_ALERT_WEBHOOK_URL) and
+    // the `nightly_db_backup` cron heartbeat; manual run / restore drill:
+    // `node scripts/run-db-backup.js` — see docs/db-backups.md.
+    if (startupStatus.database) {
+      try {
+        const cron = require('node-cron');
+        const { runNightlyBackup } = require('./jobs/nightlyDbBackup');
+        cron.schedule('30 2 * * *', async () => {
+          try {
+            const res = await runNightlyBackup();
+            console.log(`[Backup] nightly cron done — ok=${res.ok} shipped=${res.shipped}${res.error ? ` error=${res.error}` : ''}`);
+          } catch (err) {
+            // runNightlyBackup never throws, but belt-and-braces:
+            console.warn('[Backup] nightly cron error:', err.message);
+          }
+        }, { timezone: 'Australia/Sydney' });
+        console.log('[Startup] Nightly DB backup cron scheduled (02:30 Australia/Sydney)');
+      } catch (err) {
+        console.warn('[Startup] Nightly DB backup cron failed to register:', err.message);
+      }
+    }
+
     // Task #463 — hourly safety-net sweep degrading API keys whose billable
     // rate-limit quota has lapsed. The Stripe webhook is the primary degrade
     // path; this catches missed/late cancel events so a key can never keep
