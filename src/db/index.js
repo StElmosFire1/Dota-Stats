@@ -17981,22 +17981,50 @@ async function grantSeasonPassActivation({ accountId, seasonNumber, giftStripeSe
   return r.rows[0] || null;
 }
 
+// Task #915 — claw back the gift XP bonus when a gifted pass is refunded.
+// grantSeasonPassXpGift writes a ledger row with source `gift_<session tail>`
+// (last 8 chars of the gift checkout session) and match_id NULL; deleting
+// that exact row removes the 500 XP from every downstream read (tier +
+// leaderboard both SUM the ledger).
+//
+// Durability: the delete is fused into the SAME SQL statement as the
+// status flip (CTE below), so entitlement revocation and XP removal are
+// atomic — a crash or error rolls back both, and the still-active row is
+// retried by the Stripe webhook / reconciliation sweep. As a second layer,
+// reconcileRefundedSeasonPasses() repairs any refunded gifted pass whose
+// XP event somehow survived (e.g. rows refunded before this shipped).
+const _GIFT_XP_CLAWBACK_CTE = `
+     clawed AS (
+       DELETE FROM season_pass_xp_events e
+        USING flipped f
+        WHERE f.gift_stripe_session_id IS NOT NULL
+          AND e.account_id = f.account_id
+          AND e.season_number = f.season_number
+          AND e.match_id IS NULL
+          AND e.source = 'gift_' || RIGHT(f.gift_stripe_session_id, 8)
+        RETURNING e.account_id, e.season_number, e.xp_delta
+     )`;
+
 // Task #912 — charge.refunded revocation for season passes (self-purchased or
 // gifted). Flips active rows whose stored payment intent matches to
 // status='refunded'; hasSeasonPassActivation's status='active' filter hides
 // the pass benefits immediately. Idempotent (refunded rows don't match) and
 // cheap for unrelated refunds. Also flips the linked gift_purchases row (when
-// the pass came from a gift) so gift history reflects the refund.
+// the pass came from a gift) so gift history reflects the refund, and — in
+// the same atomic statement (Task #915) — deletes the gift XP bonus event.
 async function markSeasonPassRefundedByIntent(paymentIntent) {
   // 'none' is the backfill sentinel for sessions with no payment intent —
   // never matchable (real intents always start with 'pi_').
   if (!paymentIntent || paymentIntent === 'none') return [];
   const p = getPool();
   const r = await p.query(
-    `UPDATE season_pass_purchases
-        SET status = 'refunded'
-      WHERE stripe_payment_intent = $1 AND status = 'active'
-      RETURNING *`,
+    `WITH flipped AS (
+       UPDATE season_pass_purchases
+          SET status = 'refunded'
+        WHERE stripe_payment_intent = $1 AND status = 'active'
+        RETURNING *
+     ),${_GIFT_XP_CLAWBACK_CTE}
+     SELECT * FROM flipped`,
     [paymentIntent]
   );
   // Best-effort: mirror the refund onto the originating gift row so the
@@ -18049,15 +18077,24 @@ async function isPaymentIntentRefunded(paymentIntent) {
 // (a) a webhook delivery Stripe gave up retrying while the DB was down and
 // (b) historical rows whose intent was only just backfilled after the
 // refund landed. Idempotent; returns the flipped rows.
+//
+// Task #915 — the flip atomically deletes the gift XP bonus event (same
+// CTE as markSeasonPassRefundedByIntent), and a second repair pass below
+// removes any lingering gift XP on passes that are ALREADY refunded —
+// covering rows refunded before the clawback shipped or any historical
+// partial state.
 async function reconcileRefundedSeasonPasses() {
   const p = getPool();
   const r = await p.query(
-    `UPDATE season_pass_purchases spp
-        SET status = 'refunded'
-       FROM stripe_refunded_intents sri
-      WHERE spp.stripe_payment_intent = sri.payment_intent
-        AND spp.status = 'active'
-      RETURNING spp.*`
+    `WITH flipped AS (
+       UPDATE season_pass_purchases spp
+          SET status = 'refunded'
+         FROM stripe_refunded_intents sri
+        WHERE spp.stripe_payment_intent = sri.payment_intent
+          AND spp.status = 'active'
+        RETURNING spp.*
+     ),${_GIFT_XP_CLAWBACK_CTE}
+     SELECT * FROM flipped`
   );
   for (const row of r.rows) {
     if (!row.gift_stripe_session_id) continue;
@@ -18070,6 +18107,26 @@ async function reconcileRefundedSeasonPasses() {
     } catch (e) {
       console.warn('[DB] reconcile gift-row flip failed for session', row.gift_stripe_session_id, '—', e?.message || e);
     }
+  }
+  // Repair pass: delete gift XP events that still exist for gifted passes
+  // already marked refunded (idempotent; normally deletes nothing).
+  try {
+    const repaired = await p.query(
+      `DELETE FROM season_pass_xp_events e
+        USING season_pass_purchases spp
+        WHERE spp.status = 'refunded'
+          AND spp.gift_stripe_session_id IS NOT NULL
+          AND e.account_id = spp.account_id
+          AND e.season_number = spp.season_number
+          AND e.match_id IS NULL
+          AND e.source = 'gift_' || RIGHT(spp.gift_stripe_session_id, 8)
+        RETURNING e.account_id, e.season_number`
+    );
+    for (const row of repaired.rows) {
+      console.log('[DB] reconcile repaired lingering gift XP — account', row.account_id, 'season', row.season_number);
+    }
+  } catch (e) {
+    console.warn('[DB] reconcile gift-XP repair pass failed:', e?.message || e);
   }
   return r.rows;
 }
