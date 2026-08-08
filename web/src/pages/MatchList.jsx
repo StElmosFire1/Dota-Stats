@@ -114,6 +114,26 @@ function KillSparkline({ timeline, duration, width = 80, height = 20 }) {
 // storyLabel() is still used per-card to render the story pill on each match.
 const STORY_TYPES = ['Stomp', 'Decisive', 'Close Game', 'Neck and Neck'];
 
+// Task #790 — helpers for the at-a-glance page summary next to the filters.
+// matchResultFor: 'win' | 'loss' for the signed-in player, or null when they
+// didn't play in the match. matchStory: the story label for a match (same
+// derivation as the per-card pill), or null when it has no story.
+function matchResultFor(match, accountId) {
+  if (!accountId || !Array.isArray(match.players)) return null;
+  const me = match.players.find(p => String(p.account_id) === String(accountId));
+  if (!me) return null;
+  const onRadiant = me.team === 'radiant' || me.team === 0 || me.team === '0';
+  return onRadiant === !!match.radiant_win ? 'win' : 'loss';
+}
+
+function matchStory(match) {
+  if (!Array.isArray(match.players) || match.players.length === 0) return null;
+  const { radiant, dire } = splitTeams(match.players);
+  const killMargin = Math.abs(sumKills(radiant) - sumKills(dire));
+  const durationMins = match.duration ? match.duration / 60 : 0;
+  return storyLabel(killMargin, durationMins);
+}
+
 // Hero lineup + MVP strip. radiantMmr / direMmr are pre-computed and passed down.
 function MatchPlayersStrip({ players, radiantWin, radiantMmr, direMmr }) {
   if (!Array.isArray(players) || players.length === 0) return null;
@@ -320,6 +340,35 @@ export default function MatchList() {
     cursor: 'pointer',
   });
 
+  // Task #790 — compact at-a-glance summary of the current page: W/L for the
+  // signed-in player (when they appear in matches) plus a per-story breakdown.
+  const renderPageSummary = () => {
+    if (visibleMatches.length === 0) return null;
+    let wins = 0, losses = 0;
+    const storyCounts = {};
+    for (const m of visibleMatches) {
+      const res = matchResultFor(m, myAccountId);
+      if (res === 'win') wins++;
+      else if (res === 'loss') losses++;
+      const story = matchStory(m);
+      if (story) storyCounts[story] = (storyCounts[story] || 0) + 1;
+    }
+    const storyParts = STORY_TYPES.filter(t => storyCounts[t]).map(t => `${storyCounts[t]} ${t}`);
+    const parts = [];
+    if (myAccountId && (wins > 0 || losses > 0)) parts.push(`${wins} W · ${losses} L`);
+    if (storyParts.length > 0) parts.push(storyParts.join(', '));
+    if (parts.length === 0) return null;
+    return (
+      <div
+        aria-live="polite"
+        style={{ fontSize: '0.78rem', color: 'var(--text-muted, #94a3b8)', margin: '-0.5rem 0 1rem', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}
+      >
+        <span style={{ fontWeight: 700, letterSpacing: '0.05em', fontSize: '0.72rem' }}>THIS PAGE</span>
+        <span>{parts.join(' — ')}</span>
+      </div>
+    );
+  };
+
   const renderFilterBar = () => (
     <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
       {myAccountId && (
@@ -419,6 +468,7 @@ export default function MatchList() {
       ) : (
         <>
           {renderFilterBar()}
+          {renderPageSummary()}
           {visibleMatches.length === 0 ? (
             <div className="empty-state">
               <p>No matches match these filters.</p>
