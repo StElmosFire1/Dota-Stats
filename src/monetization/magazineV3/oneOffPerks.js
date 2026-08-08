@@ -8,6 +8,7 @@
  */
 
 const { isSuperuserAccountId } = require('../../auth/superusers');
+const { idem, idemBucket } = require('../../payments/stripeIdem');
 
 function createDb({ getPool }) {
   async function grantOneOffPerk({ accountId, perkKey, source = 'stripe', stripeSessionId = null, stripePaymentIntent = null, amountCents = null, currency = null, expiresAt = null, metadata = null }) {
@@ -213,7 +214,7 @@ function mountRoutes({ router, express, deps, requireAuth }) {
           account_id: String(accountId),
           perk_key: perkKey,
         },
-      });
+      }, idem('checkout', 'one_off_perk', accountId, perkKey, idemBucket()));
       await magV3.createOneOffPerkPending({
         accountId, perkKey,
         stripeSessionId: session.id,

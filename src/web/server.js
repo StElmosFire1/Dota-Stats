@@ -8,6 +8,7 @@ const session = require('express-session');
 const helmet = require('helmet');
 const { rateLimit } = require('express-rate-limit');
 const db = require('../db');
+const { idem, idemBucket } = require('../payments/stripeIdem');
 // Web push (Wave 3 F7). Loaded lazily — if VAPID env vars are missing the
 // push routes respond 503 cleanly. We do require() unconditionally so the
 // module is in the bundle, but configure it only when keys exist.
@@ -2456,36 +2457,14 @@ function createServer(startupStatus = {}) {
     }
   });
 
-  // Stripe webhook MUST be registered before express.json() to receive raw body
-  app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (!process.env.STRIPE_SECRET_KEY) return res.status(503).send('Stripe not configured');
-    // SECURITY: refuse to process unsigned webhook payloads. Without
-    // `STRIPE_WEBHOOK_SECRET` an attacker who finds the webhook URL could
-    // POST a forged `checkout.session.completed` payload and mark arbitrary
-    // tournament entries / season buy-ins as paid. Always require the
-    // signature.
-    if (!webhookSecret) {
-      console.error('[Stripe] Webhook rejected: STRIPE_WEBHOOK_SECRET is not configured.');
-      return res.status(503).send('Stripe webhook secret not configured');
-    }
-    try {
-      const stripe = require('../observability/stripeClient').getStripe();
-      const sig = req.headers['stripe-signature'];
-      if (!sig) return res.status(400).send('Missing stripe-signature header');
-      const _opsReceivedAt = Date.now();
-      const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-      const _processedAt = Date.now();
-      try {
-        require('./opsState').reportStripeWebhook(event?.type || 'unknown', { receivedAt: _opsReceivedAt, processedAt: _processedAt });
-      } catch (_) {}
-      // Task #417 — webhook processing lag metric.
-      try {
-        require('../observability/metrics').recordStripeWebhook({
-          eventType: event?.type || 'unknown',
-          lagMs: _processedAt - _opsReceivedAt,
-        });
-      } catch (_) {}
+  // Task #855 — Stripe event processor, factored out of the webhook route so
+  // the durable-inbox retry sweep can re-run failed events (including after a
+  // process restart). All webhook side effects live here; the route itself
+  // only verifies the signature, records the event to the inbox, delegates,
+  // and ACKs. NOTE: bodies below are moved verbatim from the old inline
+  // handler — JS ignores the now-shallower nesting.
+  async function _processStripeEvent(event) {
+    const stripe = require('../observability/stripeClient').getStripe();
       // Extracted so both `checkout.session.completed` (sync card payments)
       // and `checkout.session.async_payment_succeeded` (BECS / other async
       // methods enabled by Task #235's automatic_payment_methods swap) run
@@ -2619,15 +2598,19 @@ function createServer(startupStatus = {}) {
                 sourceKind: 'vod_review', sourceId: row.id,
               }).catch(() => {});
             }
-            try {
-              const bot = getDiscordBot();
-              if (bot && bot.users && row.coach_account_id) {
-                // Best-effort: notify coach via existing DM channel if available.
-                // No dedicated method — keep it quiet so we don't crash on
-                // bots that don't have this wired up. The dashboard is the
-                // primary surface.
-              }
-            } catch (_) {}
+            // Task #855 — notify the coach that a VOD review was purchased.
+            // Best-effort (never blocks the webhook ack); goes through the
+            // preference-aware notify() hub so Discord DM / push / in-app all
+            // respect the coach's settings.
+            if (row.coach_account_id) {
+              const cents = row.amount_cents ?? session.amount_total ?? 0;
+              const amt = (cents / 100).toFixed(2);
+              notify(row.coach_account_id, 'vod_purchased', {
+                discord: { content: `🎬 **New VOD Review Purchased** — a student just bought a VOD review (${amt} ${String(row.currency || session.currency || 'aud').toUpperCase()}). Head to your coach portal to get started.` },
+                push: { title: 'New VOD review purchased', body: 'A student just bought a VOD review — check your coach portal.', url: '/coaches' },
+                inapp: { kind: 'vod_purchased', title: 'New VOD review purchased', body: 'A student just bought a VOD review.', url: '/coaches' },
+              }).catch((e) => console.warn('[Stripe] VOD coach notify failed (non-fatal):', e?.message || e));
+            }
           } else {
             console.warn('[Stripe] coaching_vod_review webhook: no row for session', session.id);
           }
@@ -2715,7 +2698,7 @@ function createServer(startupStatus = {}) {
                     account_id: String(ringAccountId),
                     stripe_session_id: session.id,
                   },
-                });
+                }, idem('founders-ring-cap-refund', session.id));
                 refundId = refund?.id || null;
                 refundStatus = 'refunded';
                 console.log('[Stripe] founders_ring auto-refund OK:', refundId, 'session', session.id);
@@ -3344,6 +3327,166 @@ function createServer(startupStatus = {}) {
               }).catch(err => console.warn('[Stripe] dunning DM failed:', err.message));
             }
           }
+        }
+      } else if (event.type === 'charge.dispute.created' || event.type === 'charge.dispute.closed') {
+        // Task #855 — chargebacks/disputes. Record the dispute (idempotent
+        // upsert on dispute_id), flag the affected purchase via its
+        // payment_intent, and alert admins loudly on creation. On close we
+        // clear the review flag and log the outcome; any actual funds
+        // movement (dispute lost → charge.refunded) is handled by the
+        // existing refund branch.
+        const dispute = event.data.object;
+        const closed = event.type === 'charge.dispute.closed';
+        const pi = typeof dispute.payment_intent === 'string' ? dispute.payment_intent : null;
+        let row = null;
+        if (typeof db.recordStripeDispute === 'function') {
+          row = await db.recordStripeDispute({
+            disputeId: dispute.id,
+            chargeId: typeof dispute.charge === 'string' ? dispute.charge : null,
+            paymentIntent: pi,
+            amountCents: dispute.amount ?? null,
+            currency: dispute.currency || null,
+            reason: dispute.reason || null,
+            status: dispute.status || null,
+            closed,
+          });
+        }
+        const srcTxt = row?.source_kind ? `${row.source_kind} #${row.source_id}` : 'unresolved purchase';
+        if (closed) {
+          console.warn(`[Stripe] Dispute ${dispute.id} CLOSED (${dispute.status}) — ${srcTxt}`);
+        } else {
+          const amt = ((dispute.amount ?? 0) / 100).toFixed(2);
+          const text = `⚠️ [Stripe Dispute] New chargeback ${dispute.id} — ` +
+            `${amt} ${String(dispute.currency || '').toUpperCase()} (reason: ${dispute.reason || 'unknown'}), ` +
+            `affected: ${srcTxt}, payment_intent: ${pi || 'n/a'}. Flagged for admin review.`;
+          console.error(`[Stripe] ${text}`);
+          _alertOwner(text, { logTag: 'STRIPE DISPUTE' }).catch(() => {});
+        }
+      }
+  }
+
+  // Task #855 — retry sweep for failed inbox events. Stripe's own retries
+  // cover most transient failures; this sweep additionally heals events whose
+  // retry window lapsed or that failed across a restart. Attempts are capped
+  // in the DB helper so a poisoned payload can't spin forever.
+  let _stripeInboxSweepInFlight = false;
+  async function _runStripeInboxRetrySweep() {
+    if (_stripeInboxSweepInFlight) return;
+    if (!process.env.STRIPE_SECRET_KEY) return;
+    if (typeof db.listRetryableStripeWebhookEvents !== 'function') return;
+    _stripeInboxSweepInFlight = true;
+    try {
+      const rows = await db.listRetryableStripeWebhookEvents({});
+      for (const row of rows) {
+        let sweepToken = null;
+        try {
+          // Atomically re-claim (fresh lease token) before reprocessing so a
+          // concurrent live webhook delivery (or another instance's sweep)
+          // can't double-run the same event, and so the previous holder's
+          // terminal writes are invalidated. Skips rows whose claim is live.
+          if (typeof db.claimStripeWebhookEvent === 'function') {
+            sweepToken = await db.claimStripeWebhookEvent(row.event_id);
+            if (!sweepToken) continue;
+          }
+          const event = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+          if (!event || !event.type) throw new Error('unparseable stored payload');
+          await _processStripeEvent(event);
+          await db.markStripeWebhookProcessed(row.event_id, sweepToken);
+          console.log('[Stripe] inbox retry succeeded:', row.event_id, row.event_type);
+        } catch (e) {
+          // Lease-guarded: no-op if another worker took over meanwhile.
+          await db.markStripeWebhookFailed(row.event_id, e?.message || e, sweepToken).catch(() => {});
+          console.warn('[Stripe] inbox retry failed:', row.event_id, row.event_type, '—', e?.message || e);
+        }
+      }
+    } catch (e) {
+      console.warn('[Stripe] inbox retry sweep error:', e?.message || e);
+    } finally {
+      _stripeInboxSweepInFlight = false;
+    }
+  }
+  setTimeout(() => { _runStripeInboxRetrySweep().catch(() => {}); }, 120_000).unref();
+  setInterval(() => { _runStripeInboxRetrySweep().catch(() => {}); }, 5 * 60_000).unref();
+  // Exposed for tests (crash-recovery coverage) — not a public API.
+  app.locals._runStripeInboxRetrySweep = _runStripeInboxRetrySweep;
+
+  // Stripe webhook MUST be registered before express.json() to receive raw body
+  app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!process.env.STRIPE_SECRET_KEY) return res.status(503).send('Stripe not configured');
+    // SECURITY: refuse to process unsigned webhook payloads. Without
+    // `STRIPE_WEBHOOK_SECRET` an attacker who finds the webhook URL could
+    // POST a forged `checkout.session.completed` payload and mark arbitrary
+    // tournament entries / season buy-ins as paid. Always require the
+    // signature.
+    if (!webhookSecret) {
+      console.error('[Stripe] Webhook rejected: STRIPE_WEBHOOK_SECRET is not configured.');
+      return res.status(503).send('Stripe webhook secret not configured');
+    }
+    try {
+      const stripe = require('../observability/stripeClient').getStripe();
+      const sig = req.headers['stripe-signature'];
+      if (!sig) return res.status(400).send('Missing stripe-signature header');
+      const _opsReceivedAt = Date.now();
+      const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      const _processedAt = Date.now();
+      try {
+        require('./opsState').reportStripeWebhook(event?.type || 'unknown', { receivedAt: _opsReceivedAt, processedAt: _processedAt });
+      } catch (_) {}
+      // Task #417 — webhook processing lag metric.
+      try {
+        require('../observability/metrics').recordStripeWebhook({
+          eventType: event?.type || 'unknown',
+          lagMs: _processedAt - _opsReceivedAt,
+        });
+      } catch (_) {}
+      // Task #855 — durable webhook inbox. Persist + atomically CLAIM the
+      // verified event by its globally-unique Stripe event id BEFORE
+      // processing. Already-processed replays are no-ops; a live claim by
+      // another worker defers to it; stale claims (crashed worker) are
+      // reclaimed. Persistence is MANDATORY: if the inbox write fails we
+      // return a retryable 5xx WITHOUT processing, so Stripe redelivers and
+      // no side effect can happen outside the durable record. typeof-guarded
+      // so test stubs of the db module without these helpers keep working.
+      let inboxed = false;
+      let claimToken = null;
+      if (typeof db.recordStripeWebhookEvent === 'function') {
+        let rec = null;
+        try {
+          rec = await db.recordStripeWebhookEvent(event);
+        } catch (e) {
+          console.error('[Stripe] webhook inbox write failed — refusing to process (Stripe will retry):', e?.message || e);
+          return res.status(500).send('Webhook inbox unavailable');
+        }
+        if (rec) {
+          if (!rec.claimed) {
+            // Fully processed already, or another worker holds a live claim.
+            console.log('[Stripe] Duplicate webhook event (status=' + rec.status + '):', event.id, event.type);
+            return res.json({ received: true, duplicate: true });
+          }
+          inboxed = true;
+          claimToken = rec.claimToken || null;
+        }
+      }
+      try {
+        await _processStripeEvent(event);
+      } catch (procErr) {
+        // Lease-guarded: if another worker took over the claim meanwhile,
+        // this write is a no-op — the new owner's state wins.
+        if (inboxed) await db.markStripeWebhookFailed(event.id, procErr?.message || procErr, claimToken).catch(() => {});
+        throw procErr;
+      }
+      if (inboxed) {
+        // Await the terminal status BEFORE ACKing, guarded by our claim
+        // token — a worker whose lease was taken over can't overwrite the
+        // new owner's terminal state. If this write fails/loses, the row is
+        // reconciled by the stale-claim sweep — processing must therefore
+        // stay idempotent (it is: fulfil helpers are ON CONFLICT /
+        // status-guarded).
+        try {
+          await db.markStripeWebhookProcessed(event.id, claimToken);
+        } catch (e) {
+          console.warn('[Stripe] failed to mark webhook processed (sweep will reconcile):', event.id, e?.message || e);
         }
       }
       res.json({ received: true });
@@ -7885,7 +8028,7 @@ function createApiRouter(startupStatus = {}, _app = null) {
           display_name: display_name.trim(),
           account_id: account_id ? String(account_id) : '',
         },
-      });
+      }, idem('checkout', 'buyin', account_id || 'anon', season_id, idemBucket()));
 
       await db.createBuyin(
         parseInt(season_id),
@@ -11460,7 +11603,7 @@ NOTES
           account_id: String(finalAccountId),
           display_name: (displayName || '').slice(0, 80),
         },
-      });
+      }, idem('checkout', 'tournament_entry', finalAccountId, tournamentId, idemBucket()));
       await db.createTournamentEntry({
         tournamentId,
         accountId: finalAccountId,
@@ -11611,7 +11754,7 @@ NOTES
         if (!pi) return res.status(409).json({ error: 'No payment record on file — contact an admin to refund manually.' });
         try {
           const stripe = require('../observability/stripeClient').getStripe();
-          await stripe.refunds.create({ payment_intent: pi });
+          await stripe.refunds.create({ payment_intent: pi }, idem('tournament-refund', entry.id));
         } catch (e) {
           console.error('[API] tournament withdraw refund failed:', e.message);
           return res.status(502).json({ error: `Refund failed: ${e.message}` });
@@ -16669,7 +16812,7 @@ NOTES
           account_id: String(accountId),
           perk_key: 'cosmetic:vanity_url',
         },
-      });
+      }, idem('checkout', 'one_off_perk', accountId, 'cosmetic:vanity_url', idemBucket()));
       await db.magV3.createOneOffPerkPending({
         accountId,
         perkKey: 'cosmetic:vanity_url',
@@ -17435,7 +17578,7 @@ NOTES
         metadata: meta,
         subscription_data: { metadata: meta },
         allow_promotion_codes: true,
-      });
+      }, idem('checkout', 'api_quota', accountId, keyId, idemBucket()));
       res.json({ url: session.url, tier: tier.id });
     } catch (err) {
       console.error('[API] me/api-keys quota-checkout:', err.message);
@@ -17917,7 +18060,7 @@ NOTES
           account_id: String(accountId),
           frame_id: frameId,
         },
-      });
+      }, idem('checkout', 'frame_purchase', accountId, frameId, idemBucket()));
       await db.createFrameCheckout({
         accountId,
         frameId,
@@ -17984,7 +18127,7 @@ NOTES
             stripe_session_id: row.stripe_session_id,
             audit_row_id: String(row.id),
           },
-        });
+        }, idem('founders-ring-cap-refund', row.stripe_session_id));
         refundId = refund?.id || refundId;
         newStatus = 'refunded';
         console.log('[Stripe] founders_ring refund RETRY OK:', refundId, 'session', row.stripe_session_id);
@@ -18379,7 +18522,7 @@ NOTES
             account_id: String(accountId),
             sku: cosm.FOUNDERS_RING_SKU,
           },
-        });
+        }, idem('checkout', 'founders_ring', accountId, idemBucket()));
         return res.json({ url: session.url });
       }
 
@@ -18420,7 +18563,7 @@ NOTES
           sku,
           slug,
         },
-      });
+      }, idem('checkout', 'founder_ring_individual', accountId, slug, idemBucket()));
       res.json({ url: session.url });
     } catch (err) {
       console.error('[API] shop/founders-ring/checkout:', err.message);
@@ -18555,7 +18698,7 @@ NOTES
           account_id: String(gifterAccountId),
           recipient_account_id: String(recipientAccountId),
         },
-      });
+      }, idem('checkout', 'gift_pro', gifterAccountId, recipientAccountId, idemBucket()));
       await db.createGiftCheckout({
         gifterAccountId,
         recipientAccountId,
@@ -18621,7 +18764,7 @@ NOTES
           recipient_account_id: String(recipientAccountId),
           season_id: activeSeason ? String(activeSeason.id) : '',
         },
-      });
+      }, idem('checkout', 'gift_season_pass', gifterAccountId, recipientAccountId, idemBucket()));
       await db.createGiftCheckout({
         gifterAccountId,
         recipientAccountId,
@@ -18822,7 +18965,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
           success_url: successUrl,
           cancel_url: cancelUrl,
           metadata: { purpose: 'pro_lifetime', account_id: String(accountId) },
-        });
+        }, idem('checkout', 'pro_lifetime', accountId, idemBucket()));
       } else {
         priceCents = await _proMonthlyPriceCents();
         // Prefer a Stripe Dashboard-managed Price (recurring) if configured;
@@ -18854,7 +18997,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
             metadata: { purpose: 'pro_monthly', account_id: String(accountId) },
           },
           allow_promotion_codes: true,
-        });
+        }, idem('checkout', 'pro_monthly', accountId, idemBucket()));
       }
       await db.createProCheckout({
         accountId,
@@ -19591,7 +19734,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
           pack_id: pack.id,
           coins: String(pack.coins),
         },
-      });
+      }, idem('checkout', 'coin_pack', accountId, pack.id, idemBucket()));
       try {
         await db.recordCoinPackPurchase({
           accountId,
@@ -20244,7 +20387,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
           coach_account_id: String(coach.account_id),
           student_account_id: String(studentAccountId),
         },
-      });
+      }, idem('checkout', 'coaching_booking', coach.account_id, studentAccountId, idemBucket()));
 
       const booking = await db.createBooking({
         coachAccountId: coach.account_id,
@@ -20331,7 +20474,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
           return res.status(400).json({ error: 'Cannot capture: missing Stripe payment intent on booking' });
         }
         try {
-          await stripe.paymentIntents.capture(booking.stripe_payment_intent);
+          await stripe.paymentIntents.capture(booking.stripe_payment_intent, idem('booking-capture', booking.id));
         } catch (e) {
           console.error('[confirm-completion] stripe capture failed:', e.message);
           return res.status(502).json({ error: `Stripe capture failed: ${e.message}` });
@@ -20447,7 +20590,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         // Cancel releases the uncaptured auth (no funds ever moved). If the
         // PI was somehow already captured (race with auto-release / admin
         // release), `cancel` errors and we fall back to a real refund.
-        await stripe.paymentIntents.cancel(booking.stripe_payment_intent);
+        await stripe.paymentIntents.cancel(booking.stripe_payment_intent, idem('booking-cancel', booking.id));
       } catch (cancelErr) {
         // Fall back to a real refund only if Stripe says the PI is no longer
         // cancellable (i.e. already captured) — any other error surfaces as 502.
@@ -20462,7 +20605,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
             refund_application_fee: true,
             reverse_transfer: true,
             metadata: { reason: 'coach_no_show', booking_id: String(booking.id) },
-          });
+          }, idem('booking-refund', booking.id));
         } catch (e) {
           console.error('[no-show-refund] stripe refund fallback failed:', e.message);
           return res.status(502).json({ error: `Stripe refund failed: ${e.message}` });
@@ -20713,7 +20856,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
             continue;
           }
           try {
-            await stripe.paymentIntents.cancel(seat.stripe_payment_intent);
+            await stripe.paymentIntents.cancel(seat.stripe_payment_intent, idem('seat-cancel', seat.id));
             await db.markGroupSeatRefundedByIntent(seat.stripe_payment_intent).catch(() => {});
           } catch (e) {
             console.warn('[group-session/cancel] PI cancel failed', seat.id, e.message);
@@ -20766,7 +20909,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
           continue;
         }
         try {
-          await stripe.paymentIntents.capture(seat.stripe_payment_intent);
+          await stripe.paymentIntents.capture(seat.stripe_payment_intent, idem('seat-capture', seat.id));
           await db.markGroupSeatCapturedByIntent(seat.stripe_payment_intent).catch(() => {});
           captured++;
         } catch (e) {
@@ -20900,7 +21043,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
             coach_account_id: String(gs.coach_account_id),
             student_account_id: String(studentAccountId),
           },
-        });
+        }, idem('checkout', 'coaching_group_seat', seat.id));
       } catch (err) {
         await db.releaseUnattachedGroupSeat(seat.id).catch(() => {});
         await db.reopenGroupSessionIfRoom(gs.id).catch(() => {});
@@ -21057,7 +21200,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
             coach_account_id: String(coach.account_id),
             student_account_id: String(studentAccountId),
           },
-        });
+        }, idem('checkout', 'coaching_vod_review', review.id));
       } catch (e) {
         // Stripe call failed — delete the still-pending row so the student
         // can retry cleanly and we don't accumulate orphans.
@@ -21171,7 +21314,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         return res.status(503).json({ error: 'Payment intent missing — cannot deliver' });
       }
       try {
-        await stripe.paymentIntents.capture(v.stripe_payment_intent);
+        await stripe.paymentIntents.capture(v.stripe_payment_intent, idem('vod-capture', v.id));
       } catch (e) {
         console.warn('[vod-review/deliver] capture failed:', e.message);
         return res.status(502).json({ error: `Stripe capture failed: ${e.message}` });
@@ -21298,7 +21441,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       // payment), still mark refunded — there's nothing to release.
       if (v.stripe_payment_intent && stripe) {
         try {
-          await stripe.paymentIntents.cancel(v.stripe_payment_intent);
+          await stripe.paymentIntents.cancel(v.stripe_payment_intent, idem('vod-cancel', v.id));
         } catch (e) {
           console.warn('[vod-review/refund] cancel failed:', e.message);
           return res.status(502).json({ error: `Stripe cancel failed: ${e.message}` });
@@ -21475,7 +21618,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         metadata: { purpose: 'coach_premium', coach_account_id: String(accountId) },
         success_url: `${baseUrl}/coach/edit?premium=success`,
         cancel_url: `${baseUrl}/coach/edit?premium=cancel`,
-      });
+      }, idem('checkout', 'coach_premium', accountId, idemBucket()));
       res.json({ url: checkout.url });
     } catch (err) {
       console.error('[API] coach/premium/checkout:', err.message);
@@ -21734,7 +21877,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
           coach_account_id: String(coach.account_id),
           student_account_id: String(studentAccountId),
         },
-      });
+      }, idem('checkout', 'coach_plan', plan.id, studentAccountId, idemBucket()));
       res.json({ url: checkout.url });
     } catch (err) {
       console.error('[API] coach plan subscribe:', err.message);
@@ -21928,7 +22071,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         success_url: `${baseUrl}/sponsorships/inbox?status=success`,
         cancel_url: `${baseUrl}/sponsorships/inbox?status=cancel`,
         metadata: { purpose: 'sponsorship', slot_slug: slot.slug, sponsor_name: sponsorName },
-      });
+      }, idem('checkout', 'sponsorship', accountId, slot.slug, idemBucket()));
       await db.createSponsorshipOrder({
         slotId: slot.id, buyerAccountId: accountId, buyerEmail: req.body?.buyer_email || null,
         sponsorName, sponsorUrl: safeSponsorUrl,
@@ -22216,7 +22359,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         metadata: { purpose: 'tenant_subscription', tenant_id: String(tenantId), plan },
         success_url: `${baseUrl}/admin?tenant_billing=success`,
         cancel_url: `${baseUrl}/admin?tenant_billing=cancel`,
-      });
+      }, idem('checkout', 'tenant_subscription', tenantId, plan, idemBucket()));
       res.json({ url: checkout.url });
     } catch (err) {
       console.error('[API] tenants/billing/checkout:', err.message);
@@ -22320,7 +22463,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         // ever moved, nothing to refund. Fall back to a true refund only
         // if the PI was already captured (race vs auto-release).
         try {
-          await stripe.paymentIntents.cancel(booking.stripe_payment_intent);
+          await stripe.paymentIntents.cancel(booking.stripe_payment_intent, idem('dispute-cancel', booking.id));
         } catch (cancelErr) {
           const code = cancelErr?.code || cancelErr?.raw?.code;
           if (code !== 'payment_intent_unexpected_state') {
@@ -22333,7 +22476,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
               refund_application_fee: true,
               reverse_transfer: true,
               metadata: { reason: 'admin_dispute_refund', booking_id: String(booking.id) },
-            });
+            }, idem('dispute-refund', booking.id));
           } catch (e) {
             console.error('[admin dispute resolve] stripe refund fallback failed:', e.message);
             return res.status(502).json({ error: `Stripe refund failed: ${e.message}` });
@@ -22356,7 +22499,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       // other status (canceled, requires_action, requires_payment_method)
       // returns 409 and we DON'T mutate the DB.
       try {
-        await stripe.paymentIntents.capture(booking.stripe_payment_intent);
+        await stripe.paymentIntents.capture(booking.stripe_payment_intent, idem('dispute-capture', booking.id));
       } catch (e) {
         const code = e?.code || e?.raw?.code;
         if (code !== 'payment_intent_unexpected_state') {
@@ -22445,7 +22588,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
           account_id: String(accountId),
           season_number: String(seasonNumber),
         },
-      });
+      }, idem('checkout', 'season_pass_self', accountId, seasonNumber, idemBucket()));
       await db.recordSeasonPassSelfPurchase({
         accountId, seasonNumber, stripeSessionId: session.id,
         amountCents: db.SEASON_PASS_PRICE_CENTS, currency: 'aud',
@@ -22522,7 +22665,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         success_url: `${origin}/teams?created=1`,
         cancel_url:  `${origin}/teams/new?cancelled=1`,
         metadata: { purpose: 'team_creation', account_id: String(accountId), name, tag },
-      });
+      }, idem('checkout', 'team_creation', accountId, tag, idemBucket()));
       await db.createTeamCheckout({
         ownerAccountId: accountId, name, tag,
         stripeSessionId: session.id,
@@ -22562,7 +22705,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         success_url: `${origin}/teams/${teamId}?upkeep=1`,
         cancel_url:  `${origin}/teams/${teamId}?upkeep_cancelled=1`,
         metadata: { purpose: 'team_upkeep', account_id: String(accountId), team_id: String(teamId) },
-      });
+      }, idem('checkout', 'team_upkeep', accountId, teamId, idemBucket()));
       await db.recordTeamUpkeep({
         teamId, payerAccountId: accountId,
         stripeSessionId: session.id,
@@ -23177,7 +23320,7 @@ Return exactly this JSON shape (all fields required, arrays of strings):
           pack_id: pack.id,
           coins: String(pack.coins),
         },
-      });
+      }, idem('checkout', 'gift_coins', gifterAccountId, recipientAccountId, pack.id, idemBucket()));
       await db.createAnonymousGift({
         gifterAccountId, recipientAccountId,
         giftType: 'coins',

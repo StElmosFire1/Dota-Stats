@@ -289,6 +289,9 @@ async function main() {
   // when STRIPE_SECRET_KEY is unset, which is hard to spot in PM2 logs after
   // the fact. Surface the configuration state at boot, and shout loudly when
   // the marketplace flag is on (or in preview) but the key is missing.
+  // Task #855 — key-mode gate: refuse to start with a test key in prod or a
+  // live key outside prod (STRIPE_ALLOW_MODE_MISMATCH=1 downgrades to a warn).
+  require('./payments/stripeKeyMode').enforceKeyModeAtStartup();
   try {
     const stripeConfigured = Boolean(process.env.STRIPE_SECRET_KEY);
     let coachingFlagState = 'off';

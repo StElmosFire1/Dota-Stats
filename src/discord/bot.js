@@ -6578,7 +6578,12 @@ class DiscordBot {
               continue;
             }
             try {
-              await stripe.paymentIntents.capture(b.stripe_payment_intent);
+              // Task #855 — same idempotency key as the confirm-completion
+              // route's capture, so a retried/raced capture for the same
+              // booking replays the first Stripe response instead of
+              // re-issuing the request.
+              const { idem } = require('../payments/stripeIdem');
+              await stripe.paymentIntents.capture(b.stripe_payment_intent, idem('booking-capture', b.id));
             } catch (capErr) {
               const code = capErr?.code || capErr?.raw?.code;
               // 'payment_intent_unexpected_state' = already captured (e.g.

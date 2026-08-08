@@ -2017,6 +2017,58 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_stripe_fee_ledger_pi
                      ON stripe_fee_ledger (payment_intent) WHERE payment_intent IS NOT NULL`);
 
+    // ---------- Task #855: durable Stripe webhook inbox ----------
+    // Every verified webhook event is persisted here (keyed by Stripe's
+    // globally-unique event id) BEFORE processing. Replays/retries of an
+    // already-processed event short-circuit to a 200 without re-running
+    // side effects; failed events keep their payload so the retry sweep
+    // can re-process them even across restarts.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS stripe_webhook_inbox (
+        event_id TEXT PRIMARY KEY,
+        event_type TEXT NOT NULL,
+        payload JSONB,
+        status TEXT NOT NULL DEFAULT 'received',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        processed_at TIMESTAMPTZ,
+        claimed_at TIMESTAMPTZ,
+        claim_token TEXT
+      )
+    `);
+    // Claim lease (token + timestamp) so crashed workers' rows are
+    // recoverable by the retry sweep while a worker that lost its lease
+    // can't overwrite the new owner's terminal state (columns added after
+    // initial rollout).
+    await p.query(`ALTER TABLE stripe_webhook_inbox ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ`);
+    await p.query(`ALTER TABLE stripe_webhook_inbox ADD COLUMN IF NOT EXISTS claim_token TEXT`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_stripe_webhook_inbox_status
+                     ON stripe_webhook_inbox (status, received_at)`);
+
+    // ---------- Task #855: Stripe disputes / chargebacks ----------
+    // One row per Stripe dispute (upsert on dispute_id so created/closed
+    // webhooks are idempotent). source_kind/source_id point at the affected
+    // purchase row when we can resolve it, flagging it for admin review.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS stripe_disputes (
+        id SERIAL PRIMARY KEY,
+        dispute_id TEXT NOT NULL UNIQUE,
+        charge_id TEXT,
+        payment_intent TEXT,
+        amount_cents INTEGER,
+        currency TEXT,
+        reason TEXT,
+        status TEXT,
+        source_kind TEXT,
+        source_id INTEGER,
+        needs_review BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        resolved_at TIMESTAMPTZ
+      )
+    `);
+
     // ---------- Task #421: Stripe refund-fee reconciliation ----------
     // Sibling of stripe_fee_ledger but for refund BalanceTransactions. Each
     // Stripe refund creates its OWN BalanceTransaction whose `fee` is the
@@ -15389,6 +15441,7 @@ const NOTIFICATION_EVENTS = [
   { key: 'mvp_vote',                label: 'MVP vote prompt',             desc: 'DM asking you to nominate a teammate as MVP.',               legacy: 'mvp_vote',                   defaults: { discord: true,  push: false } },
   { key: 'hot_streak',              label: 'Hot streak shoutout',         desc: 'When you hit a 5- or 10-game win streak.',                   legacy: 'tier_change_announce',       defaults: { discord: false, push: false } },
   // Coaching events are transactional → default-ON (Task #455).
+  { key: 'vod_purchased',           label: 'VOD review purchased',        desc: 'When a student buys a VOD review from you (coaches only).',   legacy: null,                         defaults: { discord: true,  push: true  } },
   { key: 'vod_delivered',           label: 'VOD review delivered',        desc: 'When your coach finishes a VOD review for you.',             legacy: null,                         defaults: { discord: true,  push: true  } },
   { key: 'group_session_reminder',  label: 'Group session reminder',      desc: 'One-hour reminder before a group coaching session.',         legacy: 'schedule_reminder',          defaults: { discord: true,  push: true  } },
   { key: 'lobby_invite',            label: 'Lobby invite / match ready',  desc: 'When an inhouse lobby is ready for you to accept.',          legacy: null,                         legacyPush: 'match_imminent_push',    defaults: { discord: false, push: false } },
@@ -21455,6 +21508,145 @@ async function resolveStripeFeeSourceByIntent(paymentIntent) {
   return { sourceKind: null, sourceId: null };
 }
 
+// ---------- Task #855: durable Stripe webhook inbox helpers ----------
+
+// Persist a verified Stripe event and atomically CLAIM it for processing.
+// Returns { claimed, claimToken, duplicate, status }:
+//   claimed=true  → this caller owns processing (fresh insert, a failed row,
+//                   or a stale claim older than 5 minutes — crash recovery).
+//                   claimToken must be passed to the terminal-status writers;
+//                   a worker whose lease was taken over cannot overwrite the
+//                   new owner's state.
+//   claimed=false → the event was already processed, or another worker holds
+//                   a live claim; the caller must NOT process it.
+async function recordStripeWebhookEvent(event) {
+  const p = getPool();
+  const token = require('crypto').randomUUID();
+  const r = await p.query(
+    `INSERT INTO stripe_webhook_inbox (event_id, event_type, payload, status, claimed_at, claim_token)
+     VALUES ($1, $2, $3, 'processing', NOW(), $4)
+     ON CONFLICT (event_id) DO NOTHING
+     RETURNING event_id`,
+    [event.id, event.type || 'unknown', JSON.stringify(event), token]
+  );
+  if (r.rows.length) return { claimed: true, claimToken: token, duplicate: false, status: 'processing' };
+  const claimToken = await claimStripeWebhookEvent(event.id);
+  if (claimToken) return { claimed: true, claimToken, duplicate: true, status: 'processing' };
+  const existing = await p.query(
+    `SELECT status FROM stripe_webhook_inbox WHERE event_id = $1`,
+    [event.id]
+  );
+  return { claimed: false, claimToken: null, duplicate: true, status: existing.rows[0]?.status || 'processing' };
+}
+
+// Atomically take ownership of an existing inbox row for (re)processing.
+// Succeeds for: failed rows, unclaimed 'received' rows, and stale claims
+// (claimed_at older than 5 minutes — the previous worker crashed before
+// writing a terminal status). Returns the fresh opaque claim token when this
+// caller won the lease, or null when it did not. The token invalidates any
+// previous holder: terminal-status updates require a matching token.
+async function claimStripeWebhookEvent(eventId) {
+  const p = getPool();
+  const token = require('crypto').randomUUID();
+  const r = await p.query(
+    `UPDATE stripe_webhook_inbox
+        SET status = 'processing', claimed_at = NOW(), claim_token = $2
+      WHERE event_id = $1
+        AND (status = 'failed'
+             OR (status = 'received')
+             OR (status = 'processing' AND COALESCE(claimed_at, received_at) < NOW() - INTERVAL '5 minutes'))
+      RETURNING event_id`,
+    [eventId, token]
+  );
+  return r.rows.length > 0 ? token : null;
+}
+
+// Terminal-status writers are lease-guarded: they only update when the
+// caller's claim_token still matches the row (i.e. the lease wasn't taken
+// over by another worker). Returns true when the write applied. Passing no
+// token (legacy/stub callers) skips the guard.
+async function markStripeWebhookProcessed(eventId, claimToken = null) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE stripe_webhook_inbox
+        SET status = 'processed', processed_at = NOW(), last_error = NULL,
+            attempts = attempts + 1, claim_token = NULL
+      WHERE event_id = $1
+        AND ($2::text IS NULL OR claim_token = $2)`,
+    [eventId, claimToken]
+  );
+  return r.rowCount > 0;
+}
+
+async function markStripeWebhookFailed(eventId, errorMessage, claimToken = null) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE stripe_webhook_inbox
+        SET status = 'failed', last_error = $2, attempts = attempts + 1,
+            claim_token = NULL
+      WHERE event_id = $1
+        AND ($3::text IS NULL OR claim_token = $3)`,
+    [eventId, String(errorMessage || 'unknown error').slice(0, 2000), claimToken]
+  );
+  return r.rowCount > 0;
+}
+
+// Events eligible for the in-process retry sweep: failed rows PLUS stuck
+// rows — 'received' or 'processing' whose claim went stale (worker crashed
+// after ACKing Stripe but before writing a terminal status; Stripe won't
+// retry a 2xx, so the sweep is the only recovery path). Caps attempts so a
+// permanently-poisoned payload can't spin forever; oldest first.
+async function listRetryableStripeWebhookEvents({ maxAttempts = 8, limit = 20 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT event_id, event_type, payload, attempts, status
+       FROM stripe_webhook_inbox
+      WHERE attempts < $1
+        AND received_at > NOW() - INTERVAL '7 days'
+        AND (status = 'failed'
+             OR (status IN ('received', 'processing')
+                 AND COALESCE(claimed_at, received_at) < NOW() - INTERVAL '10 minutes'))
+      ORDER BY received_at ASC
+      LIMIT $2`,
+    [maxAttempts, limit]
+  );
+  return r.rows;
+}
+
+// ---------- Task #855: Stripe dispute recording ----------
+// Upsert on dispute_id (idempotent for webhook retries). Resolves the
+// affected purchase via payment_intent when possible. Closed disputes
+// clear needs_review; created/updated ones (re)flag it.
+async function recordStripeDispute({
+  disputeId, chargeId, paymentIntent, amountCents, currency,
+  reason, status, closed = false,
+}) {
+  const p = getPool();
+  let sourceKind = null; let sourceId = null;
+  try {
+    ({ sourceKind, sourceId } = await resolveStripeFeeSourceByIntent(paymentIntent));
+  } catch (_) {}
+  const r = await p.query(
+    `INSERT INTO stripe_disputes
+       (dispute_id, charge_id, payment_intent, amount_cents, currency,
+        reason, status, source_kind, source_id, needs_review, resolved_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, CASE WHEN $10 = FALSE THEN NOW() ELSE NULL END)
+     ON CONFLICT (dispute_id) DO UPDATE SET
+       status = EXCLUDED.status,
+       reason = COALESCE(EXCLUDED.reason, stripe_disputes.reason),
+       source_kind = COALESCE(stripe_disputes.source_kind, EXCLUDED.source_kind),
+       source_id = COALESCE(stripe_disputes.source_id, EXCLUDED.source_id),
+       needs_review = EXCLUDED.needs_review,
+       resolved_at = CASE WHEN EXCLUDED.needs_review = FALSE THEN NOW() ELSE NULL END,
+       updated_at = NOW()
+     RETURNING *`,
+    [disputeId, chargeId || null, paymentIntent || null,
+     amountCents ?? null, currency || null, reason || null, status || null,
+     sourceKind, sourceId, !closed]
+  );
+  return r.rows[0] || null;
+}
+
 // Lifetime platform revenue = sum of platform_fee_cents on completed bookings.
 async function getCoachingPlatformRevenue() {
   const p = getPool();
@@ -26496,6 +26688,12 @@ module.exports = {
   upsertStripeFeeFromCharge,
   upsertStripeRefundsFromCharge,
   resolveStripeFeeSourceByIntent,
+  recordStripeWebhookEvent,
+  claimStripeWebhookEvent,
+  markStripeWebhookProcessed,
+  markStripeWebhookFailed,
+  listRetryableStripeWebhookEvents,
+  recordStripeDispute,
   addPushSubscription,
   removePushSubscriptionByEndpoint,
   getPushSubscriptionsForAccount,

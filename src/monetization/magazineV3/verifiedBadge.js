@@ -15,6 +15,7 @@
 
 const { ALLOWED_VERIFIED_PROVIDERS, VERIFIED_BADGE_PRICE_CENTS } = require('./constants');
 const { _isSafeHttpUrl, _assertPublicHttpUrl } = require('./urlSafety');
+const { idem, idemBucket } = require('../../payments/stripeIdem');
 
 function createDb({ getPool }) {
   // ---- Round-4: verified-badge code challenge + email opt-in helpers ----
@@ -283,7 +284,7 @@ function mountRoutes({ router, express, deps, requireAuth }) {
           account_id: String(req.session.accountId),
           provider, handle,
         },
-      });
+      }, idem('checkout', 'verified_badge', req.session.accountId, provider, handle, idemBucket()));
       res.json({ url: session.url });
     } catch (err) {
       console.error('[API] verified/checkout:', err.message);

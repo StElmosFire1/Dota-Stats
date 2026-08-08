@@ -185,6 +185,22 @@ const PROBES = [
     },
   },
   {
+    key: 'stripe_key_mode',
+    label: 'Stripe key mode matches environment',
+    async run() {
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return { ok: true, detail: 'no key configured (payments disabled)' };
+      }
+      try {
+        const { checkKeyMode } = require('../payments/stripeKeyMode');
+        const res = await checkKeyMode({ db, network: true });
+        return res.ok
+          ? { ok: true, detail: res.reason || `${res.mode} mode` }
+          : { ok: false, reason: res.reason };
+      } catch (e) { return { ok: false, reason: e.message }; }
+    },
+  },
+  {
     key: 'stripe_webhook',
     label: 'Stripe webhook signing secret',
     async run() {

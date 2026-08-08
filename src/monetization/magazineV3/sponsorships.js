@@ -8,6 +8,7 @@
 
 const { SPONSORSHIP_MONTHLY_PRICE_CENTS, SPONSORSHIP_REVSHARE_BPS } = require('./constants');
 const { _isSafeHttpUrl } = require('./urlSafety');
+const { idem, idemBucket } = require('../../payments/stripeIdem');
 
 function createDb({ getPool }) {
   // ---- 4: sponsorships ----
@@ -267,7 +268,7 @@ function mountRoutes({ router, express, deps, requireAuth }) {
           transfer_data: { destination: revshareConfig.destination },
         };
       }
-      const session = await stripe.checkout.sessions.create(sessionParams);
+      const session = await stripe.checkout.sessions.create(sessionParams, idem('checkout', 'org_sponsorship', sponsorAccountId, targetAccountId, idemBucket()));
       const row = await magV3.createSponsorshipPending({
         sponsorAccountId, targetAccountId,
         headline, bodyMd, imageUrl, linkUrl,
