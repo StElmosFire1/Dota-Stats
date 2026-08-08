@@ -26,6 +26,7 @@ const {
   reportPaymentWebhookFailure,
   checkStuckStripeInbox,
   STUCK_THRESHOLD_MINUTES,
+  _resetStuckAlertStateForTest,
 } = require('../src/observability/paymentAlerts');
 
 const tick = () => new Promise((r) => setImmediate(r));
@@ -84,6 +85,7 @@ test('checkStuckStripeInbox alerts when rows are stuck past the threshold', asyn
 
 test('checkStuckStripeInbox stays quiet when nothing is stuck', async () => {
   posts.length = 0;
+  _resetStuckAlertStateForTest(); // prior test latched an alert; clear-with-no-prior-alert must stay silent
   const counts = await checkStuckStripeInbox({
     async countStuckStripeWebhookEvents() { return { failed: 0, stale: 0, total: 0 }; },
   });
@@ -116,6 +118,73 @@ test('the alert burst cap holds — a flood of distinct errors stops posting', (
   posts.length = 0;
   reportPaymentWebhookFailure(new Error(`unique flood error ${Math.PI}`), { phase: 'request' });
   assert.equal(posts.length, 0, 'burst cap must suppress further alerts in the window');
+});
+
+// ── Task #911 — recovery all-clear ping ─────────────────────────────────────
+// These run after the burst-cap test above, which proves recovery pings do
+// NOT go through the rate-limited error path: they must post even when the
+// error burst window is exhausted.
+
+const stuckDb = (total, failed = total, stale = 0) => ({
+  async countStuckStripeWebhookEvents() { return { failed, stale, total }; },
+});
+
+test('a recovery ping is posted once the inbox drains after an alert', async () => {
+  _resetStuckAlertStateForTest();
+  posts.length = 0;
+  await checkStuckStripeInbox(stuckDb(2, 2, 0)); // alert (suppressed by burst cap, but latches)
+  posts.length = 0;
+  await checkStuckStripeInbox(stuckDb(0, 0, 0));
+  await tick(); await tick();
+  assert.equal(posts.length, 1, 'exactly one recovery ping');
+  assert.match(posts[0].body.content, /Recovered/);
+  assert.match(posts[0].body.content, /inbox is clear/i);
+});
+
+test('the recovery ping is one-shot — repeated clear checks stay silent', async () => {
+  posts.length = 0;
+  await checkStuckStripeInbox(stuckDb(0, 0, 0));
+  await checkStuckStripeInbox(stuckDb(0, 0, 0));
+  await tick(); await tick();
+  assert.equal(posts.length, 0);
+});
+
+test('no recovery ping when no alert was previously fired', async () => {
+  _resetStuckAlertStateForTest();
+  posts.length = 0;
+  await checkStuckStripeInbox(stuckDb(0, 0, 0));
+  await tick(); await tick();
+  assert.equal(posts.length, 0);
+});
+
+test('a failing count query does not clear the latch or fake a recovery', async () => {
+  _resetStuckAlertStateForTest();
+  posts.length = 0;
+  await checkStuckStripeInbox(stuckDb(1, 1, 0)); // latch
+  posts.length = 0;
+  await checkStuckStripeInbox({
+    async countStuckStripeWebhookEvents() { throw new Error('relation gone again'); },
+  });
+  await tick(); await tick();
+  // Only the (deduped) check-failure report may appear — never a recovery ping.
+  assert.ok(!posts.some(p => /Recovered/.test(p.body.content)), 'no recovery on query failure');
+  posts.length = 0;
+  await checkStuckStripeInbox(stuckDb(0, 0, 0)); // real drain → ping fires now
+  await tick(); await tick();
+  assert.equal(posts.length, 1);
+  assert.match(posts[0].body.content, /Recovered/);
+});
+
+test('a re-break after recovery re-arms the ping', async () => {
+  _resetStuckAlertStateForTest();
+  posts.length = 0;
+  await checkStuckStripeInbox(stuckDb(3, 1, 2));
+  await checkStuckStripeInbox(stuckDb(0, 0, 0)); // recovery #1
+  await checkStuckStripeInbox(stuckDb(1, 1, 0)); // re-break
+  await checkStuckStripeInbox(stuckDb(0, 0, 0)); // recovery #2
+  await tick(); await tick();
+  const recoveries = posts.filter(p => /Recovered/.test(p.body.content));
+  assert.equal(recoveries.length, 2, 'each alert episode gets its own recovery ping');
 });
 
 test('alert text redacts the Stripe secret key', () => {

@@ -155,4 +155,7 @@ function installProcessHandlers() {
   });
 }
 
-module.exports = { reportError, installProcessHandlers, redact };
+// Also exported for one-shot informational posts (e.g. recovery all-clear
+// pings) that must reach the same channel but should NOT consume the error
+// burst/dedupe budget. Callers are responsible for their own one-shot logic.
+module.exports = { reportError, installProcessHandlers, redact, postWebhookAlert: _postWebhook };

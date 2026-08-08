@@ -10,7 +10,7 @@
 //
 // Never throws — alerting must not take down the payment path it watches.
 
-const { reportError } = require('./errorMonitor');
+const { reportError, postWebhookAlert } = require('./errorMonitor');
 
 // How old (minutes) an inbox row can be while still failed / unclaimed
 // before the periodic sweep raises an alert. Override with
@@ -44,6 +44,22 @@ function reportPaymentWebhookFailure(err, context = {}) {
  * (purchases may not be activating). Returns the counts (or null when the
  * db helper is unavailable, e.g. lightweight test stubs).
  */
+// Task #911 — remember whether the last stuck-inbox check alerted, so the
+// first subsequent all-clear check can post a one-shot recovery ping. The
+// recovery message goes straight to the webhook (postWebhookAlert) rather
+// than through reportError: it's informational, must not consume the error
+// burst budget, and must not be suppressed by the 10-min dedupe if the
+// inbox re-breaks and re-recovers quickly. The flag itself guarantees a
+// single ping per alert episode. Process-local by design: a restart while
+// stuck simply re-alerts on the next sweep, re-arming recovery.
+let _stuckAlertActive = false;
+
+/**
+ * Periodic stuck-inbox check. Counts failed rows and stale-claimed
+ * received/processing rows older than the threshold; alerts when any exist
+ * (purchases may not be activating). Returns the counts (or null when the
+ * db helper is unavailable, e.g. lightweight test stubs).
+ */
 async function checkStuckStripeInbox(db, { thresholdMinutes = STUCK_THRESHOLD_MINUTES } = {}) {
   if (!db || typeof db.countStuckStripeWebhookEvents !== 'function') return null;
   let counts = null;
@@ -52,10 +68,13 @@ async function checkStuckStripeInbox(db, { thresholdMinutes = STUCK_THRESHOLD_MI
   } catch (e) {
     // A broken count query is itself a monitoring failure worth knowing about,
     // but don't alert-loop on it — reportError's dedupe covers repeats.
+    // Deliberately does NOT touch _stuckAlertActive: we can't tell whether
+    // the backlog drained, so no false "recovered" ping.
     reportError(e, { source: 'stripe-inbox-stuck-check' });
     return null;
   }
   if (counts && counts.total > 0) {
+    _stuckAlertActive = true;
     reportError(
       new Error(
         `${counts.total} Stripe webhook inbox event(s) stuck past ${thresholdMinutes} min ` +
@@ -64,12 +83,26 @@ async function checkStuckStripeInbox(db, { thresholdMinutes = STUCK_THRESHOLD_MI
       ),
       { source: 'stripe-inbox-stuck' }
     );
+  } else if (counts && counts.total === 0 && _stuckAlertActive) {
+    _stuckAlertActive = false;
+    try {
+      await postWebhookAlert(
+        '✅ [stripe-inbox-stuck] Recovered: the Stripe webhook inbox is clear again — ' +
+        'no failed or stuck events remain. No action needed.'
+      );
+    } catch (_) { /* never throw from the alert path */ }
   }
   return counts;
+}
+
+// Test-only: reset the recovery latch between test cases.
+function _resetStuckAlertStateForTest() {
+  _stuckAlertActive = false;
 }
 
 module.exports = {
   reportPaymentWebhookFailure,
   checkStuckStripeInbox,
   STUCK_THRESHOLD_MINUTES,
+  _resetStuckAlertStateForTest,
 };
