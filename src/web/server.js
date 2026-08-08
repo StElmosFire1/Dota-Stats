@@ -420,14 +420,27 @@ async function _runPaymentIntentBackfill(reason = 'cron') {
     } catch (e) {
       console.warn('[PI Backfill] season-pass refund reconciliation failed:', e?.message || e);
     }
-    if (s.framesScanned || s.ringsScanned || s.passesScanned) {
-      console.log(`[PI Backfill] ${reason} sweep — frames filled=${s.framesFilled}/${s.framesScanned} rings filled=${s.ringsFilled}/${s.ringsScanned} passes filled=${s.passesFilled}/${s.passesScanned} noIntent=${s.framesNoIntent + s.ringsNoIntent + s.passesNoIntent} errors=${s.errors}`);
+    // Task #916 — same backstop for coin packs and gifted coins: debit any
+    // purchase still 'completed' whose intent is recorded as refunded.
+    try {
+      const coinRecon = await db.reconcileRefundedCoinPurchases();
+      for (const row of coinRecon.packs) {
+        console.log('[PI Backfill] reconciliation debited refunded coin pack — account', row.account_id, 'pack', row.pack_id, row.coins, '🪙');
+      }
+      for (const row of coinRecon.gifts) {
+        console.log('[PI Backfill] reconciliation debited refunded coin gift — recipient', row.recipient_account_id, row.coins_debited, '🪙');
+      }
+    } catch (e) {
+      console.warn('[PI Backfill] coin refund reconciliation failed:', e?.message || e);
+    }
+    if (s.framesScanned || s.ringsScanned || s.passesScanned || s.coinPacksScanned || s.giftCoinsScanned) {
+      console.log(`[PI Backfill] ${reason} sweep — frames filled=${s.framesFilled}/${s.framesScanned} rings filled=${s.ringsFilled}/${s.ringsScanned} passes filled=${s.passesFilled}/${s.passesScanned} coinPacks filled=${s.coinPacksFilled}/${s.coinPacksScanned} giftCoins filled=${s.giftCoinsFilled}/${s.giftCoinsScanned} noIntent=${s.framesNoIntent + s.ringsNoIntent + s.passesNoIntent + s.coinPacksNoIntent + s.giftCoinsNoIntent} errors=${s.errors}`);
     }
     try {
       await db.recordCronHeartbeat({
         name: 'payment_intent_backfill',
         status: s.errors ? 'error' : 'ok',
-        message: `frames ${s.framesFilled}/${s.framesScanned}, rings ${s.ringsFilled}/${s.ringsScanned}, passes ${s.passesFilled}/${s.passesScanned}, errors ${s.errors}`,
+        message: `frames ${s.framesFilled}/${s.framesScanned}, rings ${s.ringsFilled}/${s.ringsScanned}, passes ${s.passesFilled}/${s.passesScanned}, coin packs ${s.coinPacksFilled}/${s.coinPacksScanned}, gift coins ${s.giftCoinsFilled}/${s.giftCoinsScanned}, errors ${s.errors}`,
       });
     } catch (_) {}
   } catch (e) {
@@ -2867,6 +2880,12 @@ function createServer(startupStatus = {}) {
           // Task #319 — gift a coin pack to another player.
           const gift = await db.confirmGiftCheckout(session.id).catch(() => null);
           if (gift) {
+            // Task #916 — stamp the payment intent at fulfillment so
+            // charge.refunded can match + debit this gift. No .catch(): a
+            // failed stamp must 500 the webhook so Stripe retries — an
+            // unstamped gift would be invisible to the refund handler.
+            const gcPi = (typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id) || null;
+            if (gcPi) await db.setGiftPurchasePaymentIntentBySession(session.id, gcPi);
             const coins = parseInt(session.metadata?.coins || '0', 10) || 0;
             if (coins > 0) {
               await db.grantCoins({
@@ -2876,6 +2895,14 @@ function createServer(startupStatus = {}) {
                 applyDailyCap: false,
               }).catch(() => {});
               console.log('[Stripe] Gift coins delivered:', coins, '🪙 to', gift.recipient_account_id);
+            }
+            // Ordering safety (Task #916): Stripe may deliver charge.refunded
+            // BEFORE this fulfillment event. If the intent is already recorded
+            // as refunded, debit the just-granted coins immediately. Errors
+            // propagate so Stripe retries.
+            if (gcPi && await db.isPaymentIntentRefunded(gcPi)) {
+              const clawed = await db.markGiftCoinsRefundedByIntent(gcPi);
+              console.log('[Stripe] gift_coins session', session.id, 'was already refunded — debited at fulfillment', clawed.map(g => g.coins_debited));
             }
           } else {
             console.warn('[Stripe] gift_coins webhook: no gift for session', session.id);
@@ -2921,9 +2948,22 @@ function createServer(startupStatus = {}) {
           // Atomic: balance update + ledger insert + status flip all happen
           // in one transaction. Errors propagate so Stripe retries; a re-fire
           // on a completed row is a no-op (returns null) — never double-credits.
-          const completed = await db.creditCoinPackAtomically(session.id);
+          // Task #916 — the payment intent is stamped in the same transaction
+          // so charge.refunded can match + debit this purchase.
+          const cpPi = (typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id) || null;
+          const completed = await db.creditCoinPackAtomically(session.id, { paymentIntent: cpPi });
           if (completed) {
             console.log(`[Stripe] coin_pack ${completed.pack_id} credited ${completed.coins} 🪙 to ${completed.account_id}`);
+          }
+          // Ordering safety (Task #916): Stripe may deliver charge.refunded
+          // BEFORE this fulfillment event. If the intent is already recorded
+          // as refunded, debit the just-credited coins immediately. Errors
+          // propagate so Stripe retries.
+          if (cpPi && await db.isPaymentIntentRefunded(cpPi)) {
+            const clawed = await db.markCoinPackPurchasesRefundedByIntent(cpPi);
+            for (const c of clawed) {
+              console.log('[Stripe] coin_pack session', session.id, 'was already refunded — debited', c.coins, '🪙 from', c.account_id, 'at fulfillment');
+            }
           }
         } else if (purpose === 'sponsorship') {
           // Task #320 — sponsorship slot purchase. Idempotent on session.id.
@@ -3218,6 +3258,23 @@ function createServer(startupStatus = {}) {
           const refundedPasses = (await db.markSeasonPassRefundedByIntent(pi)) || [];
           for (const pass of refundedPasses) {
             console.log('[Stripe] Refund revoked season pass', 'season', pass.season_number, 'account', pass.account_id, pass.gift_stripe_session_id ? '(gifted)' : '(self)');
+          }
+          // Task #916 — coin packs and gifted coins are debited on refund
+          // too. Both helpers match by the payment intent stored at
+          // fulfillment time, debit the credited coins in the same
+          // transaction as the status flip (balance may go negative — see
+          // the policy note in db/index.js), and are idempotent across
+          // webhook retries. Like the season-pass handler these propagate
+          // errors: a failed debit must 500 the webhook so Stripe retries —
+          // otherwise the refund would be free coins, with no repair path
+          // beyond the daily reconciliation backstop.
+          const refundedCoinPacks = (await db.markCoinPackPurchasesRefundedByIntent(pi)) || [];
+          for (const cp of refundedCoinPacks) {
+            console.log('[Stripe] Refund debited coin pack', cp.pack_id, '—', cp.coins, '🪙 from account', cp.account_id);
+          }
+          const refundedGiftCoins = (await db.markGiftCoinsRefundedByIntent(pi)) || [];
+          for (const gc of refundedGiftCoins) {
+            console.log('[Stripe] Refund debited gifted coins —', gc.coins_debited, '🪙 from recipient', gc.recipient_account_id, '(gifter', gc.gifter_account_id + ')');
           }
           // Task #421 — Ingest the refund's BalanceTransaction(s) so the
           // coach earnings dashboard can show the real cost of the refund

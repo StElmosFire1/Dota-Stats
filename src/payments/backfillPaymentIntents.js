@@ -10,6 +10,10 @@
 //     metadata stripe_session_id but no metadata stripe_payment_intent
 //   - season_pass_purchases rows (Task #912) — self-purchases store the
 //     session in stripe_session_id, gift activations in gift_stripe_session_id
+//   - coin_pack_purchases rows (Task #916) — completed top-ups fulfilled
+//     before intents were stored at fulfillment time
+//   - gift_purchases rows with gift_type='coins' (Task #916) — completed
+//     coin gifts, so charge.refunded can debit the recipient's coins
 //
 // Idempotent: each filled row leaves the "missing" set forever, and rows whose
 // session genuinely has no payment intent (or no longer exists on Stripe) are
@@ -62,15 +66,21 @@ async function backfillStoredPaymentIntents({ dryRun = false, limit = 200, delay
     framesScanned: 0, framesFilled: 0, framesNoIntent: 0,
     ringsScanned: 0, ringsFilled: 0, ringsNoIntent: 0,
     passesScanned: 0, passesFilled: 0, passesNoIntent: 0,
+    coinPacksScanned: 0, coinPacksFilled: 0, coinPacksNoIntent: 0,
+    giftCoinsScanned: 0, giftCoinsFilled: 0, giftCoinsNoIntent: 0,
     errors: 0,
   };
 
-  const [frames, rings, passes] = await Promise.all([
+  const [frames, rings, passes, coinPacks, giftCoins] = await Promise.all([
     db.listFramePurchasesMissingPaymentIntent(limit),
     db.listFounderRingEntitlementsMissingPaymentIntent(limit),
     db.listSeasonPassPurchasesMissingPaymentIntent(limit),
+    db.listCoinPackPurchasesMissingPaymentIntent(limit),
+    db.listGiftCoinPurchasesMissingPaymentIntent(limit),
   ]);
-  if (!frames.length && !rings.length && !passes.length) return summary; // fully backfilled — no Stripe calls
+  if (!frames.length && !rings.length && !passes.length && !coinPacks.length && !giftCoins.length) {
+    return summary; // fully backfilled — no Stripe calls
+  }
 
   if (!process.env.STRIPE_SECRET_KEY && !stripe) {
     console.warn('[PI Backfill] STRIPE_SECRET_KEY missing — skipping');
@@ -136,6 +146,49 @@ async function backfillStoredPaymentIntents({ dryRun = false, limit = 200, delay
       } else {
         summary.passesFilled++;
         console.log('[PI Backfill] season_pass_purchases id=%s (account=%s season=%s) ← %s', row.id, row.account_id, row.season_number, res.intent);
+      }
+    }
+    await _sleep(delayMs);
+  }
+
+  // Task #916 — coin packs + gifted coins.
+  for (const row of coinPacks) {
+    summary.coinPacksScanned++;
+    const res = await _resolveSessionIntent(client, row.stripe_session_id);
+    if (res.retry) {
+      summary.errors++;
+      console.warn('[PI Backfill] coin_pack_purchases id=%s session=%s retryable error: %s', row.id, row.stripe_session_id, res.error);
+    } else if (dryRun) {
+      console.log('[PI Backfill] (dry-run) coin_pack_purchases id=%s %s → %s', row.id, row.stripe_session_id, res.intent);
+    } else {
+      await db.setCoinPackPurchasePaymentIntent(row.id, res.intent);
+      if (res.intent === NO_INTENT_SENTINEL) {
+        summary.coinPacksNoIntent++;
+        console.log('[PI Backfill] coin_pack_purchases id=%s session=%s has no payment intent — stamped sentinel', row.id, row.stripe_session_id);
+      } else {
+        summary.coinPacksFilled++;
+        console.log('[PI Backfill] coin_pack_purchases id=%s (account=%s pack=%s) ← %s', row.id, row.account_id, row.pack_id, res.intent);
+      }
+    }
+    await _sleep(delayMs);
+  }
+
+  for (const row of giftCoins) {
+    summary.giftCoinsScanned++;
+    const res = await _resolveSessionIntent(client, row.stripe_session_id);
+    if (res.retry) {
+      summary.errors++;
+      console.warn('[PI Backfill] gift_purchases(coins) id=%s session=%s retryable error: %s', row.id, row.stripe_session_id, res.error);
+    } else if (dryRun) {
+      console.log('[PI Backfill] (dry-run) gift_purchases(coins) id=%s %s → %s', row.id, row.stripe_session_id, res.intent);
+    } else {
+      await db.setGiftPurchasePaymentIntent(row.id, res.intent);
+      if (res.intent === NO_INTENT_SENTINEL) {
+        summary.giftCoinsNoIntent++;
+        console.log('[PI Backfill] gift_purchases(coins) id=%s session=%s has no payment intent — stamped sentinel', row.id, row.stripe_session_id);
+      } else {
+        summary.giftCoinsFilled++;
+        console.log('[PI Backfill] gift_purchases(coins) id=%s (recipient=%s) ← %s', row.id, row.recipient_account_id, res.intent);
       }
     }
     await _sleep(delayMs);

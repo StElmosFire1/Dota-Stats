@@ -25,8 +25,12 @@ function load({ passes = [], sessions = {} } = {}) {
     async listFounderRingEntitlementsMissingPaymentIntent() { return []; },
     async listSeasonPassPurchasesMissingPaymentIntent() { return passes; },
     async setSeasonPassPurchasePaymentIntent(id, intent) { writes.push([id, intent]); return { id }; },
+    async listCoinPackPurchasesMissingPaymentIntent() { return []; },
+    async listGiftCoinPurchasesMissingPaymentIntent() { return []; },
     async setFramePurchasePaymentIntent() { throw new Error('unexpected'); },
     async setEntitlementPaymentIntent() { throw new Error('unexpected'); },
+    async setCoinPackPurchasePaymentIntent() { throw new Error('unexpected'); },
+    async setGiftPurchasePaymentIntent() { throw new Error('unexpected'); },
   };
   stubModule('../src/db', dbStub);
   const modPath = require.resolve('../src/payments/backfillPaymentIntents.js');

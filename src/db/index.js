@@ -3405,6 +3405,15 @@ async function init() {
     // from their stored checkout session id by src/payments/backfillPaymentIntents.js.
     await p.query(`ALTER TABLE season_pass_purchases ADD COLUMN IF NOT EXISTS stripe_payment_intent TEXT`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_spp_pi ON season_pass_purchases (stripe_payment_intent) WHERE stripe_payment_intent IS NOT NULL`);
+    // Task #916 — payment intent stored at fulfillment time for coin packs and
+    // gifted coins so charge.refunded can debit the credited coins, the same
+    // way season passes (Task #912) and frames (Task #890) revoke. Historical
+    // rows are backfilled from their stored checkout session id by
+    // src/payments/backfillPaymentIntents.js.
+    await p.query(`ALTER TABLE coin_pack_purchases ADD COLUMN IF NOT EXISTS stripe_payment_intent TEXT`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_coin_pack_pi ON coin_pack_purchases (stripe_payment_intent) WHERE stripe_payment_intent IS NOT NULL`);
+    await p.query(`ALTER TABLE gift_purchases ADD COLUMN IF NOT EXISTS stripe_payment_intent TEXT`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_gift_purchases_pi ON gift_purchases (stripe_payment_intent) WHERE stripe_payment_intent IS NOT NULL`);
     // Task #912 — durable record of every refunded payment intent. Stripe does
     // NOT guarantee webhook ordering: charge.refunded can arrive BEFORE
     // checkout.session.completed. When that happens the revoke-by-intent
@@ -23025,7 +23034,7 @@ async function markCoinPackCompleted(stripeSessionId) {
 //
 // Returns the completed purchase row on first success, `null` on idempotent
 // re-fire, throws on missing row.
-async function creditCoinPackAtomically(stripeSessionId) {
+async function creditCoinPackAtomically(stripeSessionId, { paymentIntent = null } = {}) {
   const p = getPool();
   const client = await p.connect();
   try {
@@ -23042,6 +23051,17 @@ async function creditCoinPackAtomically(stripeSessionId) {
     }
     const purchase = row.rows[0];
     if (purchase.status === 'completed') {
+      // Task #916 — even on an idempotent re-fire, stamp the payment intent
+      // if an earlier fulfillment ran before intents were stored, so the
+      // refund path can still match this purchase.
+      if (paymentIntent) {
+        await client.query(
+          `UPDATE coin_pack_purchases
+              SET stripe_payment_intent = COALESCE(stripe_payment_intent, $2)
+            WHERE stripe_session_id = $1`,
+          [stripeSessionId, paymentIntent],
+        );
+      }
       await client.query('COMMIT');
       return null; // already fulfilled — Stripe retry
     }
@@ -23066,12 +23086,15 @@ async function creditCoinPackAtomically(stripeSessionId) {
         WHERE account_id = $2`,
       [coins, accountId],
     );
+    // Task #916 — stamp the payment intent at fulfillment so charge.refunded
+    // can match + debit this purchase; COALESCE keeps any earlier value.
     const upd = await client.query(
       `UPDATE coin_pack_purchases
-          SET status = 'completed', completed_at = NOW()
+          SET status = 'completed', completed_at = NOW(),
+              stripe_payment_intent = COALESCE($2, stripe_payment_intent)
         WHERE stripe_session_id = $1
         RETURNING *`,
-      [stripeSessionId],
+      [stripeSessionId, paymentIntent],
     );
     await client.query('COMMIT');
     return upd.rows[0] || null;
@@ -23081,6 +23104,252 @@ async function creditCoinPackAtomically(stripeSessionId) {
   } finally {
     client.release();
   }
+}
+
+// ── Task #916 — coin purchases & coin gifts are refund-safe ────────────────
+// Policy (documented decision): a Stripe refund debits the FULL credited coin
+// amount from the recipient's balance and the balance is ALLOWED TO GO
+// NEGATIVE. Clamping at zero would let a buyer spend the coins and then
+// refund for free; a negative balance records the debt, blocks further
+// spending (every spend path checks balance >= cost), and self-heals as the
+// player earns coins. coin_lifetime is reduced by the same amount since the
+// credit inflated it. Each debit is written to coin_transactions so the
+// ledger always explains the balance.
+
+// Shared debit: negative ledger row + balance/lifetime decrement. Runs inside
+// the caller's transaction; the caller must have taken the per-account
+// advisory lock.
+async function _debitRefundedCoins(client, { accountId, coins, reason }) {
+  await client.query(
+    `INSERT INTO player_profiles (account_id) VALUES ($1) ON CONFLICT (account_id) DO NOTHING`,
+    [accountId],
+  );
+  await client.query(
+    `INSERT INTO coin_transactions (account_id, delta, reason, ref_match_id)
+     VALUES ($1, $2, $3, NULL)`,
+    [accountId, -coins, String(reason).slice(0, 64)],
+  );
+  await client.query(
+    `UPDATE player_profiles
+        SET coin_balance  = COALESCE(coin_balance, 0)  - $1,
+            coin_lifetime = COALESCE(coin_lifetime, 0) - $1
+      WHERE account_id = $2`,
+    [coins, accountId],
+  );
+}
+
+// charge.refunded → coin packs. Flips every completed coin_pack_purchases row
+// whose stored payment intent matches to status='refunded' and debits the
+// credited coins in the same transaction. Idempotent: refunded rows don't
+// match, so a webhook retry is a no-op. Returns the flipped rows.
+async function markCoinPackPurchasesRefundedByIntent(paymentIntent) {
+  if (!paymentIntent || paymentIntent === 'none') return [];
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const rows = await client.query(
+      `SELECT * FROM coin_pack_purchases
+        WHERE stripe_payment_intent = $1 AND status = 'completed'
+        FOR UPDATE`,
+      [paymentIntent],
+    );
+    const flipped = [];
+    for (const purchase of rows.rows) {
+      const accountId = Number(purchase.account_id);
+      await client.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [accountId]);
+      await _debitRefundedCoins(client, {
+        accountId,
+        coins: Number(purchase.coins),
+        reason: 'stripe_topup_refund',
+      });
+      const upd = await client.query(
+        `UPDATE coin_pack_purchases
+            SET status = 'refunded'
+          WHERE id = $1
+          RETURNING *`,
+        [purchase.id],
+      );
+      if (upd.rows[0]) flipped.push(upd.rows[0]);
+    }
+    await client.query('COMMIT');
+    return flipped;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// charge.refunded → gifted coins. Flips every completed gift_purchases row
+// (gift_type='coins') whose stored payment intent matches to
+// status='refunded' and debits the RECIPIENT's balance by the coins the gift
+// granted. The granted amount is read back from the recipient's own
+// coin_transactions grant row (reason 'gift_coins:<session>', truncated the
+// same way grantCoins truncates), because the gift row stores money, not
+// coins. If the grant row is missing (the historical grant path swallowed a
+// failure) there is nothing to claw back — the row is still flipped so gift
+// history reflects the refund. Idempotent via the status filter.
+async function markGiftCoinsRefundedByIntent(paymentIntent) {
+  if (!paymentIntent || paymentIntent === 'none') return [];
+  const p = getPool();
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const rows = await client.query(
+      `SELECT * FROM gift_purchases
+        WHERE stripe_payment_intent = $1
+          AND gift_type = 'coins'
+          AND status = 'completed'
+        FOR UPDATE`,
+      [paymentIntent],
+    );
+    const flipped = [];
+    for (const gift of rows.rows) {
+      const accountId = Number(gift.recipient_account_id);
+      await client.query(`SELECT pg_advisory_xact_lock($1::bigint)`, [accountId]);
+      const grant = await client.query(
+        `SELECT delta FROM coin_transactions
+          WHERE account_id = $1
+            AND reason = LEFT('gift_coins:' || $2, 64)
+            AND delta > 0
+          ORDER BY id ASC LIMIT 1`,
+        [accountId, gift.stripe_session_id],
+      );
+      const coins = Number(grant.rows[0]?.delta || 0);
+      if (coins > 0) {
+        await _debitRefundedCoins(client, {
+          accountId,
+          coins,
+          reason: `gift_coins_refund:${gift.stripe_session_id}`,
+        });
+      }
+      const upd = await client.query(
+        `UPDATE gift_purchases
+            SET status = 'refunded'
+          WHERE id = $1
+          RETURNING *`,
+        [gift.id],
+      );
+      if (upd.rows[0]) flipped.push({ ...upd.rows[0], coins_debited: coins });
+    }
+    await client.query('COMMIT');
+    return flipped;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// Task #916 — reconciliation backstop, run from the daily payment-intent
+// backfill sweep (mirrors reconcileRefundedSeasonPasses). Debits any coin
+// pack / coin gift that is still 'completed' even though its payment intent
+// is recorded as refunded — covers webhook deliveries Stripe gave up
+// retrying and historical rows whose intent was only just backfilled after
+// the refund landed. Idempotent; returns the flipped rows.
+async function reconcileRefundedCoinPurchases() {
+  const p = getPool();
+  const [packIntents, giftIntents] = await Promise.all([
+    p.query(
+      `SELECT DISTINCT cpp.stripe_payment_intent AS pi
+         FROM coin_pack_purchases cpp
+         JOIN stripe_refunded_intents sri ON sri.payment_intent = cpp.stripe_payment_intent
+        WHERE cpp.status = 'completed'`,
+    ),
+    p.query(
+      `SELECT DISTINCT gp.stripe_payment_intent AS pi
+         FROM gift_purchases gp
+         JOIN stripe_refunded_intents sri ON sri.payment_intent = gp.stripe_payment_intent
+        WHERE gp.gift_type = 'coins' AND gp.status = 'completed'`,
+    ),
+  ]);
+  const packs = [];
+  const gifts = [];
+  for (const { pi } of packIntents.rows) {
+    packs.push(...await markCoinPackPurchasesRefundedByIntent(pi));
+  }
+  for (const { pi } of giftIntents.rows) {
+    gifts.push(...await markGiftCoinsRefundedByIntent(pi));
+  }
+  return { packs, gifts };
+}
+
+// Task #916 — backfill helpers: coin-pack / coin-gift rows fulfilled before
+// intents were stored at fulfillment time. Only completed rows matter —
+// pending rows never paid and refunded rows are already debited.
+async function listCoinPackPurchasesMissingPaymentIntent(limit = 100) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, account_id, pack_id, coins, stripe_session_id
+       FROM coin_pack_purchases
+      WHERE stripe_session_id IS NOT NULL
+        AND stripe_payment_intent IS NULL
+        AND status = 'completed'
+      ORDER BY id ASC
+      LIMIT $1`,
+    [limit],
+  );
+  return r.rows;
+}
+
+async function setCoinPackPurchasePaymentIntent(id, paymentIntent) {
+  if (!id || !paymentIntent) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE coin_pack_purchases
+        SET stripe_payment_intent = $2
+      WHERE id = $1 AND stripe_payment_intent IS NULL
+      RETURNING id`,
+    [id, paymentIntent],
+  );
+  return r.rows[0] || null;
+}
+
+async function listGiftCoinPurchasesMissingPaymentIntent(limit = 100) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, gifter_account_id, recipient_account_id, stripe_session_id
+       FROM gift_purchases
+      WHERE gift_type = 'coins'
+        AND stripe_session_id IS NOT NULL
+        AND stripe_payment_intent IS NULL
+        AND status = 'completed'
+      ORDER BY id ASC
+      LIMIT $1`,
+    [limit],
+  );
+  return r.rows;
+}
+
+async function setGiftPurchasePaymentIntent(id, paymentIntent) {
+  if (!id || !paymentIntent) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE gift_purchases
+        SET stripe_payment_intent = $2
+      WHERE id = $1 AND stripe_payment_intent IS NULL
+      RETURNING id`,
+    [id, paymentIntent],
+  );
+  return r.rows[0] || null;
+}
+
+// Task #916 — stamp the payment intent on a gift row at fulfillment time
+// (webhook path, keyed by session). COALESCE keeps any earlier value.
+async function setGiftPurchasePaymentIntentBySession(stripeSessionId, paymentIntent) {
+  if (!stripeSessionId || !paymentIntent) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE gift_purchases
+        SET stripe_payment_intent = COALESCE(stripe_payment_intent, $2)
+      WHERE stripe_session_id = $1
+      RETURNING id`,
+    [stripeSessionId, paymentIntent],
+  );
+  return r.rows[0] || null;
 }
 
 // Players opted-IN to the weekly summary DM. Default is OFF per
@@ -26907,6 +27176,14 @@ module.exports = {
   markSeasonPassRefundedByIntent,
   listSeasonPassPurchasesMissingPaymentIntent,
   setSeasonPassPurchasePaymentIntent,
+  markCoinPackPurchasesRefundedByIntent,
+  markGiftCoinsRefundedByIntent,
+  reconcileRefundedCoinPurchases,
+  listCoinPackPurchasesMissingPaymentIntent,
+  setCoinPackPurchasePaymentIntent,
+  listGiftCoinPurchasesMissingPaymentIntent,
+  setGiftPurchasePaymentIntent,
+  setGiftPurchasePaymentIntentBySession,
   recordRefundedPaymentIntent,
   isPaymentIntentRefunded,
   reconcileRefundedSeasonPasses,
