@@ -394,6 +394,40 @@ async function _runSmurfRecompute(reason = 'cron') {
 setTimeout(() => { _runSmurfRecompute('boot').catch(() => {}); }, 5 * 60_000).unref();
 setInterval(() => { _runSmurfRecompute('cron').catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
 
+// Task #909 — one-time backfill sweep: resolve stripe_session_id →
+// payment_intent for frame purchases / founder-ring entitlements made
+// before Task #890 stored intents at grant time, so charge.refunded can
+// revoke historical purchases too. Idempotent and self-quenching: once
+// every row is stamped the sweep finds nothing and makes zero Stripe
+// calls. Runs 3 min after boot (after DB init), then daily as a safety
+// net for rows a transient Stripe error left unfilled.
+let _piBackfillInFlight = false;
+async function _runPaymentIntentBackfill(reason = 'cron') {
+  if (_piBackfillInFlight) return;
+  _piBackfillInFlight = true;
+  try {
+    const { backfillStoredPaymentIntents } = require('../payments/backfillPaymentIntents');
+    const s = await backfillStoredPaymentIntents();
+    if (s.framesScanned || s.ringsScanned) {
+      console.log(`[PI Backfill] ${reason} sweep — frames filled=${s.framesFilled}/${s.framesScanned} rings filled=${s.ringsFilled}/${s.ringsScanned} noIntent=${s.framesNoIntent + s.ringsNoIntent} errors=${s.errors}`);
+    }
+    try {
+      await db.recordCronHeartbeat({
+        name: 'payment_intent_backfill',
+        status: s.errors ? 'error' : 'ok',
+        message: `frames ${s.framesFilled}/${s.framesScanned}, rings ${s.ringsFilled}/${s.ringsScanned}, errors ${s.errors}`,
+      });
+    } catch (_) {}
+  } catch (e) {
+    console.warn('[PI Backfill] sweep failed:', e?.message || e);
+    try { await db.recordCronHeartbeat({ name: 'payment_intent_backfill', status: 'error', message: e?.message || String(e) }); } catch (_) {}
+  } finally {
+    _piBackfillInFlight = false;
+  }
+}
+setTimeout(() => { _runPaymentIntentBackfill('boot').catch(() => {}); }, 3 * 60_000).unref();
+setInterval(() => { _runPaymentIntentBackfill('cron').catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+
 // Task #419 — Bot-independent owner alert path. Used by the rollover cron
 // when the Discord bot isn't around (or when bot._dmOwner itself throws) so
 // failures are never silent. Tries, in order:

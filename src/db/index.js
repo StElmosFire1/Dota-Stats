@@ -17752,7 +17752,9 @@ async function confirmFramePurchase(stripeSessionId, accountId, frameId, { amoun
 // filters in hasFrameUnlocked / getOwnedFrames / listFramePurchases hide the
 // frame from ownership, equip and purchase history immediately.
 async function markFramePurchasesRefundedByIntent(paymentIntent) {
-  if (!paymentIntent) return [];
+  // 'none' is the Task #909 backfill sentinel for sessions with no payment
+  // intent — it must never be treated as a matchable intent.
+  if (!paymentIntent || paymentIntent === 'none') return [];
   const p = getPool();
   const r = await p.query(
     `UPDATE frame_purchases
@@ -17770,7 +17772,8 @@ async function markFramePurchasesRefundedByIntent(paymentIntent) {
 // Idempotent: already-revoked rows are skipped. revoked_at IS NULL filters
 // in the entitlement readers hide the ring everywhere immediately.
 async function markFounderRingsRefundedByIntent(paymentIntent) {
-  if (!paymentIntent) return [];
+  // 'none' is the Task #909 backfill sentinel — never matchable.
+  if (!paymentIntent || paymentIntent === 'none') return [];
   const p = getPool();
   const r = await p.query(
     `UPDATE entitlements
@@ -17783,6 +17786,72 @@ async function markFounderRingsRefundedByIntent(paymentIntent) {
     [paymentIntent]
   );
   return r.rows;
+}
+
+// Task #909 — one-time backfill helpers: purchases made before Task #890
+// shipped have a stripe_session_id but no stored payment intent, so a
+// refund of a historical frame/ring can't be matched. The backfill sweep
+// (src/payments/backfillPaymentIntents.js) resolves each stored session →
+// session.payment_intent via the Stripe API and stamps it here. A sentinel
+// value 'none' is written when the session genuinely has no payment intent
+// (or no longer exists) so the sweep never re-queries it; refund matching
+// is unaffected because real intents always start with 'pi_'.
+async function listFramePurchasesMissingPaymentIntent(limit = 100) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, account_id, frame_id, stripe_session_id
+       FROM frame_purchases
+      WHERE stripe_session_id IS NOT NULL
+        AND stripe_payment_intent IS NULL
+      ORDER BY id ASC
+      LIMIT $1`,
+    [limit]
+  );
+  return r.rows;
+}
+
+async function setFramePurchasePaymentIntent(id, paymentIntent) {
+  if (!id || !paymentIntent) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE frame_purchases
+        SET stripe_payment_intent = $2
+      WHERE id = $1 AND stripe_payment_intent IS NULL
+      RETURNING id`,
+    [id, paymentIntent]
+  );
+  return r.rows[0] || null;
+}
+
+// Founder-ring entitlements (per-slug SKUs + the limited Founders Pass ring)
+// granted by Stripe with a session id in metadata but no payment intent.
+async function listFounderRingEntitlementsMissingPaymentIntent(limit = 100) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, account_id, sku, metadata->>'stripe_session_id' AS stripe_session_id
+       FROM entitlements
+      WHERE granted_by = 'stripe'
+        AND (sku LIKE 'founder_ring:%' OR sku = 'founders_pass_ring')
+        AND metadata ? 'stripe_session_id'
+        AND NOT (metadata ? 'stripe_payment_intent')
+      ORDER BY id ASC
+      LIMIT $1`,
+    [limit]
+  );
+  return r.rows;
+}
+
+async function setEntitlementPaymentIntent(id, paymentIntent) {
+  if (!id || !paymentIntent) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE entitlements
+        SET metadata = metadata || jsonb_build_object('stripe_payment_intent', $2::text)
+      WHERE id = $1 AND NOT (metadata ? 'stripe_payment_intent')
+      RETURNING id`,
+    [id, paymentIntent]
+  );
+  return r.rows[0] || null;
 }
 
 // Frames included in the Pro tier at no extra charge.
@@ -26580,6 +26649,10 @@ module.exports = {
   listFounderRingPurchases,
   markFramePurchasesRefundedByIntent,
   markFounderRingsRefundedByIntent,
+  listFramePurchasesMissingPaymentIntent,
+  setFramePurchasePaymentIntent,
+  listFounderRingEntitlementsMissingPaymentIntent,
+  setEntitlementPaymentIntent,
   getCoinOwnedCosmetics,
   hasCoinCosmetic,
   purchaseCosmeticWithCoins,
