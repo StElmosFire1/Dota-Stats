@@ -6338,13 +6338,16 @@ function createApiRouter(startupStatus = {}, _app = null) {
       };
       const matches = await db.getMatches(limit, offset, seasonId, filterOpts);
       const total = await db.getMatchCount(seasonId, filterOpts);
+      // Task #868 — aggregate win/loss + story counts across the FULL
+      // filtered set so the client summary isn't limited to the current page.
+      const summary = await db.getMatchSummary(seasonId, filterOpts);
       // Task #363 — getMatches is `SELECT m.*` so the new chat_log JSONB
       // column would otherwise be returned to every public list caller,
       // bypassing the per-match `chat_log_visible` gate. Strip it
       // unconditionally on the list endpoint — chat is only ever surfaced
       // on the dedicated match detail page, which applies the full gate.
       for (const m of matches) { if (m && 'chat_log' in m) delete m.chat_log; }
-      res.json({ matches, total, limit, offset });
+      res.json({ matches, total, limit, offset, summary });
     } catch (err) {
       console.error('[API] Error fetching matches:', err.message);
       res.status(500).json({ error: 'Failed to fetch matches' });

@@ -1180,6 +1180,65 @@ async function getMatchCount(seasonId = null, { result, accountId, story } = {})
   return parseInt(res.rows[0].count);
 }
 
+// Task #868 — aggregate win/loss + story counts across the FULL filtered set
+// (not just the current page) so the Match History summary can show overall
+// totals. Mirrors the filter semantics of getMatches/getMatchCount: the same
+// season/result filters apply, and story buckets use the same kill-margin +
+// duration derivation as _matchFilterClause / the client-side storyLabel().
+// wins/losses are relative to `accountId` (null when absent).
+async function getMatchSummary(seasonId = null, { result, accountId, story } = {}) {
+  const p = getPool();
+  const params = [];
+  const seasonClause = _sc(seasonId, params, 'm');
+  // Reuse the result (win/loss) EXISTS clause, but NOT the story join — we
+  // always LEFT JOIN the kill-margin subquery ourselves so we can bucket every
+  // match's story in one pass, and apply the story filter against that alias.
+  const { clause: resultClause } = _matchFilterClause({ result, accountId }, params, 'm');
+  const dur = `COALESCE(m.duration, 0)`;
+  const stomp = `(ks.km >= 20 OR (ks.km >= 15 AND ${dur} > 0 AND ${dur} < 1800))`;
+  const decisive = `(NOT ${stomp} AND ks.km >= 10)`;
+  const neck = `(ks.km <= 3 AND ${dur} > 2400)`;
+  const close = `(ks.km <= 5 AND NOT ${neck})`;
+  let storyClause = '';
+  if (story && _STORY_TYPES.includes(story)) {
+    const expr = { 'Stomp': stomp, 'Decisive': decisive, 'Neck and Neck': neck, 'Close Game': close }[story];
+    storyClause = ` AND ks.km IS NOT NULL AND ${expr}`;
+  }
+  // Win/loss for the signed-in player — LEFT JOIN their player_stats row; a
+  // NULL team (they didn't play) falls out of both FILTER buckets.
+  const acct = accountId != null && accountId !== '' ? parseInt(accountId, 10) : null;
+  let meJoin = '';
+  let winSel = 'NULL::int AS wins, NULL::int AS losses';
+  if (Number.isFinite(acct)) {
+    params.push(acct);
+    meJoin = ` LEFT JOIN player_stats me ON me.match_id = m.match_id AND me.account_id = $${params.length}`;
+    winSel = `COUNT(*) FILTER (WHERE me.team IS NOT NULL AND (me.team = 'radiant') = m.radiant_win)::int AS wins,
+       COUNT(*) FILTER (WHERE me.team IS NOT NULL AND (me.team = 'radiant') <> m.radiant_win)::int AS losses`;
+  }
+  const sql = `SELECT COUNT(*)::int AS total,
+       ${winSel},
+       COUNT(*) FILTER (WHERE ks.km IS NOT NULL AND ${stomp})::int AS stomps,
+       COUNT(*) FILTER (WHERE ks.km IS NOT NULL AND ${decisive})::int AS decisives,
+       COUNT(*) FILTER (WHERE ks.km IS NOT NULL AND ${close})::int AS close_games,
+       COUNT(*) FILTER (WHERE ks.km IS NOT NULL AND ${neck})::int AS neck_and_necks
+     FROM matches m
+     LEFT JOIN (SELECT match_id, ABS(SUM(CASE WHEN team = 'radiant' THEN kills ELSE 0 END) - SUM(CASE WHEN team = 'dire' THEN kills ELSE 0 END)) AS km FROM player_stats GROUP BY match_id) ks ON ks.match_id = m.match_id${meJoin}
+     WHERE 1=1${seasonClause}${resultClause}${storyClause}`;
+  const res = await p.query(sql, params);
+  const r = res.rows[0] || {};
+  return {
+    total: r.total || 0,
+    wins: r.wins ?? null,
+    losses: r.losses ?? null,
+    stories: {
+      'Stomp': r.stomps || 0,
+      'Decisive': r.decisives || 0,
+      'Close Game': r.close_games || 0,
+      'Neck and Neck': r.neck_and_necks || 0,
+    },
+  };
+}
+
 async function getMatch(matchId) {
   const p = getPool();
   const matchResult = await p.query('SELECT * FROM matches WHERE match_id = $1', [matchId]);
@@ -6490,6 +6549,7 @@ module.exports = {
   isFileHashRecorded,
   getMatches,
   getMatchCount,
+  getMatchSummary,
   getMatch,
   deleteMatch,
   setMatchWinner,

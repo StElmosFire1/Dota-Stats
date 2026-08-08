@@ -611,7 +611,10 @@ function createApiRouter(startupStatus = {}) {
       };
       const matches = await db.getMatches(limit, offset, seasonId, filterOpts);
       const total = await db.getMatchCount(seasonId, filterOpts);
-      res.json({ matches, total, limit, offset });
+      // Task #868 — aggregate win/loss + story counts across the FULL
+      // filtered set so the client summary isn't limited to the current page.
+      const summary = await db.getMatchSummary(seasonId, filterOpts);
+      res.json({ matches, total, limit, offset, summary });
     } catch (err) {
       console.error('[API] Error fetching matches:', err.message);
       res.status(500).json({ error: 'Failed to fetch matches' });

@@ -337,31 +337,47 @@ export default function MatchList() {
     cursor: 'pointer',
   });
 
-  // Task #790 — compact at-a-glance summary of the current page: W/L for the
-  // signed-in player (when they appear in matches) plus a per-story breakdown.
+  // Task #790 / #868 — at-a-glance summary next to the filters. The server
+  // now returns aggregate W/L + story counts across the FULL filtered set
+  // (data.summary), so totals cover all matches, not just the current page.
+  // Falls back to the old per-page derivation for older servers/caches.
   const renderPageSummary = () => {
-    if (visibleMatches.length === 0) return null;
-    let wins = 0, losses = 0;
-    const storyCounts = {};
-    for (const m of visibleMatches) {
-      const res = matchResultFor(m, myAccountId);
-      if (res === 'win') wins++;
-      else if (res === 'loss') losses++;
-      const story = matchStory(m);
-      if (story) storyCounts[story] = (storyCounts[story] || 0) + 1;
+    const s = data.summary;
+    let label, parts, suffix = null;
+    if (s && typeof s.total === 'number' && s.total > 0) {
+      label = 'ALL MATCHES';
+      const wins = Number(s.wins) || 0;
+      const losses = Number(s.losses) || 0;
+      const storyParts = STORY_TYPES.filter(t => s.stories?.[t]).map(t => `${s.stories[t]} ${t}`);
+      parts = [];
+      if (myAccountId && (wins > 0 || losses > 0)) parts.push(`${wins} W · ${losses} L`);
+      if (storyParts.length > 0) parts.push(storyParts.join(', '));
+      suffix = ` across ${s.total} match${s.total === 1 ? '' : 'es'}`;
+    } else {
+      if (visibleMatches.length === 0) return null;
+      label = 'THIS PAGE';
+      let wins = 0, losses = 0;
+      const storyCounts = {};
+      for (const m of visibleMatches) {
+        const res = matchResultFor(m, myAccountId);
+        if (res === 'win') wins++;
+        else if (res === 'loss') losses++;
+        const story = matchStory(m);
+        if (story) storyCounts[story] = (storyCounts[story] || 0) + 1;
+      }
+      const storyParts = STORY_TYPES.filter(t => storyCounts[t]).map(t => `${storyCounts[t]} ${t}`);
+      parts = [];
+      if (myAccountId && (wins > 0 || losses > 0)) parts.push(`${wins} W · ${losses} L`);
+      if (storyParts.length > 0) parts.push(storyParts.join(', '));
     }
-    const storyParts = STORY_TYPES.filter(t => storyCounts[t]).map(t => `${storyCounts[t]} ${t}`);
-    const parts = [];
-    if (myAccountId && (wins > 0 || losses > 0)) parts.push(`${wins} W · ${losses} L`);
-    if (storyParts.length > 0) parts.push(storyParts.join(', '));
     if (parts.length === 0) return null;
     return (
       <div
         aria-live="polite"
         style={{ fontSize: '0.78rem', color: 'var(--text-muted, #94a3b8)', margin: '-0.5rem 0 1rem', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}
       >
-        <span style={{ fontWeight: 700, letterSpacing: '0.05em', fontSize: '0.72rem' }}>THIS PAGE</span>
-        <span>{parts.join(' — ')}</span>
+        <span style={{ fontWeight: 700, letterSpacing: '0.05em', fontSize: '0.72rem' }}>{label}</span>
+        <span>{parts.join(' — ')}{suffix}</span>
       </div>
     );
   };
