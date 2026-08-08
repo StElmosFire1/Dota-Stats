@@ -268,12 +268,28 @@ function createLootboxDb({ getPool }) {
     return getDupeReturnsConfig();
   }
 
-  // Per-set retirement metadata (id -> { retired, retired_at }).
+  // Per-set retirement metadata (id -> { retired_at, retired_by,
+  // retired_by_name }). retired_by is the operator's account id; the display
+  // name is resolved from nicknames where possible (falls back to the raw id,
+  // or null for seeded default-retired rows with no operator).
   async function _retiredMeta() {
     const p = getPool();
-    const r = await p.query(`SELECT set_id, retired_at FROM lootbox_retired_sets`);
+    const r = await p.query(`
+      SELECT rs.set_id, rs.retired_at, rs.retired_by,
+             CASE WHEN rs.retired_by IS NULL THEN NULL
+                  ELSE COALESCE(NULLIF(TRIM(n.nickname), ''), rs.retired_by::text)
+             END AS retired_by_name
+        FROM lootbox_retired_sets rs
+        LEFT JOIN nicknames n ON n.account_id = rs.retired_by
+    `);
     const m = new Map();
-    for (const row of r.rows) m.set(row.set_id, row.retired_at);
+    for (const row of r.rows) {
+      m.set(row.set_id, {
+        retired_at: row.retired_at,
+        retired_by: row.retired_by != null ? String(row.retired_by) : null,
+        retired_by_name: row.retired_by_name || null,
+      });
+    }
     return m;
   }
 
@@ -302,8 +318,18 @@ function createLootboxDb({ getPool }) {
     return map;
   }
 
-  async function listSets() {
+  // List every set (built-in + custom) with retirement status. Retirement
+  // attribution (who retired it) is only attached when the caller explicitly
+  // opts in via { includeRetirementActor: true } — the public catalog endpoint
+  // must NOT leak operator identities, only the superuser admin route asks.
+  async function listSets({ includeRetirementActor = false } = {}) {
     const retiredMeta = await _retiredMeta();
+    const actorFields = (id) => (includeRetirementActor
+      ? {
+          retired_by: retiredMeta.get(id)?.retired_by || null,
+          retired_by_name: retiredMeta.get(id)?.retired_by_name || null,
+        }
+      : {});
     const builtIn = Object.values(catalog.SETS).map((s) => {
       const itemCount = catalog.ITEMS.filter((it) => it.set === s.id).length;
       return {
@@ -315,7 +341,8 @@ function createLootboxDb({ getPool }) {
         item_count: itemCount,
         custom: false,
         retired: retiredMeta.has(s.id),
-        retired_at: retiredMeta.get(s.id) || null,
+        retired_at: retiredMeta.get(s.id)?.retired_at || null,
+        ...actorFields(s.id),
       };
     });
     const custom = (await getCustomSets()).map((s) => ({
@@ -329,7 +356,8 @@ function createLootboxDb({ getPool }) {
       custom: true,
       created_at: s.created_at,
       retired: retiredMeta.has(s.set_id),
-      retired_at: retiredMeta.get(s.set_id) || null,
+      retired_at: retiredMeta.get(s.set_id)?.retired_at || null,
+      ...actorFields(s.set_id),
     }));
     return [...builtIn, ...custom];
   }

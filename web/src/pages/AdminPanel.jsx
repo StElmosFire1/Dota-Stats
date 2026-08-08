@@ -8273,7 +8273,7 @@ function LootboxSetsCard({ superuserKey }) {
                 <th align="left" style={{ padding: '6px 10px' }}>Name</th>
                 <th align="center" style={{ padding: '6px 10px' }}>Items</th>
                 <th align="center" style={{ padding: '6px 10px' }}>Status</th>
-                <th align="left" style={{ padding: '6px 10px' }}>Retired at</th>
+                <th align="left" style={{ padding: '6px 10px' }}>Retired</th>
                 <th style={{ padding: '6px 10px' }}></th>
               </tr>
             </thead>
@@ -8291,7 +8291,9 @@ function LootboxSetsCard({ superuserKey }) {
                     }}>{s.retired ? 'Retired' : 'Active'}</span>
                   </td>
                   <td style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text-muted)' }}>
-                    {s.retired_at ? fmtDate(s.retired_at) : '—'}
+                    {s.retired_at
+                      ? <>Retired {fmtDate(s.retired_at)}{s.retired_by_name ? <> by <strong style={{ color: 'var(--text-secondary)' }}>{s.retired_by_name}</strong></> : ''}</>
+                      : '—'}
                   </td>
                   <td style={{ padding: '8px 10px' }}>
                     {s.retired ? (

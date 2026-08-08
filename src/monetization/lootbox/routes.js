@@ -180,7 +180,7 @@ function mountLootboxRoutes({ router, express, deps }) {
         sku: it.sku, kind: it.kind, value: it.value, label: it.label,
         rarity: it.rarity, set: it.set || null, special: !!it.special,
       }));
-      res.json({ sets: await lb.listSets(), items });
+      res.json({ sets: await lb.listSets({ includeRetirementActor: true }), items });
     } catch (err) {
       console.error('[lootbox] admin sets:', err.message);
       res.status(500).json({ error: 'Failed to load sets' });
@@ -196,7 +196,7 @@ function mountLootboxRoutes({ router, express, deps }) {
       const created = await lb.createSet({
         name, description, itemSkus, by: req.session.accountId || null,
       });
-      res.json({ ok: true, set: created, sets: await lb.listSets() });
+      res.json({ ok: true, set: created, sets: await lb.listSets({ includeRetirementActor: true }) });
     } catch (err) {
       if (['BAD_NAME', 'BAD_ITEMS', 'NO_ITEMS'].includes(err.code)) {
         return res.status(400).json({ error: err.message, code: err.code });
@@ -297,7 +297,7 @@ function mountLootboxRoutes({ router, express, deps }) {
       const setId = String(req.body?.setId || '');
       const retired = !!req.body?.retired;
       const result = await lb.setRetired({ setId, retired, by: req.session.accountId || null });
-      res.json({ ok: true, ...result, sets: await lb.listSets() });
+      res.json({ ok: true, ...result, sets: await lb.listSets({ includeRetirementActor: true }) });
     } catch (err) {
       if (err.code === 'UNKNOWN_SET') return res.status(400).json({ error: err.message, code: err.code });
       console.error('[lootbox] admin retire:', err.message);
