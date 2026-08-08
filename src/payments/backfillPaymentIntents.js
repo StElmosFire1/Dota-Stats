@@ -8,6 +8,8 @@
 //   - frame_purchases rows with stripe_session_id but stripe_payment_intent NULL
 //   - founder-ring entitlements (founder_ring:% / founders_pass_ring) with a
 //     metadata stripe_session_id but no metadata stripe_payment_intent
+//   - season_pass_purchases rows (Task #912) — self-purchases store the
+//     session in stripe_session_id, gift activations in gift_stripe_session_id
 //
 // Idempotent: each filled row leaves the "missing" set forever, and rows whose
 // session genuinely has no payment intent (or no longer exists on Stripe) are
@@ -59,14 +61,16 @@ async function backfillStoredPaymentIntents({ dryRun = false, limit = 200, delay
   const summary = {
     framesScanned: 0, framesFilled: 0, framesNoIntent: 0,
     ringsScanned: 0, ringsFilled: 0, ringsNoIntent: 0,
+    passesScanned: 0, passesFilled: 0, passesNoIntent: 0,
     errors: 0,
   };
 
-  const [frames, rings] = await Promise.all([
+  const [frames, rings, passes] = await Promise.all([
     db.listFramePurchasesMissingPaymentIntent(limit),
     db.listFounderRingEntitlementsMissingPaymentIntent(limit),
+    db.listSeasonPassPurchasesMissingPaymentIntent(limit),
   ]);
-  if (!frames.length && !rings.length) return summary; // fully backfilled — no Stripe calls
+  if (!frames.length && !rings.length && !passes.length) return summary; // fully backfilled — no Stripe calls
 
   if (!process.env.STRIPE_SECRET_KEY && !stripe) {
     console.warn('[PI Backfill] STRIPE_SECRET_KEY missing — skipping');
@@ -111,6 +115,27 @@ async function backfillStoredPaymentIntents({ dryRun = false, limit = 200, delay
       } else {
         summary.ringsFilled++;
         console.log('[PI Backfill] entitlements id=%s (account=%s sku=%s) ← %s', row.id, row.account_id, row.sku, res.intent);
+      }
+    }
+    await _sleep(delayMs);
+  }
+
+  for (const row of passes) {
+    summary.passesScanned++;
+    const res = await _resolveSessionIntent(client, row.stripe_session_id);
+    if (res.retry) {
+      summary.errors++;
+      console.warn('[PI Backfill] season_pass_purchases id=%s session=%s retryable error: %s', row.id, row.stripe_session_id, res.error);
+    } else if (dryRun) {
+      console.log('[PI Backfill] (dry-run) season_pass_purchases id=%s %s → %s', row.id, row.stripe_session_id, res.intent);
+    } else {
+      await db.setSeasonPassPurchasePaymentIntent(row.id, res.intent);
+      if (res.intent === NO_INTENT_SENTINEL) {
+        summary.passesNoIntent++;
+        console.log('[PI Backfill] season_pass_purchases id=%s session=%s has no payment intent — stamped sentinel', row.id, row.stripe_session_id);
+      } else {
+        summary.passesFilled++;
+        console.log('[PI Backfill] season_pass_purchases id=%s (account=%s season=%s) ← %s', row.id, row.account_id, row.season_number, res.intent);
       }
     }
     await _sleep(delayMs);

@@ -3399,6 +3399,24 @@ async function init() {
     // Season pass purchases — record direct self-purchases (not just gifts).
     await p.query(`ALTER TABLE season_pass_purchases ADD COLUMN IF NOT EXISTS amount_cents INTEGER`);
     await p.query(`ALTER TABLE season_pass_purchases ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'aud'`);
+    // Task #912 — payment intent stored at grant time (self-purchase AND gift
+    // activations) so charge.refunded can match + revoke the season pass, the
+    // same way frames (Task #890) are revoked. Historical rows are backfilled
+    // from their stored checkout session id by src/payments/backfillPaymentIntents.js.
+    await p.query(`ALTER TABLE season_pass_purchases ADD COLUMN IF NOT EXISTS stripe_payment_intent TEXT`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_spp_pi ON season_pass_purchases (stripe_payment_intent) WHERE stripe_payment_intent IS NOT NULL`);
+    // Task #912 — durable record of every refunded payment intent. Stripe does
+    // NOT guarantee webhook ordering: charge.refunded can arrive BEFORE
+    // checkout.session.completed. When that happens the revoke-by-intent
+    // helpers find nothing (the entitlement doesn't exist yet), so fulfillment
+    // consults this table and refuses/immediately-revokes instead of granting
+    // an entitlement the buyer already got their money back for.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS stripe_refunded_intents (
+        payment_intent TEXT PRIMARY KEY,
+        refunded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
 
     // Task #378 — Pro replay browser. Cached snapshot of recent OpenDota pro
     // matches so the frontend filter UI doesn't hit the upstream API directly
@@ -17946,16 +17964,146 @@ async function getOwnedFrames(accountId, isPro = false) {
 }
 
 // ---------- Season pass purchases (entitlement) ----------
-async function grantSeasonPassActivation({ accountId, seasonNumber, giftStripeSessionId }) {
+async function grantSeasonPassActivation({ accountId, seasonNumber, giftStripeSessionId, paymentIntent = null }) {
   const p = getPool();
   // Idempotent: ON CONFLICT (account_id, season_number) DO NOTHING so retries are safe.
+  // Task #912 — stores the payment intent at grant time so charge.refunded can
+  // match + revoke the pass. On conflict the existing row keeps its own intent
+  // (the backfill sweep fills any that were granted before this shipped).
   const r = await p.query(
     `INSERT INTO season_pass_purchases
-       (account_id, season_number, gift_stripe_session_id, source, status, purchased_at)
-     VALUES ($1, $2, $3, 'gift', 'active', NOW())
+       (account_id, season_number, gift_stripe_session_id, source, status, purchased_at, stripe_payment_intent)
+     VALUES ($1, $2, $3, 'gift', 'active', NOW(), $4)
      ON CONFLICT (account_id, season_number) DO NOTHING
      RETURNING *`,
-    [accountId, seasonNumber, giftStripeSessionId]
+    [accountId, seasonNumber, giftStripeSessionId, paymentIntent]
+  );
+  return r.rows[0] || null;
+}
+
+// Task #912 — charge.refunded revocation for season passes (self-purchased or
+// gifted). Flips active rows whose stored payment intent matches to
+// status='refunded'; hasSeasonPassActivation's status='active' filter hides
+// the pass benefits immediately. Idempotent (refunded rows don't match) and
+// cheap for unrelated refunds. Also flips the linked gift_purchases row (when
+// the pass came from a gift) so gift history reflects the refund.
+async function markSeasonPassRefundedByIntent(paymentIntent) {
+  // 'none' is the backfill sentinel for sessions with no payment intent —
+  // never matchable (real intents always start with 'pi_').
+  if (!paymentIntent || paymentIntent === 'none') return [];
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE season_pass_purchases
+        SET status = 'refunded'
+      WHERE stripe_payment_intent = $1 AND status = 'active'
+      RETURNING *`,
+    [paymentIntent]
+  );
+  // Best-effort: mirror the refund onto the originating gift row so the
+  // gifter's history is accurate. Never let this fail the webhook.
+  for (const row of r.rows) {
+    if (!row.gift_stripe_session_id) continue;
+    try {
+      await p.query(
+        `UPDATE gift_purchases SET status = 'refunded'
+          WHERE stripe_session_id = $1 AND status = 'completed'`,
+        [row.gift_stripe_session_id]
+      );
+    } catch (e) {
+      console.warn('[DB] refund gift-row flip failed for session', row.gift_stripe_session_id, '—', e?.message || e);
+    }
+  }
+  return r.rows;
+}
+
+// Task #912 — ordering-safe refund reconciliation. charge.refunded records
+// the intent here BEFORE running the revoke-by-intent helpers; fulfillment
+// paths (which may run AFTER the refund, since Stripe doesn't order webhook
+// delivery) check isPaymentIntentRefunded and revoke immediately instead of
+// leaving an active entitlement. Errors propagate from the recorder so the
+// refund webhook 500s and Stripe retries — this row is the safety net.
+async function recordRefundedPaymentIntent(paymentIntent) {
+  if (!paymentIntent || paymentIntent === 'none') return null;
+  const p = getPool();
+  await p.query(
+    `INSERT INTO stripe_refunded_intents (payment_intent)
+     VALUES ($1) ON CONFLICT (payment_intent) DO NOTHING`,
+    [paymentIntent]
+  );
+  return paymentIntent;
+}
+
+async function isPaymentIntentRefunded(paymentIntent) {
+  if (!paymentIntent || paymentIntent === 'none') return false;
+  const p = getPool();
+  const r = await p.query(
+    `SELECT 1 FROM stripe_refunded_intents WHERE payment_intent = $1 LIMIT 1`,
+    [paymentIntent]
+  );
+  return r.rows.length > 0;
+}
+
+// Task #912 — durable reconciliation backstop, run from the daily
+// payment-intent backfill sweep. Revokes any season pass that is still
+// active even though its payment intent is recorded as refunded — covers
+// (a) a webhook delivery Stripe gave up retrying while the DB was down and
+// (b) historical rows whose intent was only just backfilled after the
+// refund landed. Idempotent; returns the flipped rows.
+async function reconcileRefundedSeasonPasses() {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE season_pass_purchases spp
+        SET status = 'refunded'
+       FROM stripe_refunded_intents sri
+      WHERE spp.stripe_payment_intent = sri.payment_intent
+        AND spp.status = 'active'
+      RETURNING spp.*`
+  );
+  for (const row of r.rows) {
+    if (!row.gift_stripe_session_id) continue;
+    try {
+      await p.query(
+        `UPDATE gift_purchases SET status = 'refunded'
+          WHERE stripe_session_id = $1 AND status = 'completed'`,
+        [row.gift_stripe_session_id]
+      );
+    } catch (e) {
+      console.warn('[DB] reconcile gift-row flip failed for session', row.gift_stripe_session_id, '—', e?.message || e);
+    }
+  }
+  return r.rows;
+}
+
+// Task #912 — backfill helpers: season-pass rows granted before intents were
+// stored at grant time. The checkout session lives in stripe_session_id for
+// self-purchases and gift_stripe_session_id for gift activations. Only
+// status='active' rows matter — pending rows never paid and refunded rows are
+// already revoked.
+async function listSeasonPassPurchasesMissingPaymentIntent(limit = 100) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, account_id, season_number,
+            COALESCE(stripe_session_id, gift_stripe_session_id) AS stripe_session_id
+       FROM season_pass_purchases
+      WHERE COALESCE(stripe_session_id, gift_stripe_session_id) IS NOT NULL
+        AND stripe_payment_intent IS NULL
+        AND status = 'active'
+      ORDER BY id ASC
+      LIMIT $1`,
+    [limit]
+  );
+  return r.rows;
+}
+
+async function setSeasonPassPurchasePaymentIntent(id, paymentIntent) {
+  if (!id || !paymentIntent) return null;
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE season_pass_purchases
+        SET stripe_payment_intent = $2
+      WHERE id = $1 AND stripe_payment_intent IS NULL
+      RETURNING id`,
+    [id, paymentIntent]
   );
   return r.rows[0] || null;
 }
@@ -24988,12 +25136,16 @@ async function recordSeasonPassSelfPurchase({ accountId, seasonNumber, stripeSes
   );
   return r.rows[0] || null;
 }
-async function confirmSeasonPassSelfPurchase(stripeSessionId) {
+async function confirmSeasonPassSelfPurchase(stripeSessionId, { paymentIntent = null } = {}) {
   const p = getPool();
+  // Task #912 — stamps the payment intent at fulfillment so charge.refunded
+  // can match + revoke; COALESCE keeps any previously-stored intent.
   const r = await p.query(
-    `UPDATE season_pass_purchases SET status = 'active', purchased_at = NOW()
+    `UPDATE season_pass_purchases
+        SET status = 'active', purchased_at = NOW(),
+            stripe_payment_intent = COALESCE($2, stripe_payment_intent)
        WHERE stripe_session_id = $1 AND status = 'pending' RETURNING *`,
-    [stripeSessionId]
+    [stripeSessionId, paymentIntent]
   );
   return r.rows[0] || null;
 }
@@ -26695,6 +26847,12 @@ module.exports = {
   setFramePurchasePaymentIntent,
   listFounderRingEntitlementsMissingPaymentIntent,
   setEntitlementPaymentIntent,
+  markSeasonPassRefundedByIntent,
+  listSeasonPassPurchasesMissingPaymentIntent,
+  setSeasonPassPurchasePaymentIntent,
+  recordRefundedPaymentIntent,
+  isPaymentIntentRefunded,
+  reconcileRefundedSeasonPasses,
   getCoinOwnedCosmetics,
   hasCoinCosmetic,
   purchaseCosmeticWithCoins,

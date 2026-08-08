@@ -28,4 +28,5 @@
 - [rating_history snapshots](rating-history-snapshots.md) — per-match MMR-at-game-time lives in rating_history (player_id, match_id); dev DB copy is empty, test with synthetic rows.
 - [Captain's Mode draft balance](captain-mode-draft-balance.md) — counter-pick weight must stay modest or the responding side wins every AI-vs-AI draft; re-validate tuning with 20-run playouts.
 - [Stripe payment hardening](stripe-payment-hardening.md) — every money-mutating Stripe call needs an idempotency key; webhook inbox uses token-guarded claim leases; key-mode gate at boot.
+- [Stripe refund ordering](stripe-refund-ordering.md) — charge.refunded can arrive BEFORE fulfillment; record refunded intents durably, check at grant time (outside the pending-row guard), fail closed.
 - [Dota2 GC reconnect](dota2-gc-reconnect.md) — "now playing Dota" popup: dota2-user hooks listeners on the persistent SteamUser socket in its ctor; build the GC client ONCE & gate/debounce the gamesPlayed re-hello.

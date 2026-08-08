@@ -408,14 +408,26 @@ async function _runPaymentIntentBackfill(reason = 'cron') {
   try {
     const { backfillStoredPaymentIntents } = require('../payments/backfillPaymentIntents');
     const s = await backfillStoredPaymentIntents();
-    if (s.framesScanned || s.ringsScanned) {
-      console.log(`[PI Backfill] ${reason} sweep — frames filled=${s.framesFilled}/${s.framesScanned} rings filled=${s.ringsFilled}/${s.ringsScanned} noIntent=${s.framesNoIntent + s.ringsNoIntent} errors=${s.errors}`);
+    // Task #912 — reconciliation backstop: revoke any season pass still
+    // active whose intent is recorded as refunded (e.g. Stripe exhausted
+    // webhook retries during an outage, or the intent was only just
+    // backfilled above after the refund landed).
+    try {
+      const reconciled = await db.reconcileRefundedSeasonPasses();
+      for (const row of reconciled) {
+        console.log('[PI Backfill] reconciliation revoked refunded season pass — account', row.account_id, 'season', row.season_number);
+      }
+    } catch (e) {
+      console.warn('[PI Backfill] season-pass refund reconciliation failed:', e?.message || e);
+    }
+    if (s.framesScanned || s.ringsScanned || s.passesScanned) {
+      console.log(`[PI Backfill] ${reason} sweep — frames filled=${s.framesFilled}/${s.framesScanned} rings filled=${s.ringsFilled}/${s.ringsScanned} passes filled=${s.passesFilled}/${s.passesScanned} noIntent=${s.framesNoIntent + s.ringsNoIntent + s.passesNoIntent} errors=${s.errors}`);
     }
     try {
       await db.recordCronHeartbeat({
         name: 'payment_intent_backfill',
         status: s.errors ? 'error' : 'ok',
-        message: `frames ${s.framesFilled}/${s.framesScanned}, rings ${s.ringsFilled}/${s.ringsScanned}, errors ${s.errors}`,
+        message: `frames ${s.framesFilled}/${s.framesScanned}, rings ${s.ringsFilled}/${s.ringsScanned}, passes ${s.passesFilled}/${s.passesScanned}, errors ${s.errors}`,
       });
     } catch (_) {}
   } catch (e) {
@@ -2826,8 +2838,22 @@ function createServer(startupStatus = {}) {
           }
         } else if (purpose === 'season_pass_self') {
           // Task #319 — direct (self) Season Pass purchase.
-          const row = await db.confirmSeasonPassSelfPurchase(session.id);
-          if (row) {
+          // Task #912 — payment intent stored so charge.refunded can revoke.
+          const spPi = (typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id) || null;
+          const row = await db.confirmSeasonPassSelfPurchase(session.id, { paymentIntent: spPi });
+          // Ordering safety: Stripe may deliver charge.refunded BEFORE this
+          // fulfillment event. If the intent is already recorded as refunded,
+          // revoke immediately instead of leaving the pass active. This check
+          // deliberately runs OUTSIDE the `if (row)` guard: on a Stripe retry
+          // after a partial failure the row is already 'active' (confirm
+          // returns null), and the revoke must still happen. No .catch() on
+          // purpose — a failed lookup/revoke must 500 the webhook so Stripe
+          // retries (fail-open here would permanently grant a refunded pass;
+          // the daily reconciliation sweep is only a backstop).
+          if (spPi && await db.isPaymentIntentRefunded(spPi)) {
+            await db.markSeasonPassRefundedByIntent(spPi);
+            console.log('[Stripe] Season Pass self-purchase (session', session.id, ') was already refunded — revoked at fulfillment');
+          } else if (row) {
             await db.grantSeasonPassActivation({
               accountId: row.account_id,
               seasonNumber: row.season_number,
@@ -3008,11 +3034,25 @@ function createServer(startupStatus = {}) {
             const seasonNumber = seasonMeta?.id || null;
             // Activate the season pass (idempotent ON CONFLICT DO NOTHING).
             // Returns the newly-created row, or null if already activated.
+            // Task #912 — payment intent stored so charge.refunded can revoke.
+            const giftPi = (typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id) || null;
             const activation = await db.grantSeasonPassActivation({
               accountId: gift.recipient_account_id,
               seasonNumber,
               giftStripeSessionId: session.id,
+              paymentIntent: giftPi,
             });
+            // Ordering safety (Task #912): Stripe may deliver charge.refunded
+            // BEFORE this fulfillment event. If the intent is already recorded
+            // as refunded, revoke immediately and skip the XP bonus + DM. No
+            // .catch() on purpose — a failed lookup/revoke must 500 the
+            // webhook so Stripe retries rather than leaving a refunded pass
+            // active.
+            if (giftPi && await db.isPaymentIntentRefunded(giftPi)) {
+              await db.markSeasonPassRefundedByIntent(giftPi);
+              console.log('[Stripe] Gift Season Pass for', gift.recipient_account_id, 'season', seasonNumber, 'was already refunded — revoked at fulfillment');
+              return;
+            }
             // Grant 500 XP bonus only when a new activation row was created.
             // This prevents duplicate XP on Stripe webhook retries because the
             // UNIQUE(account_id, season_number, match_id, source) key allows
@@ -3119,6 +3159,13 @@ function createServer(startupStatus = {}) {
         const charge = event.data.object;
         const pi = charge.payment_intent;
         if (pi) {
+          // Task #912 — durably record the refunded intent FIRST. Stripe does
+          // not guarantee webhook ordering, so this refund can arrive before
+          // the purchase's fulfillment event; fulfillment paths check this
+          // record and revoke instead of granting. No .catch() on purpose —
+          // if the write fails the webhook 500s and Stripe retries, which is
+          // the only way the refund stays durable.
+          await db.recordRefundedPaymentIntent(pi);
           const refunded = await db.markProRefunded(pi).catch(() => null);
           if (refunded) {
             try { _proCache.delete(String(refunded.account_id)); } catch (_) {}
@@ -3159,6 +3206,18 @@ function createServer(startupStatus = {}) {
           const refundedRings = (await db.markFounderRingsRefundedByIntent(pi).catch(() => [])) || [];
           for (const ring of refundedRings) {
             console.log('[Stripe] Refund revoked founder ring', ring.sku, 'account', ring.account_id);
+          }
+          // Task #912 — season passes (self-purchased or gifted) lose access
+          // on refund too. Matches by the payment intent stored at grant
+          // time and is idempotent across webhook retries. Unlike the
+          // best-effort handlers above this one propagates errors: a failed
+          // revoke must 500 the webhook so Stripe retries — otherwise the
+          // refunded pass would stay active with no repair path beyond the
+          // daily reconciliation backstop. The status='active' filter in
+          // hasSeasonPassActivation hides the pass benefits immediately.
+          const refundedPasses = (await db.markSeasonPassRefundedByIntent(pi)) || [];
+          for (const pass of refundedPasses) {
+            console.log('[Stripe] Refund revoked season pass', 'season', pass.season_number, 'account', pass.account_id, pass.gift_stripe_session_id ? '(gifted)' : '(self)');
           }
           // Task #421 — Ingest the refund's BalanceTransaction(s) so the
           // coach earnings dashboard can show the real cost of the refund
