@@ -8,6 +8,7 @@ import HeroIcon from '../components/HeroIcon';
 import { MmrBadge } from '../components/RankBadge';
 import { resolvePlayerDisplayName } from '../utils/displayName';
 import { getHeroName } from '../heroNames';
+import { deriveKillSeries } from '../utils/killSeries';
 
 function formatDuration(seconds) {
   if (!seconds) return '--';
@@ -61,6 +62,48 @@ function storyLabel(killMargin, durationMins) {
   if (killMargin <= 3 && durationMins > 40) return 'Neck and Neck';
   if (killMargin <= 5) return 'Close Game';
   return null;
+}
+
+// Task #763 — tiny kill-advantage sparkline. Derives a cumulative
+// Radiant-minus-Dire kill diff from game_timeline.events (kill events carry
+// `t` seconds + victimSlot 0-4 = Radiant, 5-9 = Dire) and renders it as a
+// step-line: green above the zero axis (Radiant ahead), red below (Dire
+// ahead). Hides itself when no timestamped kill data exists for the match.
+// Series derivation lives in utils/killSeries.js so it can be unit-tested.
+function KillSparkline({ timeline, duration, width = 80, height = 20 }) {
+  const series = deriveKillSeries(timeline, duration);
+  if (!series) return null;
+  const { points: pts, maxAbs, endT } = series;
+
+  const mid = height / 2;
+  const x = t => (t / endT) * width;
+  const y = d => mid - (d / maxAbs) * (mid - 1);
+  // Step-after path: hold the diff until the next kill.
+  let path = `M0 ${y(0).toFixed(2)}`;
+  for (let i = 1; i < pts.length; i++) {
+    path += ` H${x(pts[i].t).toFixed(2)} V${y(pts[i].d).toFixed(2)}`;
+  }
+
+  const clipId = `ks-${Math.round(endT)}-${pts.length}-${maxAbs}`;
+  return (
+    <svg
+      className="mc-kill-spark"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label="Kill advantage over time (green: Radiant ahead, red: Dire ahead)"
+    >
+      <title>Kill advantage over time — green: Radiant ahead, red: Dire ahead</title>
+      <defs>
+        <clipPath id={`${clipId}-top`}><rect x="0" y="0" width={width} height={mid} /></clipPath>
+        <clipPath id={`${clipId}-bot`}><rect x="0" y={mid} width={width} height={mid} /></clipPath>
+      </defs>
+      <line x1="0" y1={mid} x2={width} y2={mid} stroke="#334155" strokeWidth="1" />
+      <path d={path} fill="none" stroke="#4ade80" strokeWidth="1.5" clipPath={`url(#${clipId}-top)`} />
+      <path d={path} fill="none" stroke="#f87171" strokeWidth="1.5" clipPath={`url(#${clipId}-bot)`} />
+    </svg>
+  );
 }
 
 // Story types players can filter by — mirrors the labels storyLabel() emits.
@@ -424,10 +467,13 @@ export default function MatchList() {
                         Radiant
                       </div>
                       {hasKills ? (
-                        <div className="mc-scoreline">
-                          <span className={`mc-score pb-num${match.radiant_win ? ' mc-score--winner' : ''}`}>{rKills}</span>
-                          <span className="mc-score-sep" aria-hidden="true">–</span>
-                          <span className={`mc-score pb-num${!match.radiant_win ? ' mc-score--winner' : ''}`}>{dKills}</span>
+                        <div className="mc-scoreline" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'baseline' }}>
+                            <span className={`mc-score pb-num${match.radiant_win ? ' mc-score--winner' : ''}`}>{rKills}</span>
+                            <span className="mc-score-sep" aria-hidden="true">–</span>
+                            <span className={`mc-score pb-num${!match.radiant_win ? ' mc-score--winner' : ''}`}>{dKills}</span>
+                          </div>
+                          <KillSparkline timeline={match.game_timeline} duration={match.duration} />
                         </div>
                       ) : (
                         <div className="mc-victory-text">
