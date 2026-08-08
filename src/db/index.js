@@ -17763,6 +17763,26 @@ async function markFramePurchasesRefundedByIntent(paymentIntent) {
       RETURNING *`,
     [paymentIntent]
   );
+  // Task #910 — if a revoked frame is currently equipped, clear the equipped
+  // slot too so profiles never keep pointing at a cosmetic the player lost.
+  // Ownership-aware: a frame still owned via another source (Pro-bundled
+  // gold, coin purchase) stays equipped. Best-effort per row — an unequip
+  // failure must never make the refund webhook retry the revocation.
+  for (const row of r.rows) {
+    try {
+      const pro = await isProMember(row.account_id).catch(() => false);
+      const stillOwned = await hasFrameUnlocked(row.account_id, row.frame_id, pro);
+      if (!stillOwned) {
+        await p.query(
+          `UPDATE player_profiles SET profile_frame = NULL
+            WHERE account_id = $1 AND profile_frame = $2`,
+          [row.account_id, row.frame_id]
+        );
+      }
+    } catch (e) {
+      console.warn('[DB] refund frame unequip failed for account', row.account_id, '—', e?.message || e);
+    }
+  }
   return r.rows;
 }
 
@@ -17785,6 +17805,28 @@ async function markFounderRingsRefundedByIntent(paymentIntent) {
       RETURNING *`,
     [paymentIntent]
   );
+  // Task #910 — clear the equipped Founders Ring when it matches a revoked
+  // SKU (founders_pass_ring maps to the 'inscribed' slug). Ownership-aware:
+  // a slug still owned via another source (coin purchase, another
+  // entitlement) stays equipped. Best-effort per row — an unequip failure
+  // must never make the refund webhook retry the revocation.
+  for (const row of r.rows) {
+    try {
+      const slug = row.sku === 'founders_pass_ring'
+        ? 'inscribed'
+        : row.sku.slice('founder_ring:'.length);
+      const owned = await listOwnedFounderRings(row.account_id);
+      if (!owned.includes(slug)) {
+        await p.query(
+          `UPDATE player_profiles SET equipped_founder_ring = NULL
+            WHERE account_id = $1 AND equipped_founder_ring = $2`,
+          [row.account_id, slug]
+        );
+      }
+    } catch (e) {
+      console.warn('[DB] refund ring unequip failed for account', row.account_id, '—', e?.message || e);
+    }
+  }
   return r.rows;
 }
 
