@@ -81,6 +81,16 @@ echo "==> Verifying money-path test coverage (Task #416)..."
 # replace a working production process with a broken one.
 npm run check:money-paths
 
+echo "==> Verifying creds.json is not tracked by git (Task #856)..."
+# Hard gate: creds.json (Google service-account key) must live only on the
+# host filesystem, never in the repo. If it ever gets committed, abort the
+# deploy — the key must be rotated and purged from history before shipping.
+if git ls-files --error-unmatch creds.json >/dev/null 2>&1; then
+  echo "ERROR: creds.json is tracked by git. Rotate the service-account key," >&2
+  echo "       remove it from the repo/history, and keep it host-only." >&2
+  exit 1
+fi
+
 echo "==> Installing backend (root) dependencies..."
 # The bot process (src/index.js) runs from the repo root and needs the root
 # package.json deps installed — e.g. `dotaconstants`, added for the daily
@@ -89,6 +99,20 @@ echo "==> Installing backend (root) dependencies..."
 # and the bot crashed at runtime with "Cannot find module 'dotaconstants/...'".
 # Installing at the root here keeps the bot's deps in lockstep with the code.
 npm install --silent
+
+echo "==> Running the full test suite (Task #856)..."
+# Hard gate: the entire tests/ directory must pass before we touch web/ or
+# PM2. This subsumes the money-path subset above (kept as an early fast-fail)
+# and means a broken build can never replace a working production process.
+npm test
+
+echo "==> Applying pending database migrations (Task #856)..."
+# node-pg-migrate is a pinned root dependency; migrations/ holds numbered SQL
+# files. DATABASE_URL is read from the environment (or .env via dotenv).
+# BACKUP FIRST on risky changes: see migrations/README.md for the pg_dump
+# backup + rollback procedure. A failed migration aborts the deploy before
+# PM2 restarts, leaving the previous build live.
+npm run migrate
 
 echo "==> Installing frontend dependencies..."
 cd web
@@ -160,6 +184,62 @@ if [ -n "${PM2_INFO}" ]; then
 fi
 
 pm2 restart "${PM2_APP}" --update-env
+
+echo "==> Post-restart health check (Task #856)..."
+# Poll the health endpoint until it reports ok:true. The bot needs time to
+# connect Discord/DB, so we retry for up to HEALTH_TIMEOUT seconds (default
+# 120). On failure we dump recent PM2 logs and exit non-zero so a broken
+# build is never silently left live.
+#
+# Port resolution: the deploy shell often does NOT have the bot's PORT
+# exported (PM2 carries it), so we read PORT from the PM2 process's own env —
+# the authoritative source of what the bot actually binds. Fallbacks: the
+# deploy shell's $PORT, then the app default 5000. Explicit override:
+#   HEALTH_URL=http://127.0.0.1:3000/api/health bash deploy.sh
+PM2_ENV_PORT="$(pm2 jlist 2>/dev/null | node -e '
+let raw = "";
+process.stdin.on("data", c => raw += c);
+process.stdin.on("end", () => {
+  try {
+    const arr = JSON.parse(raw);
+    const p = Array.isArray(arr) && arr.find(x => x && x.name === process.argv[1]);
+    const port = p && p.pm2_env && p.pm2_env.env && p.pm2_env.env.PORT;
+    if (port && /^\d+$/.test(String(port))) console.log(String(port));
+  } catch {}
+});
+' "${PM2_APP}" 2>/dev/null || true)"
+HEALTH_PORT="${PM2_ENV_PORT:-${PORT:-5000}}"
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${HEALTH_PORT}/api/health}"
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
+elapsed=0
+until curl -fsS --max-time 5 "${HEALTH_URL}" | node -e '
+let raw = "";
+process.stdin.on("data", c => raw += c);
+process.stdin.on("end", () => {
+  try {
+    const j = JSON.parse(raw);
+    if (j && j.ok === true) process.exit(0);
+    console.error("health responded but not ok:", JSON.stringify(j && j.services || j));
+  } catch (e) { console.error("health response was not JSON"); }
+  process.exit(1);
+});
+'; do
+  elapsed=$((elapsed + 5))
+  if [ "${elapsed}" -ge "${HEALTH_TIMEOUT}" ]; then
+    echo "" >&2
+    echo "██████████████████████████████████████████████████████████" >&2
+    echo "ERROR: post-restart health check FAILED after ${HEALTH_TIMEOUT}s." >&2
+    echo "       ${HEALTH_URL} never reported ok:true — the new build may be broken." >&2
+    echo "       Recent PM2 logs follow; roll back with:" >&2
+    echo "         git reset --hard <previous-good-sha> && bash deploy.sh" >&2
+    echo "██████████████████████████████████████████████████████████" >&2
+    pm2 logs "${PM2_APP}" --lines 60 --nostream >&2 || true
+    exit 1
+  fi
+  echo "    ... waiting for ${HEALTH_URL} (${elapsed}s/${HEALTH_TIMEOUT}s)"
+  sleep 5
+done
+echo "    Health check passed — ${HEALTH_URL} reports ok:true."
 
 echo ""
 echo "✓ Deploy complete."

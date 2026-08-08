@@ -190,8 +190,13 @@ const UPLOAD_DIR = '/tmp/replay-uploads';
 // Override via REPLAY_STORE_DIR env var. Defaults to replay-store/ beside the server file.
 const REPLAY_STORE_DIR = process.env.REPLAY_STORE_DIR
   || path.join(__dirname, '../../replay-store');
-// How many days to keep uploaded replays (0 = keep forever, which is the default).
-const REPLAY_STORE_DAYS = parseInt(process.env.REPLAY_STORE_DAYS || '0', 10);
+// Task #856 — replay retention policy. How many days to keep stored replay
+// files on disk. Default is 90 days so the store is bounded out of the box;
+// override with REPLAY_STORE_DAYS (any positive integer), or set
+// REPLAY_STORE_DAYS=0 to explicitly opt in to keep-forever. Expired files
+// are removed by the 12-hourly cleanup sweep below; the DB match row (and
+// its parsed stats) are always kept — only the .dem file is deleted.
+const REPLAY_STORE_DAYS = parseInt(process.env.REPLAY_STORE_DAYS ?? '90', 10);
 const uploadJobs = new Map();
 const STALE_JOB_TTL = 30 * 60 * 1000;
 
@@ -1026,8 +1031,15 @@ const NOTIFY_TEST_SPECS = {
 };
 
 // Replay store cleanup: runs every 12 hours, deletes expired files from disk.
+// Task #856 — with a retention window configured, first backfill an expiry
+// onto any stored replay that predates the retention policy (grace-floored
+// 7 days out so a fresh config change never mass-deletes on the next tick).
 setInterval(async () => {
   try {
+    if (REPLAY_STORE_DAYS > 0 && typeof db.backfillReplayExpiry === 'function') {
+      const n = await db.backfillReplayExpiry(REPLAY_STORE_DAYS).catch(() => 0);
+      if (n) console.log(`[ReplayStore] Backfilled expiry on ${n} pre-policy replay(s) (${REPLAY_STORE_DAYS}d retention)`);
+    }
     const expired = await db.expireOldReplayFiles();
     for (const row of expired) {
       if (row.replay_file_path && fs.existsSync(row.replay_file_path)) {
@@ -1288,6 +1300,19 @@ function isAllowlistedSteamSuperuser(req) {
 
 function createServer(startupStatus = {}) {
   const app = express();
+
+  // Task #856 — per-request ID. Honour an inbound X-Request-Id (from the
+  // reverse proxy) or mint one; echoed on the response and attached to
+  // req.requestId so the terminal error handler + error monitor can
+  // correlate an alert with the exact failing request.
+  app.use((req, res, next) => {
+    const inbound = req.headers['x-request-id'];
+    req.requestId = (typeof inbound === 'string' && /^[\w.-]{4,64}$/.test(inbound))
+      ? inbound
+      : crypto.randomBytes(8).toString('hex');
+    res.set('X-Request-Id', req.requestId);
+    next();
+  });
 
   // Task #750 — Content-Security-Policy (full edition only; community
   // edition untouched). Defence-in-depth against XSS: even if an injection
@@ -5125,6 +5150,27 @@ function createServer(startupStatus = {}) {
       res.sendFile(path.join(staticPath, 'index.html'));
     });
   }
+
+  // Task #856 — terminal error handler. Any error thrown/next(err)'d by a
+  // route lands here: it flows through the central error monitor (structured
+  // log + redaction + webhook alert) and the client gets a generic 500 with
+  // the request ID for correlation — never a stack trace or secret.
+  // Must be registered LAST (after routes + static) to catch everything.
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    try {
+      const { reportError } = require('../observability/errorMonitor');
+      reportError(err, {
+        source: 'express',
+        requestId: req.requestId,
+        route: `${req.method} ${req.originalUrl?.split('?')[0]}`,
+        status: err.status || 500,
+      });
+    } catch (_) {}
+    if (res.headersSent) return next(err);
+    const status = Number.isInteger(err.status) ? err.status : 500;
+    res.status(status).json({ error: 'Internal server error', requestId: req.requestId || null });
+  });
 
   return app;
 }
@@ -9293,14 +9339,15 @@ function createApiRouter(startupStatus = {}, _app = null) {
 
   // Screenshot / baseline / diff image server. Superuser-only; resolves
   // paths inside the repo and refuses anything outside tests/smoke/.
-  // Accepts both header-based superuser auth (browsers with an active
-  // session) and a `superuser_key` query param (so an <img> tag, which
-  // can't send custom headers, can still render through the gate).
+  // Task #856 — query-param auth (`?superuser_key=`) REMOVED: keys in URLs
+  // leak into access logs, browser history and Referer headers. Browser
+  // <img> tags authenticate via the same-origin session cookie; scripts use
+  // the x-superuser-key header.
   function _smokeImageAuth(req, res, next) {
     if (req.session && req.session.isSuperuser) return next();
     const expected = process.env.SUPERUSER_PASSWORD;
     if (!expected) return res.status(503).end();
-    const provided = req.headers['x-superuser-key'] || req.query.superuser_key;
+    const provided = req.headers['x-superuser-key'];
     if (provided && provided === expected) return next();
     return res.status(401).end();
   }

@@ -100,8 +100,11 @@ export async function getMatchInsightsBackfillStatus(superuserKey) {
   return superuserJson('/admin/match-insights/backfill/status', { superuserKey });
 }
 export function matchInsightsWardHeatmapUrl(superuserKey, matchId) {
-  const q = new URLSearchParams({ superuser_key: superuserKey || '' });
-  return `/api/admin/match-insights/${encodeURIComponent(matchId)}/ward-heatmap.png?${q.toString()}`;
+  // Task #856 — no key in the URL (leaks into logs/history/Referer). The
+  // <img> request is same-origin, so the superuser session cookie
+  // authenticates it; `superuserKey` is kept in the signature for
+  // backward-compat but intentionally unused.
+  return `/api/admin/match-insights/${encodeURIComponent(matchId)}/ward-heatmap.png`;
 }
 
 // Task #441 — Weekly Rivals.
@@ -255,10 +258,11 @@ export async function approveBrowserSmokeBaseline(superuserKey, runId, stepKey) 
   );
 }
 export function browserSmokeImageUrl(superuserKey, relPath) {
-  // Image route is superuser-gated but <img> can't send custom headers, so
-  // we pass the key as a query param (the requireSuperuser middleware
-  // accepts ?superuser_key= in addition to the header).
-  const q = new URLSearchParams({ path: relPath, superuser_key: superuserKey || '' });
+  // Task #856 — no key in the URL (leaks into logs/history/Referer). The
+  // <img> request is same-origin, so the superuser session cookie
+  // authenticates it; `superuserKey` is kept in the signature for
+  // backward-compat but intentionally unused.
+  const q = new URLSearchParams({ path: relPath });
   return `/api/admin/smoke/image?${q.toString()}`;
 }
 

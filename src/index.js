@@ -464,11 +464,15 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
-process.on('unhandledRejection', (err) => {
-  console.error('[Error] Unhandled rejection:', err);
-});
+// Task #856 — process-level errors flow through the central error monitor
+// (structured log + webhook alert + redaction). unhandledRejection keeps the
+// process alive (prior behaviour); uncaughtException alerts then exits so PM2
+// restarts a clean process.
+const { reportError, installProcessHandlers } = require('./observability/errorMonitor');
+installProcessHandlers();
 
 main().catch((err) => {
+  reportError(err, { source: 'startup-fatal', fatal: true });
   console.error('[Fatal]', err);
-  process.exit(1);
+  setTimeout(() => process.exit(1), 2000).unref();
 });

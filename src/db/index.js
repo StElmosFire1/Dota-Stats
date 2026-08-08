@@ -26746,6 +26746,7 @@ module.exports = {
   setReplayFilePath,
   getReplayFilePath,
   expireOldReplayFiles,
+  backfillReplayExpiry,
   setReplayPath,
   getReplayPath,
   setReplayProvenance,
@@ -27265,12 +27266,38 @@ async function getMatchesWithReplayStatus(limit = 100, offset = 0) {
 
 async function expireOldReplayFiles() {
   const p = getPool();
+  // Task #856 — snapshot the old path in a CTE: RETURNING reads the row's
+  // NEW values, so the previous version always returned replay_file_path =
+  // NULL and the disk unlink loop in server.js never deleted anything.
   const res = await p.query(
-    `UPDATE matches SET replay_file_path = NULL, replay_file_expires_at = NULL
-     WHERE replay_file_expires_at IS NOT NULL AND replay_file_expires_at < NOW()
-     RETURNING match_id, replay_file_path`
+    `WITH expired AS (
+       SELECT match_id, replay_file_path FROM matches
+       WHERE replay_file_expires_at IS NOT NULL AND replay_file_expires_at < NOW()
+     )
+     UPDATE matches m SET replay_file_path = NULL, replay_file_expires_at = NULL
+     FROM expired e WHERE m.match_id = e.match_id
+     RETURNING m.match_id, e.replay_file_path`
   );
   return res.rows;
+}
+
+// Task #856 — retention backfill: stored replays that predate the retention
+// policy have no expiry. Assign one (match date + retention days, floored at
+// NOW() + 7 days so enabling retention never mass-deletes on the next sweep).
+async function backfillReplayExpiry(days) {
+  const d = parseInt(days, 10);
+  if (!Number.isFinite(d) || d <= 0) return 0;
+  const p = getPool();
+  const res = await p.query(
+    `UPDATE matches
+     SET replay_file_expires_at = GREATEST(
+       COALESCE(date, NOW()) + ($1 || ' days')::interval,
+       NOW() + interval '7 days'
+     )
+     WHERE replay_file_path IS NOT NULL AND replay_file_expires_at IS NULL`,
+    [String(d)]
+  );
+  return res.rowCount || 0;
 }
 
 async function getHeroMetaWeek(days = 7) {

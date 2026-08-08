@@ -14,7 +14,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const PS_COLS = 73;
+const PS_COLS = 74;
 
 function buildPlaceholderGroups(rowCount, colCount) {
   const groups = [];
@@ -49,7 +49,7 @@ test('items placeholder math: 60 items × 7 cols', () => {
   assert.strictEqual(all[all.length - 1], '$' + 60 * 7);
 });
 
-test('source guard: recordMatch still ships the bulk INSERT pattern + PS_COLS=73', () => {
+test('source guard: recordMatch still ships the bulk INSERT pattern + PS_COLS=74', () => {
   // Catches a future refactor that accidentally reverts to the per-player
   // loop or changes the column count without updating this test.
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'db', 'index.js'), 'utf8');
@@ -58,7 +58,7 @@ test('source guard: recordMatch still ships the bulk INSERT pattern + PS_COLS=73
   assert.ok(idx > 0, 'recordMatch not found');
   const end = src.indexOf('\nasync function isMatchRecorded', idx);
   const body = src.slice(idx, end);
-  assert.ok(/const PS_COLS = 73;/.test(body), 'PS_COLS=73 constant missing — bulk path regressed?');
+  assert.ok(/const PS_COLS = 74;/.test(body), 'PS_COLS=74 constant missing — bulk path regressed?');
   assert.ok(/psPlaceholders\.join\(','\)/.test(body), 'multi-row VALUES join missing — bulk path regressed?');
   // The pre-refactor shape did one INSERT per player INSIDE the players loop.
   // Reject that shape: a `for (const player of matchStats.players)` that

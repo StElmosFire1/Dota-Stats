@@ -175,6 +175,42 @@ function validateConfig() {
     console.warn(`[Config] Missing env vars: ${missing.join(', ')}`);
     console.warn('[Config] Some features may be unavailable.');
   }
+
+  // Task #856 — fail-fast in production. A prod boot with a missing critical
+  // secret used to limp along half-broken (sessions forgeable, payments 503,
+  // no DB); now it refuses to start with an explicit list of what to set.
+  // Dev keeps the soft warning above so local boots work unconfigured.
+  // Escape hatch for intentional partial deploys: STARTUP_ALLOW_MISSING_ENV
+  // is a comma-separated list of var names to downgrade to a warning.
+  if (process.env.NODE_ENV === 'production') {
+    const allow = new Set(
+      (process.env.STARTUP_ALLOW_MISSING_ENV || '')
+        .split(',').map(s => s.trim()).filter(Boolean)
+    );
+    const critical = [];
+    if (!process.env.DATABASE_URL) critical.push(['DATABASE_URL', 'Postgres connection string — nothing works without the DB']);
+    if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
+      critical.push(['SESSION_SECRET', 'must be set and at least 32 chars — session cookies are forgeable otherwise']);
+    }
+    if (!config.discord.token) critical.push(['DISCORD_TOKEN', 'Discord bot cannot start']);
+    if (process.env.DISABLE_STEAM !== 'true') {
+      if (!config.steam.accountName) critical.push(['STEAM_ACCOUNT', 'Steam login required (or set DISABLE_STEAM=true)']);
+      if (!config.steam.password) critical.push(['STEAM_PASSWORD', 'Steam login required (or set DISABLE_STEAM=true)']);
+    }
+    if (!process.env.STRIPE_SECRET_KEY) {
+      critical.push(['STRIPE_SECRET_KEY', 'payments/coaching/Pro purchases will all fail — allow explicitly if intentional']);
+    }
+    const hard = critical.filter(([name]) => !allow.has(name));
+    for (const [name, why] of critical.filter(([n]) => allow.has(n))) {
+      console.warn(`[Config] ${name} missing but allowed via STARTUP_ALLOW_MISSING_ENV — ${why}`);
+    }
+    if (hard.length > 0) {
+      console.error('[Config] FATAL: refusing to start in production with missing critical env vars:');
+      for (const [name, why] of hard) console.error(`  - ${name}: ${why}`);
+      console.error('[Config] Set the vars above (or list intentional omissions in STARTUP_ALLOW_MISSING_ENV) and restart.');
+      process.exit(1);
+    }
+  }
   return missing;
 }
 
