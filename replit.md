@@ -131,7 +131,7 @@ interaction regressions the feature-health probe layer can't see.
   runner degrades gracefully when these aren't installed — the run records a
   single SKIPPED step with a clear message instead of throwing.
 
-## Steam/Dota connection: currently OFF
+## Steam/Dota connection: currently OFF (intentionally, until further notice)
 Steam/Dota is **switched off in both editions via `DISABLE_STEAM=true`** (set in the Replit production + development environments; on the prod host it must also be set in each PM2 process's env). With it on, neither edition logs into Steam or sends `gamesPlayed([570])`, so the "Dota Bot is now playing Dota 2" presence stops. Web dashboard, Discord bot, Stripe, and the replay parser all keep running; Steam-dependent surfaces (`/inhouse` lobby flow, friend-lobby auto-detect) fail soft and stay dormant. Startup logs a clear `[Startup] Steam/Dota intentionally DISABLED (DISABLE_STEAM=true)` line. **To re-enable:** remove `DISABLE_STEAM` (or set it to anything other than the exact string `true`) and restart each process (`pm2 restart <name> --update-env` on the prod host). Re-enabling is when the separate reconnect-fix task (#840) applies. Full reference in `docs/env-vars.md`.
 
 ## Environment variables (security-relevant)
