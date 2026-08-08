@@ -125,3 +125,36 @@ test('sorts newest-first across all sources', () => {
   assert.deepStrictEqual(items.map(i => i.type),
     ['coin_topup', 'stripe_frame', 'coin_cosmetic', 'stripe_perk']);
 });
+
+// Task #873 — receipt-link support: the payment-intent id must ride along on
+// Stripe perk rows so the route can resolve the receipt URL server-side.
+test('carries stripe_payment_intent through on stripe_perk items', () => {
+  const items = buildPurchaseHistory({
+    perks: [{
+      perk_key: 'cosmetic:vanity_url', source: 'stripe',
+      granted_at: '2026-01-05T00:00:00Z', amount_cents: 1200, currency: 'aud',
+      stripe_payment_intent: 'pi_123',
+    }],
+    perkCatalog: CATALOG,
+  });
+  assert.strictEqual(items[0].stripe_payment_intent, 'pi_123');
+});
+
+test('stripe_payment_intent is null when the perk row has none', () => {
+  const items = buildPurchaseHistory({
+    perks: [{ perk_key: 'x', source: 'stripe', granted_at: '2026-01-05T00:00:00Z' }],
+  });
+  assert.strictEqual(items[0].stripe_payment_intent, null);
+});
+
+test('carries stripe_session_id through on frame, founder-ring and top-up rows', () => {
+  const items = buildPurchaseHistory({
+    framePurchases: [{ frame_id: 'gold', amount_cents: 299, purchased_at: '2026-02-01T00:00:00Z', stripe_session_id: 'cs_f' }],
+    founderRingPurchases: [{ sku: 'founder_ring:storm', granted_at: '2026-02-02T00:00:00Z', metadata: { stripe_session_id: 'cs_r' } }],
+    coinPackPurchases: [{ id: 1, pack_id: 'starter', coins: 500, amount_cents: 499, created_at: '2026-02-03T00:00:00Z', stripe_session_id: 'cs_t' }],
+  });
+  const byType = Object.fromEntries(items.map(i => [i.type, i]));
+  assert.strictEqual(byType.stripe_frame.stripe_session_id, 'cs_f');
+  assert.strictEqual(byType.stripe_founder_ring.stripe_session_id, 'cs_r');
+  assert.strictEqual(byType.coin_topup.stripe_session_id, 'cs_t');
+});

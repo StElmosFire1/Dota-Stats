@@ -89,12 +89,14 @@ function createDb({ getPool }) {
         expires_at: null,
         amount_cents: null,
         currency: null,
+        stripe_payment_intent: null,
         metadata: null,
       }));
     }
     const p = getPool();
     const r = await p.query(
-      `SELECT id, perk_key, source, granted_at, expires_at, amount_cents, currency, metadata
+      `SELECT id, perk_key, source, granted_at, expires_at, amount_cents, currency,
+              stripe_payment_intent, metadata
          FROM user_one_off_perks
         WHERE account_id = $1 AND revoked_at IS NULL
         ORDER BY granted_at DESC`,

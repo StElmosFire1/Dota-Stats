@@ -16762,7 +16762,7 @@ async function listCoinPackPurchases(accountId) {
   if (!accountId) return [];
   const p = getPool();
   const r = await p.query(
-    `SELECT id, pack_id, coins, amount_cents, currency, completed_at, created_at
+    `SELECT id, pack_id, coins, amount_cents, currency, completed_at, created_at, stripe_session_id
        FROM coin_pack_purchases
       WHERE account_id = $1 AND status = 'completed'
       ORDER BY COALESCE(completed_at, created_at) DESC`,
@@ -16777,7 +16777,7 @@ async function listFramePurchases(accountId) {
   if (!accountId) return [];
   const p = getPool();
   const r = await p.query(
-    `SELECT frame_id, amount_cents, currency, purchased_at, created_at
+    `SELECT frame_id, amount_cents, currency, purchased_at, created_at, stripe_session_id
        FROM frame_purchases
       WHERE account_id = $1 AND status = 'active'
       ORDER BY COALESCE(purchased_at, created_at) DESC`,

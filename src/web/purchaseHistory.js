@@ -47,6 +47,9 @@ function buildPurchaseHistory({
       coins_spent: null,
       purchased_at: p.granted_at,
       expires_at: p.expires_at || null,
+      // Task #873 — carried through so the route can resolve the Stripe
+      // receipt URL for this purchase (best-effort, never sent to clients).
+      stripe_payment_intent: p.stripe_payment_intent || null,
     });
   }
 
@@ -64,6 +67,8 @@ function buildPurchaseHistory({
       coins_spent: null,
       purchased_at: f.purchased_at || f.created_at,
       expires_at: null,
+      // Task #873 — checkout session ref lets the route resolve the receipt.
+      stripe_session_id: f.stripe_session_id || null,
     });
   }
 
@@ -81,6 +86,8 @@ function buildPurchaseHistory({
       coins_spent: null,
       purchased_at: e.granted_at,
       expires_at: null,
+      // Task #873 — webhook stores the checkout session id in metadata.
+      stripe_session_id: md.stripe_session_id || null,
     });
   }
 
@@ -109,6 +116,8 @@ function buildPurchaseHistory({
       coins_spent: null,
       purchased_at: t.completed_at || t.created_at,
       expires_at: null,
+      // Task #873 — checkout session ref lets the route resolve the receipt.
+      stripe_session_id: t.stripe_session_id || null,
     });
   }
 

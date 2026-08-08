@@ -1251,6 +1251,7 @@ export default function CosmeticsShop() {
                     <th style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)' }}>PAID</th>
                     <th style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)' }}>METHOD</th>
                     <th style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)' }}>DATE</th>
+                    <th style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)' }}>RECEIPT</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1273,6 +1274,21 @@ export default function CosmeticsShop() {
                       </td>
                       <td style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)', color: 'var(--pb-muted)', whiteSpace: 'nowrap' }}>
                         {item.purchased_at ? new Date(item.purchased_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      </td>
+                      <td style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)', whiteSpace: 'nowrap' }}>
+                        {item.receipt_url ? (
+                          <a
+                            href={item.receipt_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: 'var(--pb-amber)', textDecoration: 'underline' }}
+                            aria-label={`Open Stripe receipt for ${item.name} in a new tab`}
+                          >
+                            Receipt ↗
+                          </a>
+                        ) : (
+                          <span style={{ color: 'var(--pb-muted)' }}>—</span>
+                        )}
                       </td>
                     </tr>
                   ))}

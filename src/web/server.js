@@ -19518,6 +19518,14 @@ Return exactly this JSON shape (all fields required, arrays of strings):
         perks, framePurchases, founderRingPurchases, coinPurchases, coinPackPurchases,
         perkCatalog: ONE_OFF_PERK_CATALOG,
       });
+      // Task #873 — resolve the Stripe-hosted receipt URL for every Stripe
+      // row (perks via payment intent; frames / founder rings / coin top-ups
+      // via checkout session). Best-effort + cached; missing/failed lookups
+      // just omit the link, and the raw Stripe ids never reach the client.
+      const { attachReceiptUrls } = require('./stripeReceipts');
+      let _stripe = null;
+      try { _stripe = require('../observability/stripeClient').getStripe(); } catch (_) {}
+      await attachReceiptUrls(items, { stripe: _stripe });
       res.json({ items });
     } catch (e) {
       console.error('[API] /me/purchase-history:', e.message);
