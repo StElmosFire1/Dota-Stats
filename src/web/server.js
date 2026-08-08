@@ -3095,6 +3095,14 @@ function createServer(startupStatus = {}) {
           }
           const refundedVod = await db.markVodRefundedByIntent(pi).catch(() => null);
           if (refundedVod) console.log('[Stripe] Refunded VOD review', refundedVod.id);
+          // Task #881 — one-off cosmetic perks (vanity URL, voice packs, …)
+          // lose access on refund too. Idempotent + best-effort like the
+          // other refund handlers above; existing revoked_at filters hide
+          // the perk from /me/perks and /me/purchase-history immediately.
+          const revokedPerks = await db.magV3.revokeOneOffPerksByPaymentIntent(pi).catch(() => []);
+          for (const perk of revokedPerks) {
+            console.log('[Stripe] Refund revoked one-off perk', perk.id, perk.perk_key, 'account', perk.account_id);
+          }
           // Task #421 — Ingest the refund's BalanceTransaction(s) so the
           // coach earnings dashboard can show the real cost of the refund
           // (refunded gross + the slice of the original processing fee

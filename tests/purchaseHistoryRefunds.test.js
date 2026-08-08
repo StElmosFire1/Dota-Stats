@@ -209,3 +209,107 @@ test('pipeline: refunds, pending checkouts and grants never appear; top-ups do; 
   assert.equal(topup.amount_cents, 999);
   assert.equal(topup.purchased_at, '2026-04-01T00:00:00Z');
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// Task #881 — charge.refunded actually revokes one-off perks.
+//
+// revokeOneOffPerksByPaymentIntent stamps revoked_at = NOW() on the active
+// row(s) matching the payment intent (idempotent: already-revoked rows are
+// skipped), and the webhook branch in src/web/server.js routes through it.
+// Combined with the listOneOffPerks filter pinned above, a refunded perk
+// disappears from /me/perks and /me/purchase-history.
+// ───────────────────────────────────────────────────────────────────────────
+
+function makeRevokePool(rows) {
+  const calls = [];
+  return {
+    calls,
+    async query(sqlRaw, params = []) {
+      const sql = String(sqlRaw).replace(/\s+/g, ' ').trim();
+      calls.push({ sql, params });
+      if (!/UPDATE user_one_off_perks/.test(sql)) {
+        throw new Error('unexpected query: ' + sql.slice(0, 100));
+      }
+      // Apply the UPDATE semantics: match intent, skip already-revoked.
+      const hit = rows.filter(r =>
+        r.stripe_payment_intent === params[0] && r.revoked_at === null);
+      for (const r of hit) r.revoked_at = '2026-05-01T00:00:00Z';
+      return { rows: hit, rowCount: hit.length };
+    },
+  };
+}
+
+test('revokeOneOffPerksByPaymentIntent stamps revoked_at, is idempotent, skips empty pi', async () => {
+  const rows = [
+    { id: 1, account_id: 777, perk_key: 'cosmetic:vanity_url', granted_at: '2026-01-05T00:00:00Z',
+      source: 'stripe', amount_cents: 1200, currency: 'aud',
+      stripe_payment_intent: 'pi_refund_me', revoked_at: null, expires_at: null, metadata: null },
+    { id: 2, account_id: 777, perk_key: 'cosmetic:voice_pack', granted_at: '2026-01-06T00:00:00Z',
+      source: 'stripe', amount_cents: 800, currency: 'aud',
+      stripe_payment_intent: 'pi_other', revoked_at: null, expires_at: null, metadata: null },
+  ];
+  const pool = makeRevokePool(rows);
+  const magDb = createDb({ getPool: () => pool });
+
+  // No payment intent → short-circuit, no query.
+  assert.deepEqual(await magDb.revokeOneOffPerksByPaymentIntent(null), []);
+  assert.deepEqual(await magDb.revokeOneOffPerksByPaymentIntent(''), []);
+  assert.equal(pool.calls.length, 0);
+
+  // First call revokes exactly the matching active row.
+  const revoked = await magDb.revokeOneOffPerksByPaymentIntent('pi_refund_me');
+  assert.deepEqual(revoked.map(r => r.id), [1]);
+  assert.ok(rows[0].revoked_at !== null);
+  assert.equal(rows[1].revoked_at, null, 'unrelated perk untouched');
+  // SQL carries the guards that make it safe/idempotent.
+  const call = pool.calls[pool.calls.length - 1];
+  assert.match(call.sql, /SET revoked_at = NOW\(\)/);
+  assert.match(call.sql, /stripe_payment_intent = \$1/);
+  assert.match(call.sql, /revoked_at IS NULL/);
+
+  // Second call (webhook retry) is a no-op.
+  assert.deepEqual(await magDb.revokeOneOffPerksByPaymentIntent('pi_refund_me'), []);
+});
+
+test('refund-revoked perk vanishes from listOneOffPerks (the /me/perks + purchase-history source)', async () => {
+  const rows = [
+    { id: 1, account_id: 777, perk_key: 'cosmetic:vanity_url', granted_at: '2026-01-05T00:00:00Z',
+      source: 'stripe', amount_cents: 1200, currency: 'aud',
+      stripe_payment_intent: 'pi_refund_me', revoked_at: null, expires_at: null, metadata: null },
+  ];
+  // Pool that serves both the UPDATE (revoke) and the SELECT (list) against
+  // the same in-memory rows.
+  const pool = {
+    async query(sqlRaw, params = []) {
+      const sql = String(sqlRaw).replace(/\s+/g, ' ').trim();
+      if (/UPDATE user_one_off_perks/.test(sql)) {
+        const hit = rows.filter(r => r.stripe_payment_intent === params[0] && r.revoked_at === null);
+        for (const r of hit) r.revoked_at = '2026-05-01T00:00:00Z';
+        return { rows: hit, rowCount: hit.length };
+      }
+      let out = rows.filter(r => String(r.account_id) === String(params[0]));
+      if (/revoked_at IS NULL/.test(sql)) out = out.filter(r => r.revoked_at === null);
+      return { rows: out, rowCount: out.length };
+    },
+  };
+  const magDb = createDb({ getPool: () => pool });
+
+  assert.deepEqual((await magDb.listOneOffPerks(777)).map(r => r.id), [1]);
+  await magDb.revokeOneOffPerksByPaymentIntent('pi_refund_me');
+  assert.deepEqual(await magDb.listOneOffPerks(777), []);
+  assert.equal(await magDb.hasOneOffPerk(777, 'cosmetic:vanity_url'), false);
+});
+
+test('charge.refunded webhook branch routes through revokeOneOffPerksByPaymentIntent', () => {
+  // The webhook handler is deep inside createServer(); booting the whole
+  // server in a unit test is impractical, so pin the wiring at source level:
+  // the charge.refunded branch must call the revoke helper (best-effort,
+  // like the other refund handlers).
+  const fs = require('fs');
+  const src = fs.readFileSync(require.resolve('../src/web/server.js'), 'utf8');
+  const start = src.indexOf("event.type === 'charge.refunded'");
+  assert.ok(start > -1, 'charge.refunded branch exists');
+  const branch = src.slice(start, src.indexOf('} else if', start + 1));
+  assert.match(branch, /magV3\.revokeOneOffPerksByPaymentIntent\(pi\)/);
+  assert.match(branch, /\.catch\(\(\) => \[\]\)/, 'best-effort like the other refund handlers');
+});

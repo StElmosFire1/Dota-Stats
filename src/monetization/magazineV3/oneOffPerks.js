@@ -133,7 +133,25 @@ function createDb({ getPool }) {
     return r.rows[0];
   }
 
-  return { grantOneOffPerk, hasOneOffPerk, listOneOffPerks, createOneOffPerkPending };
+  // Task #881 — refund revocation. Called from the charge.refunded webhook:
+  // stamps revoked_at = NOW() on the active perk row(s) matching the Stripe
+  // payment intent. Idempotent (revoked rows are skipped) and best-effort at
+  // the call site. Returns the revoked rows (empty array when nothing matched).
+  async function revokeOneOffPerksByPaymentIntent(stripePaymentIntent) {
+    if (!stripePaymentIntent) return [];
+    const p = getPool();
+    const r = await p.query(
+      `UPDATE user_one_off_perks
+          SET revoked_at = NOW()
+        WHERE stripe_payment_intent = $1
+          AND revoked_at IS NULL
+        RETURNING *`,
+      [stripePaymentIntent]
+    );
+    return r.rows;
+  }
+
+  return { grantOneOffPerk, hasOneOffPerk, listOneOffPerks, createOneOffPerkPending, revokeOneOffPerksByPaymentIntent };
 }
 
 // Round-8: aligned to the spec'd one-off cosmetic catalog —
