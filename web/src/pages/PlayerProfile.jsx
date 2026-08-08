@@ -852,7 +852,10 @@ export default function PlayerProfile() {
   const navigate = useNavigate();
   const { steamUser } = useSteamAuth();
   // v5.86 — superusers can preview AI Scout without a Pro subscription.
-  const { superuserKey } = useSuperuser() || {};
+  const { superuserKey, isSuperuser } = useSuperuser() || {};
+  // Task #14 — Pro-gated CSV export button. Superusers preview Pro features.
+  const { status: proStatus } = useProStatus();
+  const viewerIsPro = !!proStatus?.is_pro || !!isSuperuser;
   // Wave 1 feature flags
   const showMvpBadges = useFeatureFlag('mvp_match_badges');
   const newRankTheme  = useFeatureFlag('new_rank_theme');
@@ -1275,7 +1278,8 @@ export default function PlayerProfile() {
   // AUDIT (v6.18): Owner-only and signed-in viewer controls — kept intact next to
   // the shared card. Edit Profile / CoachingApplyCta gated on isOwnProfile, Gift
   // buttons gated on (!isOwnProfile + signed in), AI Scout gated on signed in
-  // (paywall enforced server-side). Share + Export always public.
+  // (paywall enforced server-side). Share always public; CSV export is
+  // Pro-gated in the UI (Task #14) with a Pro-only hint on your own profile.
   const headerExtras = (
     <>
       <button
@@ -1314,35 +1318,52 @@ export default function PlayerProfile() {
           borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
         }}
       >⚖️ Compare</button>
-      <button
-        onClick={async () => {
-          try {
-            const res = await fetch(`/api/players/${accountId}/matches/export.csv${seasonId ? `?season_id=${seasonId}` : ''}`, { credentials: 'same-origin' });
-            if (res.status === 402) {
-              const body = await res.json().catch(() => ({}));
-              setTrendPaywall({ paywall: true, feature: body.feature || 'csv_export', signedIn: body.signed_in });
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-              return;
+      {/* Task #14 — Pro-gated CSV match-history export. Pro members (and
+          superusers previewing Pro) get a live Download CSV button; the
+          signed-in owner without Pro sees a "Pro only" hint linking to /pro.
+          Hidden entirely for non-Pro viewers of other profiles. */}
+      {viewerIsPro ? (
+        <button
+          onClick={async () => {
+            try {
+              const res = await fetch(`/api/players/${accountId}/matches/export.csv${seasonId ? `?season_id=${seasonId}` : ''}`, { credentials: 'same-origin' });
+              if (res.status === 402) {
+                const body = await res.json().catch(() => ({}));
+                setTrendPaywall({ paywall: true, feature: body.feature || 'csv_export', signedIn: body.signed_in });
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+              }
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `matches-${accountId}${seasonId ? `-s${seasonId}` : ''}.csv`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+            } catch (err) {
+              alert(`Export failed: ${err.message}`);
             }
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `matches_${accountId}${seasonId ? `_s${seasonId}` : ''}.csv`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
-          } catch (err) {
-            alert(`Export failed: ${err.message}`);
-          }
-        }}
-        style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
-          borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-        }}
-      >📥 Export CSV</button>
+          }}
+          title="Download your match history as CSV (Pro)"
+          style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
+            borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+          }}
+        >📥 Download CSV</button>
+      ) : isOwnProfile ? (
+        <Link
+          to="/pro"
+          title="CSV match export is a Pro feature — see Pro benefits"
+          style={{
+            background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
+            borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600,
+            textDecoration: 'none', fontStyle: 'italic',
+          }}
+        >🔒 CSV Export — Pro only</Link>
+      ) : null}
       {trendPaywall && trendPaywall.feature === 'csv_export' && (
         <PaywallCard feature="csv_export" signedIn={trendPaywall.signedIn} compact />
       )}

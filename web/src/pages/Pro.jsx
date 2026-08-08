@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { getProPricing, createProCheckout } from '../api';
 import useProStatus from '../hooks/useProStatus';
 import { useSuperuser } from '../context/SuperuserContext';
+import { useSteamAuth } from '../context/SteamAuthContext';
 
 // Every Pro feature lives here. Standalone features get their own card with a
 // "Open" button; tab-features (e.g. Heroes → Position Meta) get a card that
@@ -63,8 +64,9 @@ const FEATURE_GROUPS = [
       },
       {
         icon: '📥', title: 'CSV Match Export',
-        desc: 'Bulk-download your match history for spreadsheet analysis.',
-        to: '/matches', kind: 'inline', tabHint: 'From the matches list',
+        desc: 'Bulk-download your match history for spreadsheet analysis — the Download CSV button lives on your player profile.',
+        to: '/players', kind: 'page', tabHint: 'Download CSV on your profile',
+        ownProfileLink: true, // Task #14 — deep-link to the signed-in member's own profile
       },
     ],
   },
@@ -129,6 +131,7 @@ function FeatureCard({ feat, isPro }) {
 
 export default function Pro() {
   const { isSuperuser } = useSuperuser();
+  const { steamUser } = useSteamAuth();
   const { status, loading: statusLoading } = useProStatus();
   const [pricing, setPricing] = useState(null);
   const [pricingError, setPricingError] = useState(null);
@@ -227,9 +230,15 @@ export default function Pro() {
             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
             gap: 12,
           }}>
-            {group.features.map(f => (
-              <FeatureCard key={f.title} feat={f} isPro={isPro} />
-            ))}
+            {group.features.map(f => {
+              // Task #14 — deep-link "own profile" features (CSV export) to the
+              // signed-in member's profile so the Download CSV button is one
+              // click away; falls back to the players list when signed out.
+              const feat = (f.ownProfileLink && steamUser?.accountId)
+                ? { ...f, to: `/player/${steamUser.accountId}` }
+                : f;
+              return <FeatureCard key={f.title} feat={feat} isPro={isPro} />;
+            })}
           </div>
         </div>
       ))}
