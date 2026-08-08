@@ -491,6 +491,21 @@ setInterval(() => {
   require('./opsState').captureHistorySnapshot(db).catch(() => {});
 }, 60_000).unref();
 
+// Task #848 — analytics retention sweep. Prunes page_events older than
+// ANALYTICS_RETENTION_DAYS (default 180) once a day so the table stays
+// bounded. Best-effort; .unref() so tests don't hang on it.
+const ANALYTICS_RETENTION_DAYS = parseInt(process.env.ANALYTICS_RETENTION_DAYS || '180', 10);
+async function _runAnalyticsPrune() {
+  try {
+    const deleted = await db.prunePageEvents(ANALYTICS_RETENTION_DAYS);
+    if (deleted > 0) console.log(`[Analytics] pruned ${deleted} page_events rows older than ${ANALYTICS_RETENTION_DAYS}d`);
+  } catch (e) {
+    console.warn('[Analytics] prune failed:', e?.message || e);
+  }
+}
+setTimeout(() => { _runAnalyticsPrune().catch(() => {}); }, 3 * 60_000).unref();
+setInterval(() => { _runAnalyticsPrune().catch(() => {}); }, 24 * 60 * 60 * 1000).unref();
+
 // Task #452 — fan out tournament check-in notifications. Pulls the tournaments
 // whose "open" or "5-min reminder" signal is now due (claimed atomically in the
 // DB so each fires exactly once), then DMs / web-pushes each recipient through
@@ -1096,6 +1111,17 @@ const publicWriteLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests from this address, please wait and try again.' },
+});
+
+// Task #848 — first-party analytics beacon limiter. The SPA batches events and
+// flushes at most every few seconds per visitor, so 60 posts/min per IP is
+// generous headroom for real users while capping abuse.
+const analyticsIngestLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests.' },
 });
 
 // v7.13 — Auth-token map lives at module scope so both createServer() (which
@@ -23093,6 +23119,65 @@ Return exactly this JSON shape (all fields required, arrays of strings):
   } catch (e) {
     console.error('[games] route mount failed:', e && e.stack || e && e.message || e);
   }
+
+  // ── Task #848 — first-party analytics ─────────────────────────────────────
+  // Public batched ingest endpoint. The SPA fires small batches of
+  // { t: 'pageview'|'tool', r: route, n?: name } events via sendBeacon /
+  // fetch keepalive. Privacy-safe: no IP or UA is stored — the visitor hash
+  // is sha256(ip|ua|dailySalt) truncated, and the salt rotates every UTC day
+  // so identifiers can't be correlated across days.
+  function _analyticsVisitorHash(req) {
+    const salt = (process.env.SESSION_SECRET || 'oi-analytics') +
+      ':' + new Date().toISOString().slice(0, 10);
+    const ip = req.ip || req.connection?.remoteAddress || '';
+    const ua = req.get('user-agent') || '';
+    return crypto.createHash('sha256').update(`${ip}|${ua}|${salt}`).digest('hex').slice(0, 32);
+  }
+  router.post('/analytics/events', analyticsIngestLimiter, express.json({ limit: '16kb' }), async (req, res) => {
+    try {
+      const events = Array.isArray(req.body?.events) ? req.body.events.slice(0, 25) : [];
+      if (!events.length) return res.status(400).json({ error: 'events array required' });
+      const isAuthed = !!(req.session && req.session.accountId);
+      const visitorHash = _analyticsVisitorHash(req);
+      const rows = [];
+      for (const ev of events) {
+        if (!ev || typeof ev !== 'object') continue;
+        const type = ev.t === 'tool' ? 'tool' : ev.t === 'pageview' ? 'pageview' : null;
+        if (!type) continue;
+        const route = typeof ev.r === 'string' ? ev.r.slice(0, 200) : '';
+        if (!route || !route.startsWith('/')) continue;
+        const name = typeof ev.n === 'string' && ev.n ? ev.n.slice(0, 100) : null;
+        if (type === 'tool' && !name) continue;
+        rows.push({ eventType: type, route, name, isAuthed, visitorHash });
+      }
+      if (rows.length) await db.insertPageEvents(rows);
+      // 204 keeps sendBeacon happy and the response tiny.
+      res.status(204).end();
+    } catch (e) {
+      // Never make the beacon noisy for clients — log server-side only.
+      console.warn('[Analytics] ingest failed:', e?.message || e);
+      res.status(204).end();
+    }
+  });
+
+  // Admin-gated aggregates. requireAdmin resolves the caller's role LIVE via
+  // getEffectiveRole (never a cached session flag).
+  router.get('/admin/analytics/site', requireAdmin, async (req, res) => {
+    try {
+      res.json(await db.getAnalyticsSiteStats(parseInt(req.query.days, 10) || 30));
+    } catch (e) {
+      console.error('[Analytics] site stats:', e?.message || e);
+      res.status(500).json({ error: 'Failed to load site analytics' });
+    }
+  });
+  router.get('/admin/analytics/games', requireAdmin, async (req, res) => {
+    try {
+      res.json(await db.getAnalyticsGameStats(parseInt(req.query.days, 10) || 30));
+    } catch (e) {
+      console.error('[Analytics] game stats:', e?.message || e);
+      res.status(500).json({ error: 'Failed to load game analytics' });
+    }
+  });
 
   try {
     const { mountMagazineV3Routes } = require('../monetization/magazineV3');

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, lootboxLabOwnership, lootboxLabHistory, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getLootboxDupeReturns, setLootboxDupeReturns, getLootboxDupeReturnsAudit, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts, getAdminCosmeticsCatalog } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, lootboxLabOwnership, lootboxLabHistory, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getLootboxDupeReturns, setLootboxDupeReturns, getLootboxDupeReturnsAudit, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts, getAdminCosmeticsCatalog, getAdminAnalyticsSite, getAdminAnalyticsGames } from '../api';
 import CosmeticPreview from '../components/CosmeticPreview';
 import FounderRing from '../components/founderRings/FounderRing';
 import { FRAME_META, LAYOUT_THEME_META, VOICE_PACK_META, COVER_FX_META, avatarRingStyle, bannerStyle, nameplateStyle, recapSkinSwatch } from '../profileCosmetics';
@@ -9315,6 +9315,232 @@ function CosmeticsPanel({ superuserKey }) {
   );
 }
 
+// ── Task #848 — Analytics tab ────────────────────────────────────────────────
+// First-party site usage + mini-game analytics. Data comes from the two
+// admin-gated aggregate endpoints; the time-range selector re-fetches both.
+
+function AnalyticsBarChart({ rows, xKey, series, height = 120 }) {
+  if (!rows || !rows.length) {
+    return <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '16px 0' }}>No data yet for this range.</div>;
+  }
+  const max = Math.max(1, ...rows.map(r => Math.max(...series.map(s => Number(r[s.key]) || 0))));
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height, overflow: 'hidden' }}>
+        {rows.map(r => (
+          <div
+            key={r[xKey]}
+            title={`${r[xKey]}\n${series.map(s => `${s.label}: ${r[s.key] ?? 0}`).join('\n')}`}
+            style={{ flex: 1, minWidth: 3, display: 'flex', alignItems: 'flex-end', gap: 1, height: '100%' }}
+          >
+            {series.map(s => (
+              <div key={s.key} style={{
+                flex: 1,
+                height: `${Math.max(2, Math.round(((Number(r[s.key]) || 0) / max) * 100))}%`,
+                background: s.color,
+                borderRadius: '2px 2px 0 0',
+              }} />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+        <span>{rows[0][xKey]}</span>
+        <span>{rows[rows.length - 1][xKey]}</span>
+      </div>
+      <div style={{ display: 'flex', gap: 14, marginTop: 6, flexWrap: 'wrap' }}>
+        {series.map(s => (
+          <span key={s.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-muted)' }}>
+            <span aria-hidden style={{ width: 10, height: 10, borderRadius: 2, background: s.color, display: 'inline-block' }} />
+            {s.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const ANALYTICS_RANGES = [7, 30, 90];
+
+function AnalyticsPanel({ superuserKey }) {
+  const [days, setDays] = useState(30);
+  const [site, setSite] = useState(null);
+  const [games, setGames] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(() => {
+    setLoading(true); setError('');
+    Promise.all([
+      getAdminAnalyticsSite(superuserKey, days),
+      getAdminAnalyticsGames(superuserKey, days),
+    ])
+      .then(([s, g]) => { setSite(s); setGames(g); })
+      .catch(e => setError(e.message || 'Failed to load analytics'))
+      .finally(() => setLoading(false));
+  }, [superuserKey, days]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const s = site?.summary || {};
+  const g = games?.summary || {};
+  const authedPct = s.total_views > 0 ? Math.round((s.authed_views / s.total_views) * 100) : null;
+  const winPct = g.total_plays > 0 ? Math.round((g.wins / g.total_plays) * 100) : null;
+  const thStyle = { textAlign: 'left', padding: '6px 10px', fontSize: 12, color: 'var(--text-muted)' };
+  const tdStyle = { padding: '6px 10px', fontSize: 13, borderTop: '1px solid var(--border)' };
+  const numTd = { ...tdStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+
+  return (
+    <>
+      {/* Time-range selector */}
+      <section style={{ marginBottom: 20, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Time range:</span>
+        {ANALYTICS_RANGES.map(d => (
+          <button
+            key={d}
+            type="button"
+            className={`btn ${days === d ? 'btn-primary' : ''}`}
+            onClick={() => setDays(d)}
+            aria-pressed={days === d}
+            style={{ fontSize: 13 }}
+          >
+            {d} days
+          </button>
+        ))}
+        <button type="button" className="btn" onClick={load} disabled={loading} aria-label="Refresh analytics" style={{ fontSize: 13 }}>
+          {loading ? '…' : '↻ Refresh'}
+        </button>
+      </section>
+      {error && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+
+      {/* ── Site usage ── */}
+      <section style={{ marginBottom: 36 }} aria-labelledby="ap-analytics-site-h">
+        <h2 id="ap-analytics-site-h" style={{ marginBottom: 14 }}>🌐 Site usage</h2>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
+          <OverviewCard label="Page views" value={s.total_views?.toLocaleString?.() ?? s.total_views} />
+          <OverviewCard label="Unique visitors" value={s.unique_visitors?.toLocaleString?.() ?? s.unique_visitors} sub="daily-rotating visitor hash" />
+          <OverviewCard label="Signed-in views" value={authedPct != null ? `${authedPct}%` : '—'} sub={s.total_views ? `${s.authed_views} of ${s.total_views}` : null} />
+          <OverviewCard label="Anonymous views" value={authedPct != null ? `${100 - authedPct}%` : '—'} sub={s.total_views ? `${s.anon_views} of ${s.total_views}` : null} />
+        </div>
+        <div className="card" style={{ padding: 20, marginBottom: 18 }}>
+          <h3 style={{ margin: '0 0 12px', fontSize: 14 }}>Daily traffic</h3>
+          <AnalyticsBarChart
+            rows={site?.daily}
+            xKey="day"
+            series={[
+              { key: 'views', label: 'Views', color: '#60a5fa' },
+              { key: 'uniques', label: 'Uniques', color: '#34d399' },
+              { key: 'authed_views', label: 'Signed-in', color: '#fbbf24' },
+            ]}
+          />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+          <div className="card" style={{ padding: 20 }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: 14 }}>Top pages</h3>
+            {(site?.topPages || []).length === 0 ? (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No page views recorded yet — data starts from launch.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr><th style={thStyle}>Route</th><th style={{ ...thStyle, textAlign: 'right' }}>Views</th><th style={{ ...thStyle, textAlign: 'right' }}>Uniques</th></tr></thead>
+                <tbody>
+                  {site.topPages.map(p => (
+                    <tr key={p.route}>
+                      <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all' }}>{p.route}</td>
+                      <td style={numTd}>{p.views}</td>
+                      <td style={numTd}>{p.uniques}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div className="card" style={{ padding: 20 }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: 14 }}>Top tools &amp; features</h3>
+            {(site?.topTools || []).length === 0 ? (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No tool-usage events yet. Pages instrumented with named tool events will appear here.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead><tr><th style={thStyle}>Tool</th><th style={{ ...thStyle, textAlign: 'right' }}>Uses</th><th style={{ ...thStyle, textAlign: 'right' }}>Uniques</th></tr></thead>
+                <tbody>
+                  {site.topTools.map(t => (
+                    <tr key={t.tool}>
+                      <td style={tdStyle}>{t.tool}</td>
+                      <td style={numTd}>{t.uses}</td>
+                      <td style={numTd}>{t.uniques}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Mini-games ── */}
+      <section style={{ marginBottom: 36 }} aria-labelledby="ap-analytics-games-h">
+        <h2 id="ap-analytics-games-h" style={{ marginBottom: 14 }}>🎲 Mini-games</h2>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 18 }}>
+          <OverviewCard label="Total plays" value={g.total_plays?.toLocaleString?.() ?? g.total_plays} />
+          <OverviewCard label="Unique players" value={g.unique_players} />
+          <OverviewCard label="Overall win rate" value={winPct != null ? `${winPct}%` : '—'} sub={g.total_plays ? `${g.wins} wins` : null} />
+          <OverviewCard label="Daily vs endless" value={g.total_plays ? `${Math.round((g.daily_plays / g.total_plays) * 100)}% daily` : '—'} sub={g.total_plays ? `${g.daily_plays} daily / ${g.total_plays - g.daily_plays} endless` : null} />
+        </div>
+        <div className="card" style={{ padding: 20, marginBottom: 18 }}>
+          <h3 style={{ margin: '0 0 12px', fontSize: 14 }}>Plays over time</h3>
+          <AnalyticsBarChart
+            rows={games?.daily}
+            xKey="day"
+            series={[
+              { key: 'plays', label: 'Plays', color: '#a78bfa' },
+              { key: 'daily_plays', label: 'Daily-mode', color: '#f472b6' },
+              { key: 'unique_players', label: 'Unique players', color: '#34d399' },
+            ]}
+          />
+        </div>
+        <div className="card" style={{ padding: 20 }}>
+          <h3 style={{ margin: '0 0 10px', fontSize: 14 }}>Per game</h3>
+          {(games?.perGame || []).length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No game results in this range.</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Game</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Plays</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Daily</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Endless</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Win rate</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Unique players</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Avg guesses</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {games.perGame.map(row => (
+                    <tr key={row.game}>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{row.game}</td>
+                      <td style={numTd}>{row.plays}</td>
+                      <td style={numTd}>{row.daily_plays}</td>
+                      <td style={numTd}>{row.endless_plays}</td>
+                      <td style={numTd}>{row.plays ? `${Math.round((row.wins / row.plays) * 100)}%` : '—'}</td>
+                      <td style={numTd}>{row.unique_players}</td>
+                      <td style={numTd}>{row.avg_guesses ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
+          Page-view data starts from launch of the tracker; game stats are computed from the full game-results history.
+          Anonymous visitors are counted via a salted hash that rotates daily — no IPs or personal data are stored.
+        </p>
+      </section>
+    </>
+  );
+}
+
 // ── Admin tab metadata ───────────────────────────────────────────────────────
 // Single source of truth for every admin tab: icon, sidebar label, and the
 // one-line description shown in the per-tab header. The sidebar nav, the
@@ -9322,6 +9548,7 @@ function CosmeticsPanel({ superuserKey }) {
 // can never drift out of sync.
 const TAB_META = {
   overview:    { icon: '📊', label: 'Overview',               desc: 'At-a-glance health, security monitoring, and quick links.' },
+  analytics:   { icon: '📈', label: 'Analytics',              desc: 'Site usage — top pages, unique visitors, traffic trends — plus mini-game play stats.' },
   matches:     { icon: '🎮', label: 'Matches & Replays',      desc: 'Record matches, run maintenance, and manage replays & backups.' },
   bot:         { icon: '🤖', label: 'Steam Bot & Lobbies',    desc: 'Live Steam bot status, lobby controls, and the draft sandbox.' },
   diagnostics: { icon: '🧪', label: 'Tests & Diagnostics',    desc: 'Notification & DM test harnesses, background jobs, error log, and broadcasts.' },
@@ -9337,7 +9564,7 @@ const TAB_META = {
 
 // Grouped sidebar layout. Each item is a tab id resolved against TAB_META.
 const ADMIN_NAV_GROUPS = [
-  { label: 'Dashboard',     items: ['overview'] },
+  { label: 'Dashboard',     items: ['overview', 'analytics'] },
   { label: 'Match Data',    items: ['matches'] },
   { label: 'Bot & Lobbies', items: ['bot', 'diagnostics'] },
   { label: 'Seasons & Money', items: ['seasons', 'marketplace'] },
@@ -9508,6 +9735,7 @@ export default function AdminPanel() {
   // optionally scrolls to a specific section anchor within that tab.
   const SEARCH_INDEX = [
     { label: 'Overview', tab: 'overview', icon: '📊', kw: 'dashboard stats home' },
+    { label: 'Analytics', tab: 'analytics', icon: '📈', kw: 'analytics traffic page views visitors uniques trend tools usage games plays win rate tracker' },
     { label: 'Quick Links', tab: 'overview', anchor: 'ap-anchor-quick-links', icon: '🔗', kw: 'shortcuts' },
     { label: 'Record a Match', tab: 'matches', anchor: 'ap-anchor-record-match', icon: '📝', kw: 'manual entry add game' },
     { label: 'Maintenance', tab: 'matches', anchor: 'ap-anchor-maintenance', icon: '🛠️', kw: 'recompute rebuild' },
@@ -9959,6 +10187,11 @@ export default function AdminPanel() {
       {activeTab === 'rivals' && (<>
       <TabHeader id="rivals" />
       <WeeklyRivalsPanel superuserKey={superuserKey} />
+      </>)}
+
+      {activeTab === 'analytics' && (<>
+      <TabHeader id="analytics" />
+      <AnalyticsPanel superuserKey={superuserKey} />
       </>)}
 
       {activeTab === 'cosmetics' && (<>

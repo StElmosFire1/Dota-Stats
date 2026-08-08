@@ -25,6 +25,7 @@ import { WatchLiveBadge } from './components/HomeWidgets';
 import GlobalSearch from './components/CommandPalette';
 import NotificationBell from './components/NotificationBell';
 import { getLivePresenceCount } from './api';
+import usePageTracking from './hooks/usePageTracking';
 
 const MatchList = lazy(() => import('./pages/MatchList'));
 const MatchDetail = lazy(() => import('./pages/MatchDetail'));
@@ -1304,6 +1305,8 @@ class RootErrorBoundary extends React.Component {
 function AppShell() {
   const { isStreamer, isOverlayRoute } = useStreamerMode();
   const location = useLocation();
+  // Task #848 — first-party page-view analytics (batched, fire-and-forget).
+  usePageTracking();
   return (
     <>
       {!isStreamer && <NavbarHeightSync />}

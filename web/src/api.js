@@ -172,6 +172,14 @@ export async function equipCosmetic(kind, value) {
   return _lootboxPost('/lootbox/equip', { kind, value });
 }
 
+// Task #848 — first-party analytics (admin or higher; role verified live server-side).
+export async function getAdminAnalyticsSite(superuserKey, days = 30) {
+  return superuserJson(`/admin/analytics/site?days=${encodeURIComponent(days)}`, { superuserKey });
+}
+export async function getAdminAnalyticsGames(superuserKey, days = 30) {
+  return superuserJson(`/admin/analytics/games?days=${encodeURIComponent(days)}`, { superuserKey });
+}
+
 // Task #492 — AI agent traffic report (superuser).
 export async function getAgentTrafficReport(superuserKey, days = 7) {
   const qs = days ? `?days=${encodeURIComponent(days)}` : '';

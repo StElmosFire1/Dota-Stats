@@ -3507,6 +3507,28 @@ async function init() {
     await p.query(`CREATE INDEX IF NOT EXISTS idx_game_results_lb
       ON game_results(game, puzzle_date) WHERE mode = 'daily'`);
 
+    // Task #848 — first-party site analytics. One row per page-view / named
+    // tool-usage event, ingested via the public batched beacon endpoint.
+    // Privacy-safe: no IPs or PII stored — visitor_hash is a salted hash whose
+    // salt rotates daily, so a visitor can only be correlated within one day
+    // (enough for uniques/day, useless for long-term tracking). Rows are
+    // pruned by the retention sweep in server.js (prunePageEvents).
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS page_events (
+        id BIGSERIAL PRIMARY KEY,
+        event_type TEXT NOT NULL DEFAULT 'pageview',
+        route TEXT NOT NULL,
+        name TEXT,
+        is_authed BOOLEAN NOT NULL DEFAULT false,
+        visitor_hash VARCHAR(32),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_page_events_created
+      ON page_events(created_at)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_page_events_type_created
+      ON page_events(event_type, created_at)`);
+
     // Task #730 — audit trail for the admin mass-DM tool. Each blast records the
     // message, who sent it, totals, and a per-recipient JSONB breakdown so past
     // broadcasts are reviewable (accountability + debugging "I never got it").
@@ -25324,6 +25346,133 @@ async function getGameLeaderboard(game, dateStr, limit = 25) {
   return { today: today.rows, allTime: allTime.rows };
 }
 
+// ── Task #848 — first-party analytics ───────────────────────────────────────
+// Batch insert of ingested page/tool events. `rows` are pre-validated by the
+// route handler: { eventType, route, name, isAuthed, visitorHash }.
+async function insertPageEvents(rows) {
+  if (!Array.isArray(rows) || !rows.length) return 0;
+  const p = getPool();
+  const values = [];
+  const params = [];
+  let i = 1;
+  for (const r of rows) {
+    values.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
+    params.push(r.eventType, r.route, r.name || null, !!r.isAuthed, r.visitorHash || null);
+  }
+  const res = await p.query(
+    `INSERT INTO page_events (event_type, route, name, is_authed, visitor_hash)
+     VALUES ${values.join(', ')}`,
+    params
+  );
+  return res.rowCount || 0;
+}
+
+// Retention sweep — deletes events older than `days`. Returns rows deleted.
+async function prunePageEvents(days = 180) {
+  const p = getPool();
+  const r = await p.query(
+    `DELETE FROM page_events WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')`,
+    [Math.max(1, parseInt(days, 10) || 180)]
+  );
+  return r.rowCount || 0;
+}
+
+// Aggregated site-usage stats for the admin Analytics tab. All queries share
+// one time-range filter (last N days).
+async function getAnalyticsSiteStats(days = 30) {
+  const p = getPool();
+  const d = Math.max(1, Math.min(365, parseInt(days, 10) || 30));
+  const range = `created_at > NOW() - ($1::int * INTERVAL '1 day')`;
+  const [summary, daily, topPages, topTools] = await Promise.all([
+    p.query(
+      `SELECT COUNT(*)::int AS total_views,
+              COUNT(DISTINCT visitor_hash)::int AS unique_visitors,
+              COUNT(*) FILTER (WHERE is_authed)::int AS authed_views,
+              COUNT(*) FILTER (WHERE NOT is_authed)::int AS anon_views
+         FROM page_events
+        WHERE event_type = 'pageview' AND ${range}`,
+      [d]
+    ),
+    p.query(
+      `SELECT created_at::date::text AS day,
+              COUNT(*)::int AS views,
+              COUNT(DISTINCT visitor_hash)::int AS uniques,
+              COUNT(*) FILTER (WHERE is_authed)::int AS authed_views
+         FROM page_events
+        WHERE event_type = 'pageview' AND ${range}
+        GROUP BY 1 ORDER BY 1`,
+      [d]
+    ),
+    p.query(
+      `SELECT route,
+              COUNT(*)::int AS views,
+              COUNT(DISTINCT visitor_hash)::int AS uniques
+         FROM page_events
+        WHERE event_type = 'pageview' AND ${range}
+        GROUP BY route ORDER BY views DESC LIMIT 20`,
+      [d]
+    ),
+    p.query(
+      `SELECT COALESCE(name, route) AS tool,
+              COUNT(*)::int AS uses,
+              COUNT(DISTINCT visitor_hash)::int AS uniques
+         FROM page_events
+        WHERE event_type = 'tool' AND ${range}
+        GROUP BY 1 ORDER BY uses DESC LIMIT 20`,
+      [d]
+    ),
+  ]);
+  return {
+    days: d,
+    summary: summary.rows[0],
+    daily: daily.rows,
+    topPages: topPages.rows,
+    topTools: topTools.rows,
+  };
+}
+
+// Aggregated mini-game stats from the existing game_results history.
+async function getAnalyticsGameStats(days = 30) {
+  const p = getPool();
+  const d = Math.max(1, Math.min(365, parseInt(days, 10) || 30));
+  const range = `created_at > NOW() - ($1::int * INTERVAL '1 day')`;
+  const [perGame, daily, summary] = await Promise.all([
+    p.query(
+      `SELECT game,
+              COUNT(*)::int AS plays,
+              COUNT(*) FILTER (WHERE mode = 'daily')::int AS daily_plays,
+              COUNT(*) FILTER (WHERE mode <> 'daily')::int AS endless_plays,
+              COUNT(*) FILTER (WHERE won)::int AS wins,
+              COUNT(DISTINCT account_id)::int AS unique_players,
+              ROUND(AVG(guesses)::numeric, 2)::float AS avg_guesses
+         FROM game_results
+        WHERE ${range}
+        GROUP BY game ORDER BY plays DESC`,
+      [d]
+    ),
+    p.query(
+      `SELECT created_at::date::text AS day,
+              COUNT(*)::int AS plays,
+              COUNT(*) FILTER (WHERE mode = 'daily')::int AS daily_plays,
+              COUNT(DISTINCT account_id)::int AS unique_players
+         FROM game_results
+        WHERE ${range}
+        GROUP BY 1 ORDER BY 1`,
+      [d]
+    ),
+    p.query(
+      `SELECT COUNT(*)::int AS total_plays,
+              COUNT(DISTINCT account_id)::int AS unique_players,
+              COUNT(*) FILTER (WHERE won)::int AS wins,
+              COUNT(*) FILTER (WHERE mode = 'daily')::int AS daily_plays
+         FROM game_results
+        WHERE ${range}`,
+      [d]
+    ),
+  ]);
+  return { days: d, summary: summary.rows[0], perGame: perGame.rows, daily: daily.rows };
+}
+
 // Candidate scoreboard rows for the Statline mini-game. Pulls real inhouse
 // player_stats lines (account-linked, non-trivial games) joined to match
 // duration + win. The caller deterministically picks one per day.
@@ -25648,6 +25797,11 @@ module.exports = {
   getGameDailyResult,
   getGameStreak,
   getGameLeaderboard,
+  // Task #848 — first-party analytics
+  insertPageEvents,
+  prunePageEvents,
+  getAnalyticsSiteStats,
+  getAnalyticsGameStats,
   getStatlineCandidates,
   getPlayerStatlineCandidates,
   getLineItems,
