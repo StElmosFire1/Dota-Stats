@@ -3099,7 +3099,10 @@ function createServer(startupStatus = {}) {
           // lose access on refund too. Idempotent + best-effort like the
           // other refund handlers above; existing revoked_at filters hide
           // the perk from /me/perks and /me/purchase-history immediately.
-          const revokedPerks = await db.magV3.revokeOneOffPerksByPaymentIntent(pi).catch(() => []);
+          let revokedPerks = [];
+          try {
+            revokedPerks = (await db.magV3.revokeOneOffPerksByPaymentIntent(pi)) || [];
+          } catch (_) { /* best-effort — refund webhook must never 400 over perk revocation */ }
           for (const perk of revokedPerks) {
             console.log('[Stripe] Refund revoked one-off perk', perk.id, perk.perk_key, 'account', perk.account_id);
           }
