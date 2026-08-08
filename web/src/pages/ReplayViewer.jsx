@@ -3,6 +3,7 @@ import { useParams, useLocation, Link } from 'react-router-dom';
 import { getReplayTimeline, getVodReview, addVodNote, deleteVodNote } from '../api';
 import { getHeroName, getItemImageUrl } from '../heroNames';
 import { useSteamAuth } from '../context/SteamAuthContext';
+import { trackToolEvent } from '../hooks/usePageTracking';
 
 // Task #411 — Replay viewer v3.
 // New surfaces layered onto the v1 viewer:
@@ -198,6 +199,17 @@ export default function ReplayViewer() {
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [playing, speed, data, clipEnd]);
 
+  // Task #869 — count one tool-usage event per viewer session, fired the
+  // first time playback actually starts (manual play or share-clip autoplay).
+  // Declared ABOVE the autoplay effect that depends on it — putting it lower
+  // makes the dep array hit the TDZ and blank the page on every render.
+  const trackedPlaybackRef = useRef(false);
+  const trackPlaybackOnce = useCallback(() => {
+    if (trackedPlaybackRef.current) return;
+    trackedPlaybackRef.current = true;
+    trackToolEvent('replay-viewer');
+  }, []);
+
   // Task #411 — autoplay when the URL is a share-clip link. Fires once after
   // timeline data lands so the cursor is anchored at `?t=` before play starts.
   const autoplayedRef = useRef(false);
@@ -207,7 +219,8 @@ export default function ReplayViewer() {
     autoplayedRef.current = true;
     setT(Math.max(0, Math.min(data.duration || 0, initialT)));
     setPlaying(true);
-  }, [data, autoplayFromUrl, initialT]);
+    trackPlaybackOnce();
+  }, [data, autoplayFromUrl, initialT, trackPlaybackOnce]);
 
   // Active wards at time t: placed at or before t, and either no death info
   // or destruction time after t. Ward lifetime is ~6 min for obs, 7 for sen
@@ -343,7 +356,7 @@ export default function ReplayViewer() {
   useEffect(() => { draw(); }, [draw]);
 
   const onScrub = (e) => { setPlaying(false); setT(Number(e.target.value)); };
-  const onPlayPause = () => setPlaying((v) => !v);
+  const onPlayPause = () => setPlaying((v) => { if (!v) trackPlaybackOnce(); return !v; });
   const onSpeed = (v) => setSpeed(v);
 
   // Live side-panel values + objective feed up-to-t.

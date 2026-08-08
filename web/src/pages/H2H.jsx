@@ -7,6 +7,7 @@ import { useSeason } from '../context/SeasonContext';
 import HeroIcon from '../components/HeroIcon';
 import PaywallCard from '../components/PaywallCard';
 import { formatHeroName } from '../utils/heroes';
+import { trackToolEvent } from '../hooks/usePageTracking';
 
 const TAB_DEFS = [
   { id: 'heroes', label: 'Hero matchups' },
@@ -314,7 +315,7 @@ export default function H2H() {
     setError(null);
     setPaywall(null);
     getH2HDetailed(playerA, playerB, seasonId)
-      .then(d => { if (alive) { setData(d); setLoading(false); } })
+      .then(d => { if (alive) { setData(d); setLoading(false); trackToolEvent('h2h-comparison'); } })
       .catch(err => {
         if (!alive) return;
         if (err && err.paywall) {

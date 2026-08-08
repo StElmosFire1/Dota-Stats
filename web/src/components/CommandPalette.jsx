@@ -4,6 +4,7 @@ import Dialog from './Dialog';
 import { globalSearch } from '../api';
 import { ALL_HEROES, getHeroImageUrl } from '../heroNames';
 import { scoreText, scoreItem, rankAndCap, highlightSegments } from './commandPaletteRanking';
+import { trackToolEvent } from '../hooks/usePageTracking';
 
 // Task #586 / #588 — global search + ⌘K / Ctrl-K command palette (full edition).
 //
@@ -71,8 +72,12 @@ function CommandPalette({ open, onClose, initialQuery = '' }) {
   // Reset query + highlight + results each time the palette opens. When the
   // header trigger forwarded a first keystroke (Task #679), seed the query
   // with it so the user's typing flows straight into the palette.
+  // Task #869 — one tool-usage event per palette open, fired the first time a
+  // real (>=2 char) search actually executes, not per keystroke.
+  const trackedSearchRef = useRef(false);
+
   useEffect(() => {
-    if (open) { setQuery(initialQuery); setActiveIndex(0); setResults(EMPTY_RESULTS); setLoading(false); }
+    if (open) { setQuery(initialQuery); setActiveIndex(0); setResults(EMPTY_RESULTS); setLoading(false); trackedSearchRef.current = false; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -93,6 +98,10 @@ function CommandPalette({ open, onClose, initialQuery = '' }) {
     setLoading(true);
     let cancelled = false;
     const t = setTimeout(() => {
+      if (!trackedSearchRef.current) {
+        trackedSearchRef.current = true;
+        trackToolEvent('command-palette-search');
+      }
       globalSearch(raw)
         .then(d => {
           if (cancelled) return;

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { getDraftSuggestions, getHeroCounterScores } from '../api';
 import { getHeroName, getHeroImageUrl, ALL_HERO_IDS } from '../heroNames';
 import { useSeason } from '../context/SeasonContext';
+import { trackToolEvent } from '../hooks/usePageTracking';
 
 const POS = [null, 1, 2, 3, 4, 5];
 
@@ -76,6 +77,7 @@ export default function DraftAssistant() {
   const getSuggestions = useCallback(async () => {
     setLoading(true);
     setError(null);
+    trackToolEvent('draft-assistant'); // Task #869 — a suggestion run is a meaningful use
     try {
       // Task #382 — consume the shared /heroes/counter-scores endpoint when
       // enemies are present so the Draft Assistant's "vs Enemies" column and
