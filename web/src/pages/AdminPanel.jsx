@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, lootboxLabOwnership, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getLootboxDupeReturns, setLootboxDupeReturns, getLootboxDupeReturnsAudit, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts, getAdminCosmeticsCatalog } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, lootboxLabOwnership, lootboxLabHistory, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getLootboxDupeReturns, setLootboxDupeReturns, getLootboxDupeReturnsAudit, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts, getAdminCosmeticsCatalog } from '../api';
 import CosmeticPreview from '../components/CosmeticPreview';
 import FounderRing from '../components/founderRings/FounderRing';
 import { FRAME_META, LAYOUT_THEME_META, VOICE_PACK_META, COVER_FX_META, avatarRingStyle, bannerStyle, nameplateStyle, recapSkinSwatch } from '../profileCosmetics';
@@ -7594,6 +7594,31 @@ function LootboxLabCard({ superuserKey }) {
   const [previewItem, setPreviewItem] = React.useState(null);
   const [previewPhase, setPreviewPhase] = React.useState(null);
 
+  // Task #786 — recent simulation history for the selected box tier.
+  const [histOpen, setHistOpen] = React.useState(false);
+  const [histRuns, setHistRuns] = React.useState(null);
+  const [histLoading, setHistLoading] = React.useState(false);
+  const [histError, setHistError] = React.useState('');
+
+  const loadHistory = React.useCallback(async () => {
+    if (!superuserKey) return;
+    setHistLoading(true); setHistError('');
+    try {
+      const d = await lootboxLabHistory(superuserKey, boxId);
+      setHistRuns(d.runs || []);
+    } catch (e) {
+      setHistError(e.message || 'Failed to load simulation history');
+      setHistRuns(null);
+    } finally {
+      setHistLoading(false);
+    }
+  }, [superuserKey, boxId]);
+
+  // Lazily load when first expanded; reload when the box tier changes while open.
+  React.useEffect(() => {
+    if (histOpen) loadHistory();
+  }, [histOpen, loadHistory]);
+
   const closeRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -7637,6 +7662,10 @@ function LootboxLabCard({ superuserKey }) {
         forceSku: simForceSku || null,
       });
       setSimResult(d);
+      // The run just landed in the server-side history — refresh if open,
+      // otherwise drop the cache so the next expand refetches.
+      if (histOpen) loadHistory();
+      else setHistRuns(null);
     } catch (e) {
       setSimError(e.message || 'Simulation failed');
     } finally {
@@ -7994,6 +8023,64 @@ function LootboxLabCard({ superuserKey }) {
             {simResult.count} rolls complete — see distribution above. (Individual roll list hidden for batches over 20.)
           </p>
         )}
+
+        {/* Task #786 — recent simulation history for this box tier */}
+        <details
+          open={histOpen}
+          onToggle={e => setHistOpen(e.currentTarget.open)}
+          style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 10 }}
+        >
+          <summary style={{ fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            🕘 Recent simulations <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({boxId} box · last {histRuns ? histRuns.length : '…'} runs)</span>
+          </summary>
+          <div style={{ marginTop: 10 }}>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '0 0 10px' }}>
+              Server-side log of the last ~20 simulate runs per box tier (aggregate distributions only — cleared on restart).
+              Compare runs to see how catalog edits shifted the expected distribution.
+            </p>
+            {histError && <div role="alert" style={{ color: '#ef4444', fontSize: 13, marginBottom: 8 }}>{histError}</div>}
+            {histLoading && !histRuns && <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Loading…</div>}
+            {histRuns && histRuns.length === 0 && (
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No simulations recorded for this box tier since the last server restart.</div>
+            )}
+            {histRuns && histRuns.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+                {histRuns.map((run, i) => (
+                  <div key={`${run.at}-${i}`} style={{
+                    display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                    padding: '8px 10px', borderRadius: 6, background: 'var(--bg-card)',
+                    border: '1px solid var(--border)', fontSize: 12,
+                  }}>
+                    <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-num, monospace)', whiteSpace: 'nowrap' }}>
+                      {new Date(run.at).toLocaleString()}
+                    </span>
+                    <span style={{ fontFamily: 'var(--font-num, monospace)' }}>{run.count}× </span>
+                    {run.forced && (
+                      <span title={run.forceSku ? `forced item: ${run.forceSku}` : run.forceRarity ? `forced rarity: ${run.forceRarity}` : 'forced'} style={{
+                        fontSize: 10, padding: '1px 6px', borderRadius: 99,
+                        background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', color: '#f59e0b',
+                      }}>forced</span>
+                    )}
+                    <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap', flex: 1 }}>
+                      {LAB_RARITIES.map(r => {
+                        const d = run.distribution?.[r];
+                        if (!d || d.count === 0) return null;
+                        return (
+                          <span key={r} style={{ color: LAB_RARITY_COLORS[r], fontFamily: 'var(--font-num, monospace)' }}>
+                            {r.slice(0, 1).toUpperCase()} {d.count} ({d.pct}%)
+                          </span>
+                        );
+                      })}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }} title="Account that ran the simulation">
+                      {run.by}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
       </div>
 
       {/* Animation preview dialog — reuses the real Lootbox page shake→reveal flow */}

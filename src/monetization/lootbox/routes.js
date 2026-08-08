@@ -14,6 +14,21 @@
 
 const catalog = require('./catalog');
 
+// ---- Lootbox Lab simulation history (Task #786) ---------------------------
+// Lightweight in-memory log of recent simulate runs, keyed per box tier, so
+// operators can compare distributions across catalog edits without re-running.
+// Intentionally NOT persisted to the DB: it stores only aggregate rarity
+// distributions (no individual drops), and losing it on restart is fine.
+const LAB_HISTORY_MAX_PER_BOX = 20;
+const labSimHistory = new Map(); // boxId -> [entry, ...] newest first
+
+function recordLabSimulation(entry) {
+  const list = labSimHistory.get(entry.boxId) || [];
+  list.unshift(entry);
+  if (list.length > LAB_HISTORY_MAX_PER_BOX) list.length = LAB_HISTORY_MAX_PER_BOX;
+  labSimHistory.set(entry.boxId, list);
+}
+
 function mountLootboxRoutes({ router, express, deps }) {
   if (!router) throw new Error('mountLootboxRoutes: `router` is required');
   if (!express) throw new Error('mountLootboxRoutes: `express` is required');
@@ -334,6 +349,28 @@ function mountLootboxRoutes({ router, express, deps }) {
     }
   });
 
+  // ---- Admin: Lootbox Lab — recent simulation history (Task #786) --------
+  // Returns the last ~20 simulate runs for a box tier (or all tiers when no
+  // boxId is given). In-memory only; cleared on server restart.
+  router.get('/admin/lootbox/lab/history', requireSuperuser, (req, res) => {
+    try {
+      const boxId = req.query.boxId ? String(req.query.boxId) : null;
+      if (boxId) {
+        if (!catalog.isValidBoxId(boxId)) {
+          return res.status(400).json({ error: 'Unknown box id' });
+        }
+        return res.json({ boxId, runs: labSimHistory.get(boxId) || [] });
+      }
+      const runs = [];
+      for (const list of labSimHistory.values()) runs.push(...list);
+      runs.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+      res.json({ boxId: null, runs });
+    } catch (err) {
+      console.error('[lootbox] lab history:', err.message);
+      res.status(500).json({ error: 'Failed to load simulation history' });
+    }
+  });
+
   // ---- Admin: Lootbox Lab — dry-run simulate opens -----------------------
   // Rolls the real drop logic N times with zero side effects (no coin debit,
   // no grant, no event log, no free-claim consumption). Supports:
@@ -413,6 +450,19 @@ function mountLootboxRoutes({ router, express, deps }) {
       for (const r of catalog.RARITIES) {
         distPct[r] = { count: distribution[r] || 0, pct: count > 0 ? +((distribution[r] || 0) / count * 100).toFixed(1) : 0 };
       }
+
+      // Log the run for the "Recent simulations" history (aggregate only —
+      // no individual drops, no sensitive data).
+      recordLabSimulation({
+        at: new Date().toISOString(),
+        by: req.session?.accountId ? String(req.session.accountId) : 'superuser',
+        boxId,
+        count,
+        forced: !!(forcedItem || forceRarity),
+        forceRarity: forceRarity || null,
+        forceSku: forceSku || null,
+        distribution: distPct,
+      });
 
       res.json({ ok: true, count, rolls, distribution: distPct, forced: !!(forcedItem || forceRarity) });
     } catch (err) {

@@ -437,6 +437,10 @@ export async function lootboxLabInspect(superuserKey, boxId) {
 export async function lootboxLabOwnership(superuserKey) {
   return superuserJson('/admin/lootbox/lab/ownership', { superuserKey });
 }
+export async function lootboxLabHistory(superuserKey, boxId = null) {
+  const q = boxId ? `?boxId=${encodeURIComponent(boxId)}` : '';
+  return superuserJson(`/admin/lootbox/lab/history${q}`, { superuserKey });
+}
 export async function lootboxLabSimulate(superuserKey, { boxId, count = 1, forceRarity = null, forceSku = null }) {
   return superuserJson('/admin/lootbox/lab/simulate', {
     method: 'POST', superuserKey,
