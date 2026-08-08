@@ -7665,6 +7665,53 @@ function LootboxLabCard({ superuserKey }) {
     return (inspect.odds || []).flatMap(row => (row.items || []).filter(it => !it.special).map(it => ({ ...it, rarity: row.rarity })));
   }, [inspect]);
 
+  // Task #784 — export the full inspected catalog (item, rarity, effective %,
+  // set, flags, dupe handling) as a downloadable CSV. All data comes from the
+  // inspect response — no extra backend round-trip.
+  const handleExportCsv = () => {
+    if (!inspect) return;
+    const esc = (v) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const dupeFor = (rarity) => {
+      const coins = inspect.dupeRefundCoins?.[rarity];
+      const token = inspect.dupeGrantsToken?.[rarity];
+      const parts = [];
+      if (coins > 0) parts.push(`+${coins} coins refund`);
+      if (token) parts.push('wildcard token');
+      return parts.length ? parts.join(' + ') : 'none';
+    };
+    const header = ['box_id', 'rarity', 'pct', 'item_sku', 'item_label', 'kind', 'set', 'box_exclusive', 'dupe_handling'];
+    const lines = [header.join(',')];
+    for (const row of inspect.odds || []) {
+      for (const it of row.items || []) {
+        lines.push([
+          inspect.box?.id ?? boxId,
+          row.rarity,
+          row.pct,
+          it.sku,
+          it.label,
+          it.kind,
+          it.set || '',
+          it.boxExclusive ? 'yes' : 'no',
+          dupeFor(row.rarity),
+        ].map(esc).join(','));
+      }
+    }
+    const csv = lines.join('\r\n') + '\r\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `lootbox-odds-${inspect.box?.id ?? boxId}-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <section style={{ marginBottom: 36 }} aria-labelledby="ap-anchor-lootbox-lab">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -7713,12 +7760,23 @@ function LootboxLabCard({ superuserKey }) {
       {/* Contents inspector */}
       {inspect && (
         <div style={{ marginBottom: 20, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', background: 'rgba(245,158,11,0.06)', borderBottom: '1px solid var(--border)' }}>
-            <strong style={{ fontSize: 14 }}>{inspect.box?.label}</strong>
-            <span style={{ marginLeft: 10, fontSize: 13, color: 'var(--text-muted)' }}>
-              {inspect.box?.price === 0 ? 'Free' : `${inspect.box?.price?.toLocaleString()} 🪙`}
-            </span>
-            <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--text-muted)' }}>{inspect.box?.blurb}</span>
+          <div style={{ padding: '12px 16px', background: 'rgba(245,158,11,0.06)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <strong style={{ fontSize: 14 }}>{inspect.box?.label}</strong>
+              <span style={{ marginLeft: 10, fontSize: 13, color: 'var(--text-muted)' }}>
+                {inspect.box?.price === 0 ? 'Free' : `${inspect.box?.price?.toLocaleString()} 🪙`}
+              </span>
+              <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--text-muted)' }}>{inspect.box?.blurb}</span>
+            </div>
+            <button
+              type="button"
+              className="btn"
+              onClick={handleExportCsv}
+              aria-label={`Export ${inspect.box?.label || boxId} odds as CSV`}
+              style={{ fontSize: 12, padding: '5px 12px' }}
+            >
+              ⬇ Export odds CSV
+            </button>
           </div>
           <div style={{ padding: 16 }}>
             {(inspect.odds || []).map(row => (
