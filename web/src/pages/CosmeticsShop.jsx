@@ -24,7 +24,8 @@ import { useSteamAuth } from '../context/SteamAuthContext';
 import { getOwnedFrames, purchaseFrameCheckout, getFoundersRingStatus, buyFoundersRingCheckout,
   listMyFounderRings, setEquippedFounderRing as apiSetEquippedFounderRing,
   buyFounderRingCheckout, spendCoinsOnSku, getActiveLimitedDrops,
-  getMyVanitySlug, getVanityUrlPrice, purchaseVanityUrlStripe } from '../api';
+  getMyVanitySlug, getVanityUrlPrice, purchaseVanityUrlStripe,
+  getMyPurchaseHistory } from '../api';
 import FounderRing from '../components/founderRings/FounderRing';
 import {
   FOUNDER_RING_SLUGS, FOUNDER_RING_TIER, FOUNDER_RING_LABEL,
@@ -323,6 +324,10 @@ export default function CosmeticsShop() {
   const [dropBuying, setDropBuying] = useState(null);
   const [dropError, setDropError] = useState(null);
 
+  // Task #768 — purchase history state.
+  const [purchaseHistory, setPurchaseHistory] = useState(null); // null = loading, [] = empty
+  const [historyError, setHistoryError] = useState(null);
+
   // Task #740 — Custom URL purchase state.
   const [vanitySlugData, setVanitySlugData] = useState(null);
   const [vanityUrlPrice, setVanityUrlPrice] = useState(null);
@@ -500,6 +505,15 @@ export default function CosmeticsShop() {
       reloadVanitySlug();
     } else {
       setRingState({ owned: [], equipped: null });
+    }
+    // Task #768 — load purchase history for the signed-in user.
+    if (signedIn) {
+      getMyPurchaseHistory()
+        .then(d => { if (alive) { setPurchaseHistory(Array.isArray(d?.items) ? d.items : []); setHistoryError(null); } })
+        .catch(e => { if (alive) { setPurchaseHistory([]); setHistoryError(e?.message || 'Failed to load purchase history.'); } });
+    } else {
+      setPurchaseHistory(null);
+      setHistoryError(null);
     }
     if (!signedIn) { setIsPro(false); setOwnedFrames([]); return () => { alive = false; }; }
     fetch('/api/me/profile', { credentials: 'include' })
@@ -1211,6 +1225,63 @@ export default function CosmeticsShop() {
         </div>
         <div style={{ marginTop: 12 }}>{proBundledAction()}</div>
       </ShopSection>
+
+      {/* ---- Purchase history (Task #768) ---------------------------------- */}
+      {signedIn ? (
+        <ShopSection
+          icon="🧾"
+          title="Purchase History"
+          sub="Everything you've bought — Stripe one-off purchases (Custom URL, frames, founder rings, perks), coin unlocks and coin top-ups."
+          id="purchase-history"
+        >
+          {historyError ? (
+            <p style={{ color: 'var(--pb-red, #ef4444)', fontSize: 13 }}>{historyError}</p>
+          ) : purchaseHistory === null ? (
+            <p style={{ color: 'var(--pb-muted)', fontSize: 13 }}>Loading…</p>
+          ) : purchaseHistory.length === 0 ? (
+            <p style={{ color: 'var(--pb-muted)', fontSize: 13 }}>
+              No purchases yet. Anything you buy here will show up in this list.
+            </p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', color: 'var(--pb-muted)', fontFamily: 'var(--font-condensed, inherit)', letterSpacing: 0.5, fontSize: 11 }}>
+                    <th style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)' }}>ITEM</th>
+                    <th style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)' }}>PAID</th>
+                    <th style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)' }}>METHOD</th>
+                    <th style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)' }}>DATE</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {purchaseHistory.map(item => (
+                    <tr key={`${item.type}:${item.key}:${item.purchased_at || ''}`}>
+                      <td style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)', color: 'var(--pb-text)', textTransform: item.type === 'coin_cosmetic' ? 'capitalize' : 'none' }}>
+                        {item.name}
+                      </td>
+                      <td style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)', color: 'var(--pb-text)' }}>
+                        {item.coins_spent != null
+                          ? `${item.coins_spent.toLocaleString()} 🪙`
+                          : item.amount_cents != null
+                            ? `${formatPrice(item.amount_cents)}${item.currency ? ` ${String(item.currency).toUpperCase()}` : ''}`
+                            : '—'}
+                      </td>
+                      <td style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)', color: 'var(--pb-muted)' }}>
+                        {item.type === 'coin_cosmetic' ? 'Coins'
+                          : item.type === 'coin_topup' ? 'Stripe (top-up)'
+                          : 'Stripe'}
+                      </td>
+                      <td style={{ padding: '6px 10px', borderBottom: '1px solid var(--pb-line)', color: 'var(--pb-muted)', whiteSpace: 'nowrap' }}>
+                        {item.purchased_at ? new Date(item.purchased_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </ShopSection>
+      ) : null}
     </div>
   );
 }

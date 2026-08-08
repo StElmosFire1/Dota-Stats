@@ -2813,7 +2813,12 @@ function createServer(startupStatus = {}) {
           const frameAccountId = session.metadata?.account_id;
           if (frameId && frameAccountId) {
             // Errors propagate — no catch — so Stripe retries on transient DB failures.
-            await db.confirmFramePurchase(session.id, frameAccountId, frameId);
+            // Task #768 — pass the verified Stripe amount so recovery-created
+            // rows still carry what was actually paid (purchase history).
+            await db.confirmFramePurchase(session.id, frameAccountId, frameId, {
+              amountCents: session.amount_total || null,
+              currency: session.currency || null,
+            });
             console.log('[Stripe] Frame purchase confirmed:', frameId, 'for account', frameAccountId);
           }
         } else if (purpose === 'coin_pack') {
@@ -19447,6 +19452,39 @@ Return exactly this JSON shape (all fields required, arrays of strings):
       res.json({ ...balance, recent, owned, prices: coinPrices });
     } catch (e) {
       console.error('[API] /coins/me:', e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Task #768 — Purchase history. Combines Stripe one-off perk purchases
+  // (user_one_off_perks — Custom URL, verified badge, any future catalogued
+  // perk), Stripe frame purchases (frame_purchases), Stripe founder-ring
+  // purchases (entitlements granted_by='stripe'), coin cosmetic purchases
+  // (coin_owned_cosmetics) and completed Stripe coin-pack top-ups
+  // (coin_pack_purchases, with the real money amount paid). Superuser
+  // owner-perk synthesis and non-purchase grants are filtered out — the
+  // history shows real transactions only. Assembly logic lives in
+  // src/web/purchaseHistory.js so it's unit-testable.
+  router.get('/me/purchase-history', async (req, res) => {
+    const accountId = req.session?.accountId;
+    if (!accountId) return res.status(401).json({ error: 'Sign in with Steam' });
+    try {
+      const { ONE_OFF_PERK_CATALOG } = require('../monetization/magazineV3/oneOffPerks');
+      const { buildPurchaseHistory } = require('./purchaseHistory');
+      const [perks, framePurchases, founderRingPurchases, coinPurchases, coinPackPurchases] = await Promise.all([
+        db.magV3?.listOneOffPerks ? db.magV3.listOneOffPerks(accountId) : [],
+        db.listFramePurchases(accountId),
+        db.listFounderRingPurchases(accountId),
+        db.listCoinPurchases(accountId),
+        db.listCoinPackPurchases(accountId),
+      ]);
+      const items = buildPurchaseHistory({
+        perks, framePurchases, founderRingPurchases, coinPurchases, coinPackPurchases,
+        perkCatalog: ONE_OFF_PERK_CATALOG,
+      });
+      res.json({ items });
+    } catch (e) {
+      console.error('[API] /me/purchase-history:', e.message);
       res.status(500).json({ error: e.message });
     }
   });

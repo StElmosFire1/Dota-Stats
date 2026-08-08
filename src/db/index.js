@@ -16741,6 +16741,69 @@ async function listCoinTransactions(accountId, limit = 20) {
   return r.rows;
 }
 
+// Task #768 — purchase-history view. Real coin cosmetic purchases only
+// (no superuser catalogue synthesis — history shows what was actually
+// bought). Includes coins_spent + created_at for display.
+async function listCoinPurchases(accountId) {
+  if (!accountId) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT kind, value, coins_spent, created_at
+       FROM coin_owned_cosmetics
+      WHERE account_id = $1
+      ORDER BY created_at DESC`,
+    [accountId]
+  );
+  return r.rows;
+}
+
+// Task #768 — completed Stripe coin-pack top-ups, with the real money paid.
+async function listCoinPackPurchases(accountId) {
+  if (!accountId) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, pack_id, coins, amount_cents, currency, completed_at, created_at
+       FROM coin_pack_purchases
+      WHERE account_id = $1 AND status = 'completed'
+      ORDER BY COALESCE(completed_at, created_at) DESC`,
+    [accountId]
+  );
+  return r.rows;
+}
+
+// Task #768 — completed Stripe frame purchases. amount_cents IS NOT NULL
+// excludes rows created purely by the webhook fallback path (grants).
+async function listFramePurchases(accountId) {
+  if (!accountId) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT frame_id, amount_cents, currency, purchased_at, created_at
+       FROM frame_purchases
+      WHERE account_id = $1 AND status = 'active'
+      ORDER BY COALESCE(purchased_at, created_at) DESC`,
+    [accountId]
+  );
+  return r.rows;
+}
+
+// Task #768 — Stripe-bought founder rings (per-slug SKUs) + the limited
+// Founders Pass ring. Only granted_by='stripe' rows are purchases; admin or
+// promo grants are excluded. Amount/currency live in metadata (set by the
+// Stripe webhook).
+async function listFounderRingPurchases(accountId) {
+  if (!accountId) return [];
+  const p = getPool();
+  const r = await p.query(
+    `SELECT sku, granted_at, metadata
+       FROM entitlements
+      WHERE account_id = $1 AND granted_by = 'stripe'
+        AND (sku LIKE 'founder_ring:%' OR sku = 'founders_pass_ring')
+      ORDER BY granted_at DESC`,
+    [accountId]
+  );
+  return r.rows;
+}
+
 async function getCoinOwnedCosmetics(accountId) {
   if (!accountId) return [];
   // Owner perk — superusers own every lootbox/coin cosmetic. Return the full
@@ -17587,17 +17650,23 @@ async function createFrameCheckout({ accountId, frameId, stripeSessionId, amount
 // stored in the table. This survives the race where a second checkout session
 // overwrote the first session's ID; any paid session can still fulfil the frame.
 // Errors propagate so the Stripe webhook returns 500 and Stripe retries.
-async function confirmFramePurchase(stripeSessionId, accountId, frameId) {
+// Task #768 — the webhook now passes the verified Stripe amount/currency so
+// recovery-created rows (no pending pre-record) still persist what was paid,
+// and the purchase-history view can always show a real amount. COALESCE keeps
+// any amount recorded at checkout-init time when the webhook omits it.
+async function confirmFramePurchase(stripeSessionId, accountId, frameId, { amountCents = null, currency = null } = {}) {
   const p = getPool();
   const r = await p.query(
-    `INSERT INTO frame_purchases (account_id, frame_id, stripe_session_id, status, purchased_at, created_at)
-     VALUES ($1, $2, $3, 'active', NOW(), NOW())
+    `INSERT INTO frame_purchases (account_id, frame_id, stripe_session_id, amount_cents, currency, status, purchased_at, created_at)
+     VALUES ($1, $2, $3, $4, COALESCE($5, 'aud'), 'active', NOW(), NOW())
      ON CONFLICT (account_id, frame_id) DO UPDATE
        SET status = 'active',
            purchased_at = COALESCE(frame_purchases.purchased_at, NOW()),
+           amount_cents = COALESCE($4, frame_purchases.amount_cents),
+           currency = COALESCE($5, frame_purchases.currency, 'aud'),
            stripe_session_id = EXCLUDED.stripe_session_id
      RETURNING *`,
-    [accountId, frameId, stripeSessionId]
+    [accountId, frameId, stripeSessionId, amountCents, currency]
   );
   return r.rows[0] || null;
 }
@@ -26174,6 +26243,10 @@ module.exports = {
   getCoinBalance,
   grantCoins,
   listCoinTransactions,
+  listCoinPurchases,
+  listCoinPackPurchases,
+  listFramePurchases,
+  listFounderRingPurchases,
   getCoinOwnedCosmetics,
   hasCoinCosmetic,
   purchaseCosmeticWithCoins,

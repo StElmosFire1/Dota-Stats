@@ -2689,6 +2689,9 @@ export const getMyVanitySlug = () => _getJson('/me/vanity-slug');
 export const checkVanitySlugAvailability = (slug) =>
   _getJson(`/vanity-slug/availability?slug=${encodeURIComponent(slug)}`);
 export const getVanityUrlPrice = () => _getJson('/shop/vanity-url/price').catch(() => null);
+
+// Task #768 — purchase history (Stripe one-off perks + coin purchases + top-ups).
+export const getMyPurchaseHistory = () => _getJson('/me/purchase-history');
 export const purchaseVanityUrlStripe = () =>
   fetch(BASE + '/shop/vanity-url/stripe-checkout', {
     method: 'POST', credentials: 'same-origin',
