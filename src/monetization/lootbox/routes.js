@@ -43,8 +43,16 @@ function mountLootboxRoutes({ router, express, deps }) {
     next();
   }
   function requireSuperuser(req, res, next) {
-    if (!isSuperuser(req)) return res.status(403).json({ error: 'Superuser only' });
-    next();
+    if (isSuperuser(req)) return next();
+    // Mirror the 401-vs-403 split in src/web/server.js so the frontend
+    // re-auth wrapper can distinguish an expired session (401 → re-login)
+    // from an explicit bad credential (403). The browser client sends the
+    // literal sentinel 'session' as the header value.
+    const provided = req.headers['x-superuser-key'];
+    if (!provided || provided === 'session') {
+      return res.status(401).json({ error: 'Superuser session expired' });
+    }
+    return res.status(403).json({ error: 'Superuser only' });
   }
 
   // ---- Public catalog (single source of truth for published odds) ---------
