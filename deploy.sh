@@ -110,7 +110,11 @@ echo "==> Installing backend (root) dependencies..."
 # gates below (eslint, vitest, node-pg-migrate tooling, etc.) would be missing
 # and the deploy dies before the new build ships. Dev deps are only used by the
 # deploy-time gates; the app runtime is unaffected.
-npm install --include=dev --silent
+# Belt-and-braces (see community-edition/deploy.sh): --include=dev alone can be
+# ignored by an old npm or an npmrc with production=true / omit=dev, so force
+# it via env as well.
+NODE_ENV=development npm_config_production=false npm_config_omit= \
+  npm install --include=dev --silent
 
 echo "==> Running the full test suite (Task #856)..."
 # Hard gate: the entire tests/ directory must pass before we touch web/ or
@@ -132,7 +136,14 @@ cd web
 # otherwise skip devDependencies, and the frontend build tooling (vite, eslint)
 # lives there — `npm run build` then fails with "not found" and leaves the
 # stale bundle live. Build gates need dev tooling; runtime is unaffected.
-npm install --include=dev --silent
+NODE_ENV=development npm_config_production=false npm_config_omit= \
+  npm install --include=dev --silent
+if [ ! -e node_modules/.bin/vite ]; then
+  echo "ERROR: devDependencies were NOT installed (node_modules/.bin/vite missing)." >&2
+  echo "       npm version on this host: $(npm -v 2>/dev/null || echo unknown) — check for an" >&2
+  echo "       ~/.npmrc or /usr/etc/npmrc with production=true / omit=dev, or upgrade npm." >&2
+  exit 1
+fi
 
 echo "==> Building frontend..."
 npm run build

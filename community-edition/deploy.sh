@@ -90,7 +90,20 @@ cd community-edition/web
 # (run by `npm run build` via lint:undef) and vite were missing and the deploy
 # aborted with "eslint: not found", leaving the stale bundle live. Build gates
 # need dev tooling; the app runtime is unaffected.
-npm install --include=dev --silent
+# Belt-and-braces: --include=dev alone was still ignored on the prod host
+# (old npm, or an ~/.npmrc with production=true / omit=dev), so also force it
+# via env — npm_config_production=false covers npm 6, npm_config_omit= clears
+# an npmrc omit list, NODE_ENV=development removes the implicit prod default.
+NODE_ENV=development npm_config_production=false npm_config_omit= \
+  npm install --include=dev --silent
+# Hard sanity check: the build below runs eslint + vite from node_modules/.bin.
+# Fail here with a clear message instead of the build's cryptic "not found".
+if [ ! -e node_modules/.bin/eslint ] || [ ! -e node_modules/.bin/vite ]; then
+  echo "ERROR: devDependencies were NOT installed (node_modules/.bin/eslint or vite missing)." >&2
+  echo "       npm version on this host: $(npm -v 2>/dev/null || echo unknown) — check for an" >&2
+  echo "       ~/.npmrc or /usr/etc/npmrc with production=true / omit=dev, or upgrade npm." >&2
+  exit 1
+fi
 
 echo "==> [community] Building community frontend..."
 npm run build
