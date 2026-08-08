@@ -757,8 +757,23 @@ function createLootboxDb({ getPool }) {
     };
   }
 
+  // Task #785 — community-wide ownership counts. How many distinct players own
+  // each cosmetic (kind, value), aggregated from coin_owned_cosmetics. Powers
+  // the Lootbox Lab "Owned by N players" badges so operators can gauge how
+  // widespread each item is before retiring a set or tuning drop rates.
+  async function getOwnershipCounts() {
+    const p = getPool();
+    const r = await p.query(
+      `SELECT kind, value, COUNT(DISTINCT account_id)::int AS owners
+         FROM coin_owned_cosmetics
+        GROUP BY kind, value`
+    );
+    return r.rows;
+  }
+
   return {
     applyLootboxSchema,
+    getOwnershipCounts,
     getRetiredSetIds,
     getCustomSets,
     getCustomSetMembership,

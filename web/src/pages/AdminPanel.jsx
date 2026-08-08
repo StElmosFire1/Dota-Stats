@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
-import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getLootboxDupeReturns, setLootboxDupeReturns, getLootboxDupeReturnsAudit, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts, getAdminCosmeticsCatalog } from '../api';
+import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, lootboxLabOwnership, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getLootboxDupeReturns, setLootboxDupeReturns, getLootboxDupeReturnsAudit, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts, getAdminCosmeticsCatalog } from '../api';
 import CosmeticPreview from '../components/CosmeticPreview';
 import FounderRing from '../components/founderRings/FounderRing';
 import { FRAME_META, LAYOUT_THEME_META, VOICE_PACK_META, COVER_FX_META, avatarRingStyle, bannerStyle, nameplateStyle, recapSkinSwatch } from '../profileCosmetics';
@@ -7580,6 +7580,9 @@ function LootboxLabCard({ superuserKey }) {
   const [inspect, setInspect] = React.useState(null);
   const [inspecting, setInspecting] = React.useState(false);
   const [inspectError, setInspectError] = React.useState('');
+  // Task #785 — community ownership counts, keyed "kind:value". Loaded
+  // alongside the inspect so each item card can show "Owned by N players".
+  const [ownership, setOwnership] = React.useState(null);
 
   const [simCount, setSimCount] = React.useState(1);
   const [simForceRarity, setSimForceRarity] = React.useState('');
@@ -7607,6 +7610,14 @@ function LootboxLabCard({ superuserKey }) {
       const d = await lootboxLabInspect(superuserKey, boxId);
       setInspect(d);
       setSimForceSku('');
+      // Ownership counts ride along with the inspect, but a failure here
+      // shouldn't block the catalog view — badges just won't render.
+      try {
+        const o = await lootboxLabOwnership(superuserKey);
+        setOwnership(o.counts || {});
+      } catch (_) {
+        setOwnership(null);
+      }
     } catch (e) {
       setInspectError(e.message || 'Failed to load box catalog');
       setInspect(null);
@@ -7790,10 +7801,12 @@ function LootboxLabCard({ superuserKey }) {
                   </span>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {(row.items || []).map(it => (
+                  {(row.items || []).map(it => {
+                    const owners = (!it.special && ownership) ? (ownership[`${it.kind}:${it.value}`] || 0) : null;
+                    return (
                     <div
                       key={it.sku}
-                      title={`SKU: ${it.sku}${it.set ? ` · set: ${it.set}` : ''}${it.boxExclusive ? ' · box-exclusive' : ''}${it.special ? ` · ${it.days}d Pro` : ''}`}
+                      title={`SKU: ${it.sku}${it.set ? ` · set: ${it.set}` : ''}${it.boxExclusive ? ' · box-exclusive' : ''}${it.special ? ` · ${it.days}d Pro` : ''}${owners != null ? ` · owned by ${owners} player${owners === 1 ? '' : 's'}` : ''}`}
                       style={{
                         padding: '4px 8px', borderRadius: 6, fontSize: 11,
                         border: `1px solid ${LAB_RARITY_COLORS[row.rarity]}44`,
@@ -7807,8 +7820,22 @@ function LootboxLabCard({ superuserKey }) {
                       {it.boxExclusive && <span style={{ fontSize: 9, opacity: 0.7 }}>★</span>}
                       {it.set && <span style={{ fontSize: 9, opacity: 0.6 }}>set</span>}
                       {it.days && <span style={{ fontSize: 9, opacity: 0.8 }}>{it.days}d</span>}
+                      {owners != null && (
+                        <span
+                          aria-label={`Owned by ${owners} player${owners === 1 ? '' : 's'}`}
+                          style={{
+                            fontSize: 9, padding: '1px 5px', borderRadius: 99,
+                            background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border)',
+                            color: owners > 0 ? 'var(--text-secondary, var(--text-muted))' : 'var(--text-muted)',
+                            fontFamily: 'var(--font-num, monospace)',
+                          }}
+                        >
+                          👤 {owners}
+                        </span>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

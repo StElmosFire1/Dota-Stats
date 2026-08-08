@@ -317,6 +317,23 @@ function mountLootboxRoutes({ router, express, deps }) {
     }
   });
 
+  // ---- Admin: Lootbox Lab — community ownership counts (Task #785) -------
+  // How many distinct players own each cosmetic (kind, value). Loaded
+  // on-demand alongside the catalog inspect so the Lab can badge each item
+  // with "Owned by N players". Read-only, superuser-only.
+  router.get('/admin/lootbox/lab/ownership', requireSuperuser, async (req, res) => {
+    try {
+      const rows = await lb.getOwnershipCounts();
+      // Map keyed by "kind:value" for O(1) lookup in the UI.
+      const counts = {};
+      for (const row of rows) counts[`${row.kind}:${row.value}`] = row.owners;
+      res.json({ counts });
+    } catch (err) {
+      console.error('[lootbox] lab ownership:', err.message);
+      res.status(500).json({ error: 'Failed to load ownership counts' });
+    }
+  });
+
   // ---- Admin: Lootbox Lab — dry-run simulate opens -----------------------
   // Rolls the real drop logic N times with zero side effects (no coin debit,
   // no grant, no event log, no free-claim consumption). Supports:

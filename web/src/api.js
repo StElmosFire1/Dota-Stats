@@ -434,6 +434,9 @@ export async function createLootboxSet(superuserKey, { name, description, itemSk
 export async function lootboxLabInspect(superuserKey, boxId) {
   return superuserJson(`/admin/lootbox/lab/inspect?boxId=${encodeURIComponent(boxId)}`, { superuserKey });
 }
+export async function lootboxLabOwnership(superuserKey) {
+  return superuserJson('/admin/lootbox/lab/ownership', { superuserKey });
+}
 export async function lootboxLabSimulate(superuserKey, { boxId, count = 1, forceRarity = null, forceSku = null }) {
   return superuserJson('/admin/lootbox/lab/simulate', {
     method: 'POST', superuserKey,
