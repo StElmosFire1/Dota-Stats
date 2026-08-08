@@ -38,8 +38,15 @@ case "${DEPLOY_BASE}" in
 esac
 
 echo "==> Pulling latest code..."
+# DEPLOY_REF (Task #895): normally we deploy origin/main, but for a rollback
+# you can pin any ref/SHA — `DEPLOY_REF=<previous-good-sha> bash deploy.sh` —
+# and every hard gate (tests, money paths, migrations, health checks) still
+# runs on the way back. Without this, a manual `git reset --hard <sha>` would
+# be immediately undone by the reset below.
 git fetch origin
-git reset --hard origin/main
+DEPLOY_REF="${DEPLOY_REF:-origin/main}"
+echo "    Deploying ref: ${DEPLOY_REF}"
+git reset --hard "${DEPLOY_REF}"
 
 echo "==> Verifying committed replay parser jar is in sync with sources..."
 # Hard gate: refuse to deploy if the jar checked into the repo is older
@@ -240,6 +247,79 @@ process.stdin.on("end", () => {
   sleep 5
 done
 echo "    Health check passed — ${HEALTH_URL} reports ok:true."
+
+echo "==> Public-URL health check (Task #895)..."
+# Local health passing proves the process is up, but not that the public site
+# is reachable through DNS/proxy/TLS. Probe the public health endpoint on the
+# canonical host when the app is a production deploy. Like the PORT resolution
+# above, the deploy shell often does NOT carry NODE_ENV/CANONICAL_HOST — PM2
+# does — so read them from the PM2 process env first, falling back to the
+# shell. Override with PUBLIC_HEALTH_URL=<url>, or PUBLIC_HEALTH_URL=skip to
+# bypass (lab hosts). Uses the same ok:true contract as the local check.
+PM2_ENV_META="$(pm2 jlist 2>/dev/null | node -e '
+let raw = "";
+process.stdin.on("data", c => raw += c);
+process.stdin.on("end", () => {
+  try {
+    const arr = JSON.parse(raw);
+    const p = Array.isArray(arr) && arr.find(x => x && x.name === process.argv[1]);
+    const env = (p && p.pm2_env && p.pm2_env.env) || {};
+    console.log(env.NODE_ENV || "");
+    console.log(env.CANONICAL_HOST || "");
+  } catch {}
+});
+' "${PM2_APP}" 2>/dev/null || true)"
+PM2_NODE_ENV="$(printf '%s\n' "${PM2_ENV_META}" | sed -n '1p')"
+PM2_CANONICAL_HOST="$(printf '%s\n' "${PM2_ENV_META}" | sed -n '2p')"
+EFFECTIVE_NODE_ENV="${PM2_NODE_ENV:-${NODE_ENV:-}}"
+EFFECTIVE_CANONICAL_HOST="${PM2_CANONICAL_HOST:-${CANONICAL_HOST:-oceinhouse.gg}}"
+PUBLIC_HEALTH_URL="${PUBLIC_HEALTH_URL:-}"
+if [ -z "${PUBLIC_HEALTH_URL}" ] && [ "${EFFECTIVE_NODE_ENV}" = "production" ]; then
+  PUBLIC_HEALTH_URL="https://${EFFECTIVE_CANONICAL_HOST}/api/health"
+fi
+if [ -n "${PUBLIC_HEALTH_URL}" ] && [ "${PUBLIC_HEALTH_URL}" != "skip" ]; then
+  PUBLIC_HEALTH_TIMEOUT="${PUBLIC_HEALTH_TIMEOUT:-60}"
+  # Wall-clock timeout (each curl attempt can itself block up to 10s, so
+  # counting fixed increments would drift badly). No pipe: capture curl's
+  # body first so a curl failure can never be masked by a partial response.
+  public_probe_start=${SECONDS}
+  public_probe_ok() {
+    local body
+    body="$(curl -fsS --max-time 10 "${PUBLIC_HEALTH_URL}")" || return 1
+    printf '%s' "${body}" | node -e '
+let raw = "";
+process.stdin.on("data", c => raw += c);
+process.stdin.on("end", () => {
+  try {
+    const j = JSON.parse(raw);
+    if (j && j.ok === true) process.exit(0);
+    console.error("public health responded but not ok:", JSON.stringify(j && j.services || j));
+  } catch (e) { console.error("public health response was not JSON"); }
+  process.exit(1);
+});
+'
+  }
+  until public_probe_ok; do
+    elapsed=$((SECONDS - public_probe_start))
+    if [ "${elapsed}" -ge "${PUBLIC_HEALTH_TIMEOUT}" ]; then
+      echo "" >&2
+      echo "██████████████████████████████████████████████████████████" >&2
+      echo "ERROR: PUBLIC health check FAILED after ${PUBLIC_HEALTH_TIMEOUT}s." >&2
+      echo "       Local health is OK but ${PUBLIC_HEALTH_URL} is not reachable/ok —" >&2
+      echo "       the site may be down for real users (DNS, proxy, TLS, or firewall)." >&2
+      echo "       The process itself is healthy, so do NOT blindly roll back the code;" >&2
+      echo "       check the reverse proxy / DNS / certificate first." >&2
+      echo "       Override: PUBLIC_HEALTH_URL=skip bash deploy.sh (records nothing, use sparingly)." >&2
+      echo "██████████████████████████████████████████████████████████" >&2
+      exit 1
+    fi
+    echo "    ... waiting for ${PUBLIC_HEALTH_URL} (${elapsed}s/${PUBLIC_HEALTH_TIMEOUT}s)"
+    sleep 5
+  done
+  echo "    Public health check passed — ${PUBLIC_HEALTH_URL} reports ok:true."
+else
+  echo "    Skipped (not production and PUBLIC_HEALTH_URL unset)."
+fi
 
 echo ""
 echo "✓ Deploy complete."
