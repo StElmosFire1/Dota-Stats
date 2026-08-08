@@ -83,9 +83,9 @@ test('ring buffer is capped', () => {
   assert.equal(report.ringBufferSize, RING_BUFFER_MAX);
 });
 
-// --- Owner DM digest (Task #567) ---
-// Inject a fake discord bot into the require cache so the lazy
-// require('../discord/bot') inside lockdownLog resolves to a capture stub.
+// --- Owner DM digest removed (Task #850) ---
+// Inject a fake discord bot into the require cache so that, if any DM path
+// were ever reintroduced, the stub would capture it and the test would fail.
 const BOT_PATH = require.resolve('../src/discord/bot');
 function installFakeBot() {
   const dms = [];
@@ -105,51 +105,21 @@ function uninstallFakeBot() {
   delete require.cache[BOT_PATH];
 }
 
-test('owner is DMed when a real browser hits the locked site', async () => {
+test('no owner DM fires for any gated traffic (Task #850)', async () => {
   _resetForTests();
   const dms = installFakeBot();
   try {
+    // Real browsers, bots, and unknown UAs — none of them may DM the owner.
     record({ ip: '9.9.9.9', path: '/profile?x=1', ua: CHROME_UA, method: 'GET', decision: 'html-gate' });
-    await new Promise(r => setImmediate(r));
-    assert.equal(dms.length, 1, 'one DM fired on first browser hit');
-    assert.match(dms[0], /Locked-site visitor/);
-    assert.match(dms[0], /chrome/);
-    assert.match(dms[0], /9\.9\.9\.9/);
-    assert.match(dms[0], /\/profile/);
-    assert.doesNotMatch(dms[0], /x=1/, 'query string stripped from sample path');
-  } finally {
-    uninstallFakeBot();
-  }
-});
-
-test('bots/crawlers never trigger the owner DM', async () => {
-  _resetForTests();
-  const dms = installFakeBot();
-  try {
+    record({ ip: '8.8.8.8', path: '/x', ua: FIREFOX_UA, method: 'GET', decision: 'html-gate' });
     record({ ip: '1.2.3.4', path: '/', ua: 'Mozilla/5.0 (compatible; GPTBot/1.0; +https://openai.com/gptbot)', method: 'GET', decision: 'html-gate' });
     record({ ip: '1.2.3.4', path: '/', ua: 'python-requests/2.31.0', method: 'GET', decision: '401-empty' });
-    record({ ip: '1.2.3.4', path: '/', ua: '', method: 'GET', decision: '401-empty' }); // unknown UA excluded
+    record({ ip: '1.2.3.4', path: '/', ua: '', method: 'GET', decision: '401-empty' });
     await new Promise(r => setImmediate(r));
-    assert.equal(dms.length, 0);
-  } finally {
-    uninstallFakeBot();
-  }
-});
-
-test('repeat browser hits within 24h are deduped into a single digest', async () => {
-  _resetForTests();
-  const dms = installFakeBot();
-  try {
-    for (let i = 0; i < 5; i++) {
-      record({ ip: '9.9.9.9', path: `/p${i}`, ua: CHROME_UA, method: 'GET', decision: 'html-gate' });
-    }
-    record({ ip: '8.8.8.8', path: '/x', ua: FIREFOX_UA, method: 'GET', decision: 'html-gate' });
-    await new Promise(r => setImmediate(r));
-    // First chrome hit + first firefox hit each fire once; the 4 extra chrome
-    // hits are suppressed (still counted for the next digest).
-    assert.equal(dms.length, 2);
-    assert.equal(dms.filter(m => /chrome/.test(m)).length, 1);
-    assert.equal(dms.filter(m => /firefox/.test(m)).length, 1);
+    assert.equal(dms.length, 0, 'DM digests are disabled');
+    // Recording still works — all hits land in the report.
+    const report = buildReport();
+    assert.equal(report.totals.hits, 5);
   } finally {
     uninstallFakeBot();
   }

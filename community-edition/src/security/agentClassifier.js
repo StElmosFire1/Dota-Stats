@@ -19,11 +19,12 @@
 //          hard-blocked — observability only).
 //        - applies a stricter express-rate-limit bucket keyed on
 //          (ip, ua-family).
-//        - DMs the bot owner the first time a family appears in any 24h
-//          window, via the community Discord bot's owner-DM path.
 //
-// Never throws out of the middleware: every async/DM call is try/caught so
-// a Discord outage or a bad bot list can't take the API down.
+// Owner DM digests were removed in Task #850 — hits are still recorded and
+// reported via the superuser admin card, but no Discord DM is ever sent.
+//
+// Never throws out of the middleware: every async call is try/caught so
+// a bad bot list can't take the API down.
 
 'use strict';
 
@@ -33,13 +34,8 @@ const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { classifyUa } = require('../../../src/security/agentUaList');
 
 const RING_BUFFER_MAX = 5000;
-const ALERT_DEDUPE_MS = 24 * 60 * 60 * 1000;
 
 const _ring = []; // newest pushed at end; trimmed from front when over cap
-const _lastAlertAt = new Map(); // family → ts of last DM
-// family → { count, firstTs, lastTs, kind, sampleUa, samplePath } accumulated
-// since the last DM, so the next digest can report how many hits + when.
-const _pending = new Map();
 
 function _push(entry) {
   _ring.push(entry);
@@ -51,55 +47,6 @@ function _push(entry) {
 function _shortUa(ua) {
   if (!ua) return '';
   return ua.length > 200 ? ua.slice(0, 200) + '…' : ua;
-}
-
-function _fmtTs(ts) {
-  try {
-    return new Date(ts).toLocaleString('en-AU', { timeZone: 'Australia/Sydney', hour12: false });
-  } catch (_) {
-    return new Date(ts).toISOString();
-  }
-}
-
-async function _maybeAlertOwner(family, kind, sampleUa, samplePath) {
-  // Accumulate every hit for this family so the next DM reports a count and a
-  // timestamp range, not just a bare "first seen". The first hit fires the DM
-  // immediately (count 1); after that we suppress for 24h while still counting,
-  // then the next hit past the window flushes a digest of everything in between.
-  const now = Date.now();
-  let p = _pending.get(family);
-  if (!p) {
-    p = { count: 0, firstTs: now, lastTs: now, kind, sampleUa, samplePath };
-    _pending.set(family, p);
-  }
-  p.count += 1;
-  p.lastTs = now;
-  p.kind = kind;
-  p.sampleUa = sampleUa;
-  p.samplePath = samplePath;
-
-  const last = _lastAlertAt.get(family) || 0;
-  if (now - last < ALERT_DEDUPE_MS) return; // still suppressed — keep counting
-  _lastAlertAt.set(family, now);
-  const snap = p;
-  _pending.delete(family);
-
-  try {
-    const { getDiscordBot } = require('../discord/bot');
-    const bot = getDiscordBot();
-    if (bot && typeof bot._dmOwner === 'function') {
-      const when = snap.count > 1
-        ? `**${snap.count}** hits between \`${_fmtTs(snap.firstTs)}\` and \`${_fmtTs(snap.lastTs)}\` (Sydney time)`
-        : `**1** hit at \`${_fmtTs(snap.lastTs)}\` (Sydney time)`;
-      await bot._dmOwner(
-        `🕷️ **AI agent activity** — \`${family}\` (${snap.kind})\n` +
-        `${when}\n` +
-        `Latest path: \`${snap.samplePath}\`\n` +
-        `UA: \`${_shortUa(snap.sampleUa)}\`\n` +
-        `(Next summary for this agent in ~24h, if it keeps visiting.)`
-      );
-    }
-  } catch (_) { /* never let alerting break the request loop */ }
 }
 
 // Stricter rate-limit bucket for classified agents. Keyed on (ip, family)
@@ -158,12 +105,8 @@ function classifierMiddleware(req, res, next) {
   // decision to 'throttled' on rejection.
   req._agentEntry = entry;
 
-  // Rolling 24h digest DM — only for blockable (real) agents. Unknown-bot
-  // is observability-only so we don't spam. Every hit is counted; the next
-  // DM (≥24h after the last) reports how many times + the timestamp range.
-  if (isBlockable) {
-    _maybeAlertOwner(result.family, result.kind, ua, req.originalUrl || req.url || '/').catch(() => {});
-  }
+  // Owner DM digests removed (Task #850) — hits are recorded above and
+  // surfaced via the superuser admin report only.
 
   if (decision === 'blocked') {
     res.set('Cache-Control', 'no-store');
@@ -240,8 +183,6 @@ function buildReport({ windowMs = 7 * 24 * 60 * 60 * 1000 } = {}) {
 // internals directly.
 function _resetForTests() {
   _ring.length = 0;
-  _lastAlertAt.clear();
-  _pending.clear();
 }
 
 module.exports = {
