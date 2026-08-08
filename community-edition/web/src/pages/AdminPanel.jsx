@@ -413,6 +413,7 @@ function ReplayManager({ superuserKey }) {
   const [reparseAllLoading, setReparseAllLoading] = useState(false);
   const [setPermanentLoading, setSetPermanentLoading] = useState(false);
   const [setPermanentMsg, setSetPermanentMsg] = useState('');
+  const [downloadAllStatus, setDownloadAllStatus] = useState('');
   const authHeader = { 'x-superuser-key': superuserKey };
 
   function load() {
@@ -444,6 +445,42 @@ function ReplayManager({ superuserKey }) {
         a.click();
       })
       .catch(err => alert('Download failed: ' + err.message));
+  }
+
+  // Task #883 — bulk download every available replay as one ZIP. We first
+  // ping a superuser-gated endpoint via superuserFetch so an expired session
+  // re-prompts, then hand off to browser navigation so the (potentially
+  // multi-GB) archive streams straight to disk instead of into JS memory.
+  function handleDownloadAll() {
+    const avail = (replays || []).filter(r => r.available);
+    if (avail.length === 0) return;
+    const totalBytes = avail.reduce((s, r) => s + (r.fileSize || 0), 0);
+    const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
+    if (!window.confirm(`Download all ${avail.length} available replays as one ZIP (~${totalMB} MB)?`)) return;
+    setDownloadAllStatus('Preparing download…');
+    // Mint a short-lived single-use token via superuserFetch (which carries
+    // the real credential and re-prompts on an expired session), then hand
+    // the token-authenticated URL to the browser so the multi-GB archive
+    // streams straight to disk. The download request authenticates itself
+    // with the token — it does not rely on the session cookie still being
+    // valid at click time.
+    superuserFetch('/api/replays/download-all/token', { method: 'POST', headers: authHeader })
+      .then(r => {
+        if (!r.ok) return r.json().then(j => { throw new Error(j.error || 'Not available'); });
+        return r.json();
+      })
+      .then(({ token }) => {
+        if (!token) throw new Error('No download token issued');
+        const a = document.createElement('a');
+        a.href = `/api/replays/download-all?token=${encodeURIComponent(token)}`;
+        a.download = '';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setDownloadAllStatus(`ZIP started (${avail.length} files, ~${totalMB} MB) — check your browser downloads.`);
+        setTimeout(() => setDownloadAllStatus(''), 15000);
+      })
+      .catch(err => setDownloadAllStatus('Download failed: ' + err.message));
   }
 
   function handleReparse(matchId) {
@@ -529,6 +566,13 @@ function ReplayManager({ superuserKey }) {
           onClick={handleReparseAll} disabled={reparseAllLoading}>
           🔄 Re-parse All
         </button>
+        <button className="btn" style={{ fontSize: '0.8rem', padding: '3px 10px', color: '#38bdf8', borderColor: '#38bdf8' }}
+          onClick={handleDownloadAll}
+          disabled={replays === null || !(replays || []).some(r => r.available)}
+          title={replays === null ? 'Load the replay list first' : undefined}>
+          ⬇ Download All
+        </button>
+        {downloadAllStatus && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{downloadAllStatus}</span>}
       </div>
       {reparseAllStatus && (
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '0.82rem' }}>

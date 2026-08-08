@@ -1131,6 +1131,101 @@ function createApiRouter(startupStatus = {}) {
     }
   });
 
+  // Superuser-only: stream a ZIP of every currently-stored, non-expired
+  // replay file (Task #883). Uses archiver's streaming API so memory stays
+  // flat regardless of how many/large the .dem files are. Missing or
+  // deleted files are skipped without failing the whole archive.
+  // Browser navigations (anchor-click downloads) can't attach the
+  // x-superuser-key header, and streaming a multi-GB archive through
+  // fetch+blob would buffer it in JS memory. So the UI first POSTs here
+  // (via superuserFetch, which carries the session/header credential and
+  // auto-recovers an expired session), receives a short-lived single-use
+  // token, and then navigates to the download URL with that token.
+  const _replayDownloadTokens = new Map(); // token -> expiry epoch ms
+  const REPLAY_DL_TOKEN_TTL_MS = 2 * 60 * 1000;
+  router.post('/replays/download-all/token', requireSuperuser, (req, res) => {
+    // Prune expired tokens so the map can't grow unbounded.
+    const now = Date.now();
+    for (const [t, exp] of _replayDownloadTokens) {
+      if (exp < now) _replayDownloadTokens.delete(t);
+    }
+    const token = crypto.randomBytes(32).toString('hex');
+    _replayDownloadTokens.set(token, now + REPLAY_DL_TOKEN_TTL_MS);
+    res.json({ token, expiresInSeconds: REPLAY_DL_TOKEN_TTL_MS / 1000 });
+  });
+
+  function _consumeReplayDownloadToken(token) {
+    if (!token || typeof token !== 'string') return false;
+    const exp = _replayDownloadTokens.get(token);
+    if (!exp) return false;
+    _replayDownloadTokens.delete(token); // single use
+    return exp >= Date.now();
+  }
+
+  // Auth: a valid superuser session/header (requireSuperuser semantics) OR a
+  // short-lived single-use token minted above. The token path is what the
+  // browser anchor navigation uses, so the archive request itself carries
+  // its own credential rather than relying on an earlier preflight.
+  function requireSuperuserOrDownloadToken(req, res, next) {
+    if (_consumeReplayDownloadToken(req.query.token)) return next();
+    return requireSuperuser(req, res, next);
+  }
+
+  router.get('/replays/download-all', requireSuperuserOrDownloadToken, async (req, res) => {
+    try {
+      const { ZipArchive } = require('archiver');
+      const p = db.getPool();
+      const result = await p.query(
+        `SELECT match_id, replay_file_path, date
+         FROM matches
+         WHERE replay_file_path IS NOT NULL
+         ORDER BY date DESC`
+      );
+      const available = result.rows.filter(r => {
+        try { return r.replay_file_path && fs.existsSync(r.replay_file_path); }
+        catch (_) { return false; }
+      });
+      if (available.length === 0) {
+        return res.status(404).json({ error: 'No stored replay files are currently available.' });
+      }
+
+      const stamp = new Date().toISOString().slice(0, 10);
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="replays-${stamp}.zip"`);
+
+      // Store-only: .dem files are already compact and store keeps CPU flat.
+      const archive = new ZipArchive({ store: true });
+      let aborted = false;
+      res.on('close', () => {
+        if (!res.writableEnded) { aborted = true; archive.abort(); }
+      });
+      archive.on('warning', (err) => {
+        // ENOENT etc. for a file that vanished between the existsSync check
+        // and the read — log and let the rest of the archive continue.
+        console.warn('[API] download-all archive warning:', err.message);
+      });
+      archive.on('error', (err) => {
+        console.error('[API] download-all archive error:', err.message);
+        if (!res.headersSent) res.status(500).json({ error: 'Archive failed' });
+        else res.destroy(err);
+      });
+      archive.pipe(res);
+
+      for (const row of available) {
+        if (aborted) break;
+        const d = row.date ? new Date(row.date) : null;
+        const dateStr = d && !isNaN(d) ? d.toISOString().slice(0, 10) : 'unknown-date';
+        const ext = path.extname(row.replay_file_path) || '.dem';
+        archive.file(row.replay_file_path, { name: `match_${row.match_id}_${dateStr}${ext}` });
+      }
+      await archive.finalize();
+    } catch (err) {
+      console.error('[API] Bulk replay download error:', err.message);
+      if (!res.headersSent) res.status(500).json({ error: 'Bulk download failed' });
+      else res.destroy(err);
+    }
+  });
+
   // Superuser-only: extend or clear the expiry on a stored replay.
   router.post('/replays/:matchId/extend', requireSuperuser, express.json(), async (req, res) => {
     try {
