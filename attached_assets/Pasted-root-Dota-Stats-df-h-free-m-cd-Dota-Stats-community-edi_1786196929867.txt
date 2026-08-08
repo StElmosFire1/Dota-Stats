@@ -1,0 +1,61 @@
+root@Dota-Stats:~# df -h / && free -m
+cd ~/Dota-Stats/community-edition/web
+rm -rf node_modules
+npm cache verify
+NODE_ENV=development npm install --include=dev --no-audit --no-fund --loglevel=http
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda1       116G   54G   62G  47% /
+               total        used        free      shared  buff/cache   available
+Mem:            3915         979         631          85        2681        2936
+Swap:              0           0           0
+Cache verified and compressed (~/.npm/_cacache)
+Content verified: 1644 (322666277 bytes)
+Content garbage-collected: 291 (187084429 bytes)
+Index entries: 1644
+Finished in 7.224s
+npm http fetch GET http://package-firewall.replit.local/npm/yocto-queue/-/yocto-queue-0.1.0.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/word-wrap/-/word-wrap-1.2.5.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/uri-js/-/uri-js-4.4.1.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/type-check/-/type-check-0.4.0.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/prelude-ls/-/prelude-ls-1.2.1.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/path-exists/-/path-exists-4.0.0.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/p-locate/-/p-locate-5.0.0.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/p-limit/-/p-limit-3.1.0.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/optionator/-/optionator-0.9.4.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/natural-compare/-/natural-compare-1.4.0.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/minimatch/-/minimatch-10.2.6.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/locate-path/-/locate-path-6.0.0.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/levn/-/levn-0.4.1.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/keyv/-/keyv-4.5.4.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/json-stable-stringify-without-jsonify/-/json-stable-stringify-without-jsonify-1.0.1.tgz attempt 1 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/yocto-queue/-/yocto-queue-0.1.0.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/word-wrap/-/word-wrap-1.2.5.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/uri-js/-/uri-js-4.4.1.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/type-check/-/type-check-0.4.0.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/prelude-ls/-/prelude-ls-1.2.1.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/path-exists/-/path-exists-4.0.0.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/p-limit/-/p-limit-3.1.0.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/p-locate/-/p-locate-5.0.0.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/optionator/-/optionator-0.9.4.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/natural-compare/-/natural-compare-1.4.0.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/minimatch/-/minimatch-10.2.6.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/locate-path/-/locate-path-6.0.0.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/levn/-/levn-0.4.1.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/keyv/-/keyv-4.5.4.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/json-stable-stringify-without-jsonify/-/json-stable-stringify-without-jsonify-1.0.1.tgz attempt 2 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/yocto-queue/-/yocto-queue-0.1.0.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/word-wrap/-/word-wrap-1.2.5.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/uri-js/-/uri-js-4.4.1.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/type-check/-/type-check-0.4.0.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/prelude-ls/-/prelude-ls-1.2.1.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/path-exists/-/path-exists-4.0.0.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/p-limit/-/p-limit-3.1.0.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/p-locate/-/p-locate-5.0.0.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/optionator/-/optionator-0.9.4.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/natural-compare/-/natural-compare-1.4.0.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/minimatch/-/minimatch-10.2.6.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/locate-path/-/locate-path-6.0.0.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/levn/-/levn-0.4.1.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/keyv/-/keyv-4.5.4.tgz attempt 3 failed with EAI_AGAIN
+npm http fetch GET http://package-firewall.replit.local/npm/json-stable-stringify-without-jsonify/-/json-stable-stringify-without-jsonify-1.0.1.tgz attempt 3 failed with EAI_AGAIN
+⠧
