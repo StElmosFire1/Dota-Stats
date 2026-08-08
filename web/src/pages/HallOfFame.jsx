@@ -55,26 +55,71 @@ export default function HallOfFame({ embed = false } = {}) {
   const [hunters, setHunters] = useState([]);
   const [referrers, setReferrers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  // Auxiliary leaderboards can fail independently of the main payload —
+  // remember which ones did so their tabs can say "failed" instead of
+  // rendering the misleading "no data yet" empty state.
+  const [auxFailed, setAuxFailed] = useState({ hunters: false, referrers: false });
   const [tab, setTab] = useState('records');
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
+    setError(null);
+    const failed = { hunters: false, referrers: false };
     Promise.all([
       getHallOfFame(seasonId),
-      getAchievementLeaderboard(10).catch(() => ({ hunters: [] })),
-      getReferralLeaderboard(10).catch(() => ({ referrers: [] })),
+      getAchievementLeaderboard(10).catch(() => { failed.hunters = true; return { hunters: [] }; }),
+      getReferralLeaderboard(10).catch(() => { failed.referrers = true; return { referrers: [] }; }),
     ])
       .then(([hof, ach, ref]) => {
+        if (cancelled) return;
         setData(hof);
-        setHunters(hof.achievementHunters || ach.hunters || []);
+        const hofHunters = hof.achievementHunters || [];
+        setHunters(hofHunters.length ? hofHunters : (ach.hunters || []));
+        // The main payload also carries achievement hunters, so the tab is
+        // only "failed" if both sources came back empty AND the aux call errored.
+        setAuxFailed({
+          hunters: failed.hunters && hofHunters.length === 0 && (ach.hunters || []).length === 0,
+          referrers: failed.referrers,
+        });
         setReferrers(ref.referrers || []);
       })
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  }, [seasonId]);
+      .catch((err) => {
+        if (cancelled) return;
+        setData(null);
+        setError(err || new Error('Failed to load'));
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [seasonId, reloadKey]);
 
   if (loading) return <div className="loading">Loading Hall of Fame…</div>;
-  if (!data) return <div className="error-state">Failed to load Hall of Fame data.</div>;
+  if (!data) {
+    const needsAuth = error && (error.status === 401 || error.status === 403);
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 16px' }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }} aria-hidden="true">🏆</div>
+        <h2 style={{ marginBottom: 8 }}>Couldn&rsquo;t load the Hall of Fame</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 20 }}>
+          {needsAuth
+            ? 'This data requires you to be signed in.'
+            : 'Something went wrong fetching the data. It\u2019s probably temporary.'}
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+          <button type="button" className="btn btn-primary" onClick={() => setReloadKey(k => k + 1)}>
+            Try again
+          </button>
+          {needsAuth && (
+            <button type="button" className="btn" onClick={() => { window.location.href = '/auth/steam'; }}>
+              Sign in with Steam
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const { records, career } = data;
   const tabs = [
@@ -104,14 +149,26 @@ export default function HallOfFame({ embed = false } = {}) {
       </div>
 
       {tab === 'records' && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          {RECORD_META.map(m => (
-            <RecordCard key={m.key} title={m.title} emoji={m.emoji} record={records[m.key]} />
-          ))}
-        </div>
+        Object.keys(records || {}).length === 0 ? (
+          <p style={{ color: 'var(--text-muted)' }}>
+            Match records aren&rsquo;t available right now. If matches have been played, this is
+            likely a temporary loading issue &mdash; try refreshing in a moment.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            {RECORD_META.map(m => (
+              <RecordCard key={m.key} title={m.title} emoji={m.emoji} record={records[m.key]} />
+            ))}
+          </div>
+        )
       )}
 
-      {tab === 'career' && (
+      {tab === 'career' && ((career || []).length === 0 ? (
+        <p style={{ color: 'var(--text-muted)' }}>
+          Career rankings aren&rsquo;t available right now. If matches have been played, this is
+          likely a temporary loading issue &mdash; try refreshing in a moment.
+        </p>
+      ) : (
         <div>
           <div style={{ overflowX: 'auto' }}>
             <table className="scoreboard" style={{ width: '100%' }}>
@@ -164,7 +221,7 @@ export default function HallOfFame({ embed = false } = {}) {
             </table>
           </div>
         </div>
-      )}
+      ))}
 
       {tab === 'hunters' && (
         <div>
@@ -172,7 +229,14 @@ export default function HallOfFame({ embed = false } = {}) {
             Top players ranked by total achievements unlocked. Keep playing to climb the ranks!
           </p>
           {hunters.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>No achievement data yet. Achievements are granted automatically after matches.</p>
+            auxFailed.hunters ? (
+              <p style={{ color: 'var(--text-muted)' }}>
+                Couldn&rsquo;t load the achievement leaderboard.{' '}
+                <button type="button" className="btn btn-small" onClick={() => setReloadKey(k => k + 1)}>Try again</button>
+              </p>
+            ) : (
+              <p style={{ color: 'var(--text-muted)' }}>No achievement data yet. Achievements are granted automatically after matches.</p>
+            )
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table className="scoreboard" style={{ width: '100%' }}>
@@ -225,7 +289,14 @@ export default function HallOfFame({ embed = false } = {}) {
             Players who have brought the most new members into the inhouse group. Invite your friends to climb the ranks!
           </p>
           {referrers.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>No referral data yet. Share your invite link to get started!</p>
+            auxFailed.referrers ? (
+              <p style={{ color: 'var(--text-muted)' }}>
+                Couldn&rsquo;t load the recruiter leaderboard.{' '}
+                <button type="button" className="btn btn-small" onClick={() => setReloadKey(k => k + 1)}>Try again</button>
+              </p>
+            ) : (
+              <p style={{ color: 'var(--text-muted)' }}>No referral data yet. Share your invite link to get started!</p>
+            )
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table className="scoreboard" style={{ width: '100%' }}>

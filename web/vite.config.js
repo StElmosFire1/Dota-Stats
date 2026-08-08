@@ -10,7 +10,9 @@ export default defineConfig({
     host: '0.0.0.0',
     allowedHosts: true,
     proxy: {
-      '/api': 'http://127.0.0.1:3000',
+      // Regex key: plain '/api' prefix-matches SPA routes like /api-docs,
+      // handing them to the backend (blank page). Only proxy /api/*.
+      '^/api(/|$)': 'http://127.0.0.1:3000',
       '/scouting': 'http://127.0.0.1:3000',
       '/auth': 'http://127.0.0.1:3000',
     },

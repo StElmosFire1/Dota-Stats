@@ -7,8 +7,8 @@ import '../styles/tutorial.css';
 
 // Task #656 — public "How it works" guide. Explains the core flow end to end
 // (what OCE Inhouse is -> Steam sign-in -> inhouse lobby -> MMR/stats ->
-// coaching), embeds a walkthrough video driven by TUTORIAL_VIDEO_URL (graceful
-// "coming soon" placeholder when unset), and offers the interactive tour.
+// coaching), embeds a walkthrough video driven by TUTORIAL_VIDEO_URL (the
+// whole video section is hidden when unset), and offers the interactive tour.
 
 const STEPS = [
   {
@@ -63,20 +63,10 @@ const STEPS = [
 
 function VideoBlock() {
   const url = (TUTORIAL_VIDEO_URL || '').trim();
-  if (!url) {
-    return (
-      <div className="hiw-video-frame">
-        <div className="hiw-video-placeholder">
-          <span className="hiw-vp-icon" aria-hidden="true">&#127909;</span>
-          <span className="hiw-vp-title pb-serif">Walkthrough video coming soon</span>
-          <span className="hiw-vp-sub">
-            We&rsquo;re putting together a short video tour. In the meantime, the
-            steps below cover everything &mdash; or take the interactive tour.
-          </span>
-        </div>
-      </div>
-    );
-  }
+  // No video configured → render nothing (the section heading is also
+  // hidden by the caller). We deliberately do NOT advertise a
+  // "coming soon" video; the written steps + interactive tour stand alone.
+  if (!url) return null;
   if (isFileVideo(url)) {
     return (
       <div className="hiw-video-frame">
@@ -131,8 +121,12 @@ export default function HowItWorks() {
         </div>
       </header>
 
-      <h2 className="hiw-section-head">Watch the walkthrough</h2>
-      <VideoBlock />
+      {(TUTORIAL_VIDEO_URL || '').trim() && (
+        <>
+          <h2 className="hiw-section-head">Watch the walkthrough</h2>
+          <VideoBlock />
+        </>
+      )}
 
       <h2 className="hiw-section-head">The five-step flow</h2>
       <div className="hiw-steps">

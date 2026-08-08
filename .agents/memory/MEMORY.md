@@ -1,3 +1,4 @@
+- [Vite proxy prefix collision](vite-proxy-prefix-collision.md) — string proxy keys prefix-match SPA routes ('/api' captured /api-docs → blank page); use '^/api(/|$)'. anon-sweep.mjs checks all public routes.
 - [Test suite & deploy gate quirks](deploy-test-gate.md) — npm test needs --test-force-exit or it hangs forever; some tests fail only in the dev env (git-stash baseline before blaming your diff); health probes read PORT from pm2 jlist, not the shell.
 - [Dialog focus-trap & options](dialog-focus-trap.md) — shared <Dialog> trap treats every enabled <button> as focusable regardless of tabIndex=-1; listbox options must be non-button.
 - [Headless site capture](playwright-site-capture.md) — Nix libs + first-visit modal dismiss needed for headless oceinhouse.gg screenshots; /inhouse blank & /hall-of-fame errors for anon.
