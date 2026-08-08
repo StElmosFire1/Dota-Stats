@@ -71,6 +71,21 @@ echo "[post-merge] Verifying money-path test coverage (Task #416 — Stripe webh
 # GitHub push BEFORE prod ever sees it.
 npm run check:money-paths
 
+echo "[post-merge] Verifying lockfiles have no Replit-internal registry URLs..."
+# Hard gate: lockfiles regenerated inside the Replit workspace can bake in the
+# internal npm proxy (package-firewall.replit.local) as every tarball's
+# resolved URL. Prod hosts can't resolve that hostname, so npm install hangs
+# forever with EAI_AGAIN retries (hit 2026-08-08). Auto-rewrite to the public
+# registry and commit the fix so the pushed HEAD is clean.
+if grep -l "package-firewall.replit.local" package-lock.json community-edition/web/package-lock.json web/package-lock.json 2>/dev/null | grep -q .; then
+  echo "[post-merge] Rewriting package-firewall.replit.local -> registry.npmjs.org in lockfiles..."
+  for lf in package-lock.json community-edition/web/package-lock.json web/package-lock.json; do
+    [ -f "$lf" ] && sed -i 's|http://package-firewall.replit.local/npm/|https://registry.npmjs.org/|g' "$lf"
+  done
+  git add package-lock.json community-edition/web/package-lock.json web/package-lock.json 2>/dev/null || true
+  git commit -q -m "post-merge: rewrite Replit-internal registry URLs in lockfiles to registry.npmjs.org" || true
+fi
+
 echo "[post-merge] Verifying no Pro-paywall imports in community web source (Task #301)..."
 # Fast-feedback gate: resolve-aware source scan over community-edition/web/src/.
 # Prints line-numbered errors and is aware of the local no-op useProStatus
