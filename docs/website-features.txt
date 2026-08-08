@@ -62,6 +62,7 @@ Season pass (/season-pass) [signed-in] — 50-tier paid progression track
 Challenges (/challenges/:id) [signed-in] — weekly goals for XP/coins
 Pick'em (/pickem) [signed-in] — match-outcome predictions + prop bets, auto-resolved
 Games (/games, /games/:game) [public] — daily minigames (Heroguessr, item-zoom, statline, mystery player)
+Captain's Mode (/captain-mode) [public] — draft-strategy game: pick/ban against an AI captain across Hub, Draft, Strategy, Simulator and Atlas screens
 Sponsorships (/sponsorships, /sponsorships/inbox) [public/signed-in] — buy ad slots; owners approve, sponsors see CTR telemetry
 Seasons (/seasons, /seasons/:id/summary) [public/admin] — season hub, prize pools, buy-ins, payouts
 Buy-in success (/buyin-success) [signed-in] — Stripe return page confirming a season/tournament buy-in
