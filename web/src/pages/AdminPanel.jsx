@@ -1248,6 +1248,269 @@ function TwitchLinkCard({ superuserKey }) {
 // Lists every refund recorded in `founders_ring_refunds` (most recent first)
 // and visually highlights any row whose status is 'refund_failed' so an
 // operator can spot a stuck refund that needs manual attention in Stripe.
+// Task #884 — Payment Review: open Stripe disputes (chargebacks) flagged
+// needs_review, plus failed/stuck webhook inbox events with a manual
+// "retry now" that kicks the existing server-side retry sweep.
+function PaymentReviewPanel({ superuserKey }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [showResolved, setShowResolved] = useState(false);
+  const [marking, setMarking] = useState({});
+  const [sweeping, setSweeping] = useState(false);
+  const [statusMsg, setStatusMsg] = useState('');
+
+  const authHeader = { 'x-superuser-key': superuserKey };
+
+  const load = useCallback((all = showResolved) => {
+    setLoading(true);
+    setError('');
+    superuserFetch(`/api/admin/payment-review${all ? '?all=1' : ''}`, { headers: authHeader })
+      .then(async r => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        setData(d);
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [superuserKey, showResolved]);
+
+  function handleMarkReviewed(row) {
+    if (!window.confirm(`Mark dispute ${row.dispute_id} as reviewed?`)) return;
+    setMarking(prev => ({ ...prev, [row.id]: true }));
+    setStatusMsg('');
+    superuserFetch(`/api/admin/payment-review/disputes/${row.id}/reviewed`, {
+      method: 'POST', headers: authHeader,
+    })
+      .then(async r => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        setStatusMsg(`✓ Dispute ${row.dispute_id} marked reviewed.`);
+        setData(prev => prev ? {
+          ...prev,
+          disputes: showResolved
+            ? prev.disputes.map(x => x.id === row.id ? d.dispute : x)
+            : prev.disputes.filter(x => x.id !== row.id),
+        } : prev);
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setMarking(prev => { const n = { ...prev }; delete n[row.id]; return n; }));
+  }
+
+  function handleRetrySweep() {
+    setSweeping(true);
+    setStatusMsg('');
+    setError('');
+    superuserFetch('/api/admin/payment-review/retry-sweep', { method: 'POST', headers: authHeader })
+      .then(async r => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        setStatusMsg('✓ Retry sweep finished.');
+        setData(prev => prev ? { ...prev, failedEvents: d.failedEvents || [] } : prev);
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setSweeping(false));
+  }
+
+  function fmtMoney(cents, currency) {
+    if (cents == null) return '—';
+    return `${(cents / 100).toFixed(2)} ${(currency || '').toUpperCase()}`.trim();
+  }
+  function fmtDate(d) {
+    if (!d) return '—';
+    try { return new Date(d).toLocaleString(); } catch (_) { return d; }
+  }
+  function purchaseLink(row) {
+    if (!row.source_kind || row.source_id == null) return null;
+    // Coaching purchases have an admin surface on the coaching panel; other
+    // kinds get a labelled reference so admins can find the row via SQL/Stripe.
+    return `${row.source_kind} #${row.source_id}`;
+  }
+  function stripeDisputeUrl(disputeId) {
+    return disputeId ? `https://dashboard.stripe.com/disputes/${disputeId}` : null;
+  }
+  function stripePiUrl(pi) {
+    return pi ? `https://dashboard.stripe.com/payments/${pi}` : null;
+  }
+
+  const disputes = data?.disputes || [];
+  const failedEvents = data?.failedEvents || [];
+  const openCount = disputes.filter(d => d.needs_review).length;
+
+  const th = { padding: '6px 10px 8px 0', fontWeight: 600, textAlign: 'left' };
+  const td = { padding: '5px 10px 5px 0', verticalAlign: 'top' };
+
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 6, flexWrap: 'wrap' }}>
+        <h2 id="ap-anchor-payment-review" className="section-title" style={{ margin: 0 }}>
+          🛡️ Payment Review
+        </h2>
+        <button className="btn" onClick={() => load()} disabled={loading} style={{ fontSize: 12 }}>
+          {loading ? '⏳ Loading…' : data === null ? 'Load' : 'Refresh'}
+        </button>
+        {data !== null && (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {openCount > 0
+              ? <span style={{ color: '#fca5a5', fontWeight: 600 }}>⚠ {openCount} dispute{openCount === 1 ? '' : 's'} need review</span>
+              : '✓ no open disputes'}
+            {' · '}
+            {failedEvents.length > 0
+              ? <span style={{ color: '#fbbf24', fontWeight: 600 }}>{failedEvents.length} failed/stuck webhook event{failedEvents.length === 1 ? '' : 's'}</span>
+              : 'no failed webhook events'}
+          </span>
+        )}
+        <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input
+            type="checkbox"
+            checked={showResolved}
+            onChange={e => { setShowResolved(e.target.checked); load(e.target.checked); }}
+          />
+          include resolved
+        </label>
+      </div>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+        Chargebacks recorded from Stripe dispute webhooks (flagged for review until an admin clears
+        them) and webhook events that failed or got stuck mid-processing. "Retry failed events now"
+        runs the same retry sweep the server runs every 5 minutes.
+      </p>
+
+      {error && (
+        <div style={{ padding: '8px 12px', borderRadius: 6, background: '#450a0a',
+                      border: '1px solid #f87171', color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>
+          {error}
+        </div>
+      )}
+      {statusMsg && (
+        <div style={{ padding: '8px 12px', borderRadius: 6, background: 'rgba(74,222,128,0.10)',
+                      border: '1px solid #4ade80', color: '#86efac', fontSize: 13, marginBottom: 12 }}>
+          {statusMsg}
+        </div>
+      )}
+
+      {data !== null && (<>
+        <h3 style={{ fontSize: 14, margin: '12px 0 6px' }}>Disputes / Chargebacks</h3>
+        {disputes.length === 0 ? (
+          <p style={{ color: '#4ade80', fontSize: 13 }}>✓ No disputes{showResolved ? '' : ' awaiting review'}.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ color: 'var(--text-muted)' }}>
+                  <th style={th}>Date</th>
+                  <th style={th}>Dispute</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Amount</th>
+                  <th style={th}>Reason</th>
+                  <th style={th}>Stripe status</th>
+                  <th style={th}>Affected purchase</th>
+                  <th style={th}>Payment</th>
+                  <th style={th}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {disputes.map(r => (
+                  <tr key={r.id} style={{
+                    borderTop: '1px solid var(--border)',
+                    background: r.needs_review ? 'rgba(239,68,68,0.10)' : undefined,
+                  }}>
+                    <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtDate(r.created_at)}</td>
+                    <td style={{ ...td, fontFamily: 'monospace', fontSize: 11 }}>
+                      {stripeDisputeUrl(r.dispute_id)
+                        ? <a href={stripeDisputeUrl(r.dispute_id)} target="_blank" rel="noopener noreferrer">{r.dispute_id}</a>
+                        : r.dispute_id}
+                    </td>
+                    <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtMoney(r.amount_cents, r.currency)}</td>
+                    <td style={td}>{r.reason || '—'}</td>
+                    <td style={td}>{r.status || '—'}</td>
+                    <td style={{ ...td, fontFamily: 'monospace', fontSize: 11 }}>
+                      {purchaseLink(r) || <span style={{ color: 'var(--text-muted)' }}>unresolved</span>}
+                    </td>
+                    <td style={{ ...td, fontFamily: 'monospace', fontSize: 11 }}>
+                      {stripePiUrl(r.payment_intent)
+                        ? <a href={stripePiUrl(r.payment_intent)} target="_blank" rel="noopener noreferrer">{r.payment_intent}</a>
+                        : '—'}
+                    </td>
+                    <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                      {r.needs_review ? (
+                        <button
+                          className="btn"
+                          style={{ fontSize: 11 }}
+                          disabled={!!marking[r.id]}
+                          onClick={() => handleMarkReviewed(r)}
+                        >
+                          {marking[r.id] ? '⏳' : 'Mark reviewed'}
+                        </button>
+                      ) : (
+                        <span style={{ color: '#86efac', fontSize: 11 }}>
+                          ✓ reviewed {r.resolved_at ? fmtDate(r.resolved_at) : ''}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0 6px' }}>
+          <h3 style={{ fontSize: 14, margin: 0 }}>Failed / Stuck Webhook Events</h3>
+          {failedEvents.length > 0 && (
+            <button className="btn" onClick={handleRetrySweep} disabled={sweeping} style={{ fontSize: 12 }}>
+              {sweeping ? '⏳ Retrying…' : '🔁 Retry failed events now'}
+            </button>
+          )}
+        </div>
+        {failedEvents.length === 0 ? (
+          <p style={{ color: '#4ade80', fontSize: 13 }}>✓ No failed or stuck webhook events.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ color: 'var(--text-muted)' }}>
+                  <th style={th}>Received</th>
+                  <th style={th}>Event</th>
+                  <th style={th}>Type</th>
+                  <th style={th}>Status</th>
+                  <th style={{ ...th, textAlign: 'right' }}>Attempts</th>
+                  <th style={th}>Last error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {failedEvents.map(ev => (
+                  <tr key={ev.event_id} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtDate(ev.received_at)}</td>
+                    <td style={{ ...td, fontFamily: 'monospace', fontSize: 11 }}>{ev.event_id}</td>
+                    <td style={{ ...td, fontFamily: 'monospace', fontSize: 11 }}>{ev.event_type}</td>
+                    <td style={td}>
+                      <span style={{
+                        display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600,
+                        background: ev.status === 'failed' ? 'rgba(239,68,68,0.25)' : 'rgba(251,191,36,0.15)',
+                        color: ev.status === 'failed' ? '#fca5a5' : '#fbbf24',
+                        border: `1px solid ${ev.status === 'failed' ? '#f87171' : '#fbbf24'}`,
+                      }}>
+                        {ev.status === 'failed' ? 'failed' : `stuck (${ev.status})`}
+                      </span>
+                    </td>
+                    <td style={{ ...td, textAlign: 'right' }}>{ev.attempts}</td>
+                    <td style={{ ...td, fontSize: 11, color: '#fca5a5', maxWidth: 380, wordBreak: 'break-word' }}>
+                      {ev.last_error || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+          Events retry automatically every 5 minutes (max 8 attempts, 7-day window). Rows that keep
+          failing after the attempt cap need manual investigation in Stripe.
+        </p>
+      </>)}
+    </section>
+  );
+}
+
 function FoundersRingRefunds({ superuserKey }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -10158,6 +10421,9 @@ export default function AdminPanel() {
 
       {/* Founders Pass cap-race refund audit (Task #265) */}
       <FoundersRingRefunds superuserKey={superuserKey} />
+
+      {/* Task #884 — chargebacks + failed/stuck webhook events */}
+      <PaymentReviewPanel superuserKey={superuserKey} />
 
       {/* Coaching Marketplace — pending KYC + open disputes + revenue */}
       <CoachingAdminPanel superuserKey={superuserKey} />

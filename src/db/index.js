@@ -21647,6 +21647,60 @@ async function recordStripeDispute({
   return r.rows[0] || null;
 }
 
+// ---------- Task #884: admin payment-review helpers ----------
+// Disputes list for the AdminPanel payment-review section. Defaults to open
+// (needs_review=true) rows; pass needsReviewOnly:false to include resolved
+// ones (recent first) for context.
+async function listStripeDisputes({ needsReviewOnly = true, limit = 200 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT id, dispute_id, charge_id, payment_intent, amount_cents, currency,
+            reason, status, source_kind, source_id, needs_review,
+            created_at, updated_at, resolved_at
+       FROM stripe_disputes
+      WHERE ($1 = FALSE OR needs_review = TRUE)
+      ORDER BY needs_review DESC, created_at DESC
+      LIMIT $2`,
+    [needsReviewOnly, limit]
+  );
+  return r.rows;
+}
+
+// Admin "mark reviewed" — clears the needs_review flag on a dispute row.
+// Returns the updated row, or null when the id doesn't exist.
+async function markStripeDisputeReviewed(id) {
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE stripe_disputes
+        SET needs_review = FALSE, resolved_at = COALESCE(resolved_at, NOW()),
+            updated_at = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [id]
+  );
+  return r.rows[0] || null;
+}
+
+// Failed/stuck webhook inbox rows for the admin payment-review section:
+// status='failed' plus 'received'/'processing' rows whose claim went stale
+// (same stuck definition the retry sweep uses). Payload is intentionally
+// omitted — it can be large and the UI only needs metadata.
+async function listFailedStripeWebhookEvents({ limit = 100 } = {}) {
+  const p = getPool();
+  const r = await p.query(
+    `SELECT event_id, event_type, status, attempts, last_error,
+            received_at, processed_at, claimed_at
+       FROM stripe_webhook_inbox
+      WHERE status = 'failed'
+         OR (status IN ('received', 'processing')
+             AND COALESCE(claimed_at, received_at) < NOW() - INTERVAL '10 minutes')
+      ORDER BY received_at DESC
+      LIMIT $1`,
+    [limit]
+  );
+  return r.rows;
+}
+
 // Lifetime platform revenue = sum of platform_fee_cents on completed bookings.
 async function getCoachingPlatformRevenue() {
   const p = getPool();
@@ -26694,6 +26748,9 @@ module.exports = {
   markStripeWebhookFailed,
   listRetryableStripeWebhookEvents,
   recordStripeDispute,
+  listStripeDisputes,
+  markStripeDisputeReviewed,
+  listFailedStripeWebhookEvents,
   addPushSubscription,
   removePushSubscriptionByEndpoint,
   getPushSubscriptionsForAccount,

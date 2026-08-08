@@ -18218,6 +18218,58 @@ NOTES
     }
   });
 
+  // ── Task #884 — admin payment review (chargebacks + stuck webhooks) ─────
+  // GET /api/admin/payment-review — open disputes (needs_review=true) plus
+  // failed/stuck webhook inbox rows for the AdminPanel section. Pass
+  // ?all=1 to include already-resolved disputes for context.
+  router.get('/admin/payment-review', requireAdmin, async (req, res) => {
+    try {
+      const includeResolved = req.query.all === '1' || req.query.all === 'true';
+      const [disputes, failedEvents] = await Promise.all([
+        db.listStripeDisputes({ needsReviewOnly: !includeResolved, limit: 200 }),
+        db.listFailedStripeWebhookEvents({ limit: 100 }),
+      ]);
+      res.json({ disputes, failedEvents, includeResolved });
+    } catch (err) {
+      console.error('[API] admin/payment-review GET:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to load payment review data' });
+    }
+  });
+
+  // POST /api/admin/payment-review/disputes/:id/reviewed — clear the
+  // needs_review flag on a dispute row once an admin has looked at it.
+  router.post('/admin/payment-review/disputes/:id/reviewed', requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: 'Invalid dispute id' });
+      const row = await db.markStripeDisputeReviewed(id);
+      if (!row) return res.status(404).json({ error: 'Dispute not found' });
+      console.log(`[Stripe] dispute ${row.dispute_id} marked reviewed by admin (role=${req.effectiveRole})`);
+      res.json({ ok: true, dispute: row });
+    } catch (err) {
+      console.error('[API] admin/payment-review reviewed:', err.message);
+      res.status(500).json({ error: err.message || 'Failed to mark dispute reviewed' });
+    }
+  });
+
+  // POST /api/admin/payment-review/retry-sweep — manually kick the existing
+  // Stripe inbox retry sweep (same code path as the 5-minute cron). Runs it
+  // to completion so the response reflects the post-sweep failed-row list.
+  router.post('/admin/payment-review/retry-sweep', requireAdmin, async (req, res) => {
+    try {
+      const sweep = req.app?.locals?._runStripeInboxRetrySweep;
+      if (typeof sweep !== 'function') {
+        return res.status(503).json({ error: 'Retry sweep unavailable (Stripe not configured?)' });
+      }
+      await sweep();
+      const failedEvents = await db.listFailedStripeWebhookEvents({ limit: 100 });
+      res.json({ ok: true, failedEvents });
+    } catch (err) {
+      console.error('[API] admin/payment-review retry-sweep:', err.message);
+      res.status(500).json({ error: err.message || 'Retry sweep failed' });
+    }
+  });
+
   // ── Founders Pass ring (v6.63 / Task #207) ──────────────────────────────
   // Limited-edition one-time entitlement. Cap is configurable via
   // FOUNDERS_RING_CAP env (default 200). The cap is checked here at
