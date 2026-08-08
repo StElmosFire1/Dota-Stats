@@ -105,7 +105,12 @@ echo "==> Installing backend (root) dependencies..."
 # so any new ROOT dependency shipped in a commit was never installed on prod,
 # and the bot crashed at runtime with "Cannot find module 'dotaconstants/...'".
 # Installing at the root here keeps the bot's deps in lockstep with the code.
-npm install --silent
+# --include=dev (Task #904): the deploy host's shell exports NODE_ENV=production,
+# which makes a bare `npm install` silently omit devDependencies — so build/test
+# gates below (eslint, vitest, node-pg-migrate tooling, etc.) would be missing
+# and the deploy dies before the new build ships. Dev deps are only used by the
+# deploy-time gates; the app runtime is unaffected.
+npm install --include=dev --silent
 
 echo "==> Running the full test suite (Task #856)..."
 # Hard gate: the entire tests/ directory must pass before we touch web/ or
@@ -123,7 +128,11 @@ npm run migrate
 
 echo "==> Installing frontend dependencies..."
 cd web
-npm install --silent
+# --include=dev (Task #904): NODE_ENV=production in the deploy shell would
+# otherwise skip devDependencies, and the frontend build tooling (vite, eslint)
+# lives there — `npm run build` then fails with "not found" and leaves the
+# stale bundle live. Build gates need dev tooling; runtime is unaffected.
+npm install --include=dev --silent
 
 echo "==> Building frontend..."
 npm run build

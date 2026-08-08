@@ -85,7 +85,12 @@ bash scripts/check-community-paywall.sh
 
 echo "==> [community] Installing community frontend dependencies..."
 cd community-edition/web
-npm install --silent
+# --include=dev (Task #904): the prod host's shell exports NODE_ENV=production,
+# which makes a bare `npm install` silently omit devDependencies — so eslint
+# (run by `npm run build` via lint:undef) and vite were missing and the deploy
+# aborted with "eslint: not found", leaving the stale bundle live. Build gates
+# need dev tooling; the app runtime is unaffected.
+npm install --include=dev --silent
 
 echo "==> [community] Building community frontend..."
 npm run build
