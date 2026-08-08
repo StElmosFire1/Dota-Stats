@@ -32,11 +32,14 @@ function formatTime(dateStr) {
   });
 }
 
-// Average of a side's current stored MMR. Skips unranked (mmr null/0) players.
+// Average of a side's MMR. Prefers each player's per-match snapshot
+// (`mmr_snapshot`, their rating as of this match — Task #691) and falls back
+// to the current stored rating (`mmr`) when no snapshot exists (matches rated
+// before rating_history, or unrated players). Skips unranked (null/0) players.
 // Returns null when nobody on the side is ranked.
 function avgSideMmr(side) {
   const vals = side
-    .map(p => Number(p.mmr))
+    .map(p => Number(p.mmr_snapshot ?? p.mmr))
     .filter(v => Number.isFinite(v) && v > 0);
   if (vals.length === 0) return null;
   return vals.reduce((a, b) => a + b, 0) / vals.length;
@@ -94,7 +97,7 @@ function MatchPlayersStrip({ players, radiantWin, radiantMmr, direMmr }) {
           {sideMmr != null && (
             <span
               className="mc-lineup-mmr"
-              title="Average of these players' current MMR (live rating, not a per-match snapshot)"
+              title="Average of these players' MMR at the time this match was played"
             >
               <MmrBadge mmr={sideMmr} size="sm" />
             </span>
@@ -442,7 +445,7 @@ export default function MatchList() {
                         {upset && (
                           <span
                             className="mc-pill mc-pill--upset"
-                            title="The lower-rated side won (based on live MMR averages, not a per-match snapshot)"
+                            title="The lower-rated side won (based on team-average MMR at match time)"
                           >
                             Upset
                           </span>

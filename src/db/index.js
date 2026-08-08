@@ -571,6 +571,11 @@ async function init() {
       )
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_rating_history_player ON rating_history(player_id, recorded_at)`);
+    // Task #691 — per-match MMR snapshots. rating_history already stores one
+    // row per player per rated match (written by updateRating at record time);
+    // this index makes the (player_id, match_id) snapshot lookup used by
+    // getMatches' team-average badges cheap.
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_rating_history_player_match ON rating_history(player_id, match_id)`);
 
     await p.query(`
       CREATE TABLE IF NOT EXISTS achievements (
@@ -5257,19 +5262,28 @@ async function getMatches(limit = 50, offset = 0, seasonId = null, { tenantId, r
   // May 2026; extended Task #672). `persona_name` is the Steam persona so the
   // card can fall back nickname → persona before ever showing a raw id; `perf`
   // drives the MVP pick; `mmr` is each player's *current* stored rating (joined
-  // from `ratings`, not a per-match snapshot) for the team-average badge.
+  // from `ratings`) and `mmr_snapshot` (Task #691) is the player's rating as of
+  // this match — the rating_history row written when the match was rated. The
+  // frontend prefers the snapshot and falls back to `mmr` for matches recorded
+  // before rating_history existed (or for players outside the rated pool).
   const res = await p.query(
     `SELECT m.*,
        (SELECT COUNT(*) FROM player_stats ps WHERE ps.match_id = m.match_id) as player_count,
        (SELECT json_agg(row_to_json(p2) ORDER BY p2.team, p2.kills DESC NULLS LAST)
         FROM (
           SELECT ps.team, ps.hero_id, ps.hero_name AS hero, ps.kills, ps.deaths, ps.assists,
-                 ps.account_id, ps.persona_name, ps.perf, n.nickname, r.mmr
+                 ps.account_id, ps.persona_name, ps.perf, n.nickname, r.mmr,
+                 rh.mmr AS mmr_snapshot
           FROM player_stats ps
           LEFT JOIN nicknames n
             ON n.account_id = ps.account_id AND ps.account_id != 0
           LEFT JOIN ratings r
             ON r.player_id = ps.account_id AND ps.account_id != 0
+          LEFT JOIN LATERAL (
+            SELECT rh2.mmr FROM rating_history rh2
+            WHERE rh2.player_id = ps.account_id AND rh2.match_id = ps.match_id
+            ORDER BY rh2.id DESC LIMIT 1
+          ) rh ON ps.account_id != 0
           WHERE ps.match_id = m.match_id
         ) p2
        ) as players
