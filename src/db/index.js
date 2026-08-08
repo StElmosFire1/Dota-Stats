@@ -21762,6 +21762,30 @@ async function listFailedStripeWebhookEvents({ limit = 100 } = {}) {
   return r.rows;
 }
 
+// Task #897 — stuck-inbox counts for payment-webhook alerting. Counts
+// failed rows plus 'received'/'processing' rows whose claim went stale,
+// but only those older than the threshold (a fresh failure the retry sweep
+// will heal in minutes shouldn't page anyone). Bounded to the same 7-day
+// window the retry sweep uses so ancient poisoned rows don't alert forever.
+async function countStuckStripeWebhookEvents({ olderThanMinutes = 30 } = {}) {
+  const p = getPool();
+  const mins = Math.max(1, parseInt(olderThanMinutes, 10) || 30);
+  const r = await p.query(
+    `SELECT
+        COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
+        COUNT(*) FILTER (WHERE status IN ('received', 'processing'))::int AS stale
+       FROM stripe_webhook_inbox
+      WHERE received_at > NOW() - INTERVAL '7 days'
+        AND COALESCE(claimed_at, received_at) < NOW() - ($1 * INTERVAL '1 minute')
+        AND (status = 'failed' OR status IN ('received', 'processing'))`,
+    [mins]
+  );
+  const row = r.rows[0] || {};
+  const failed = Number(row.failed) || 0;
+  const stale = Number(row.stale) || 0;
+  return { failed, stale, total: failed + stale };
+}
+
 // Lifetime platform revenue = sum of platform_fee_cents on completed bookings.
 async function getCoachingPlatformRevenue() {
   const p = getPool();
@@ -26814,6 +26838,7 @@ module.exports = {
   listStripeDisputes,
   markStripeDisputeReviewed,
   listFailedStripeWebhookEvents,
+  countStuckStripeWebhookEvents,
   addPushSubscription,
   removePushSubscriptionByEndpoint,
   getPushSubscriptionsForAccount,

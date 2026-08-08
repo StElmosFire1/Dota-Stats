@@ -14,7 +14,7 @@
     "check:robots": "node scripts/build-robots-txt.js --check",
     "build:robots": "node scripts/build-robots-txt.js",
     "check:community-paywall-source": "node scripts/check-community-paywall-source.js",
-    "check:money-paths": "node --test tests/moneyPathsCoverage.test.js tests/stripeWebhookAsyncPayment.test.js tests/stripeWebhookRefundsKyc.test.js tests/inhouseServerProvisioner.test.js",
+    "check:money-paths": "node --test tests/moneyPathsCoverage.test.js tests/stripeWebhookAsyncPayment.test.js tests/stripeWebhookRefundsKyc.test.js tests/paymentWebhookAlerts.test.js tests/paymentWebhookAlertsEndpoint.test.js tests/inhouseServerProvisioner.test.js",
     "prestart": "bash scripts/build-parser.sh",
     "start": "node src/index.js",
     "test": "node --test --test-force-exit tests/",

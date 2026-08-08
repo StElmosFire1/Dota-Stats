@@ -3453,6 +3453,13 @@ function createServer(startupStatus = {}) {
           // Lease-guarded: no-op if another worker took over meanwhile.
           await db.markStripeWebhookFailed(row.event_id, e?.message || e, sweepToken).catch(() => {});
           console.warn('[Stripe] inbox retry failed:', row.event_id, row.event_type, '—', e?.message || e);
+          // Task #897 — a retry that keeps failing means a purchase isn't
+          // activating; alert (rate-limited/deduped in the error monitor).
+          try {
+            require('../observability/paymentAlerts').reportPaymentWebhookFailure(e, {
+              phase: 'retry-sweep', eventType: row.event_type, eventId: row.event_id,
+            });
+          } catch (_) {}
         }
       }
     } catch (e) {
@@ -3477,11 +3484,30 @@ function createServer(startupStatus = {}) {
     // signature.
     if (!webhookSecret) {
       console.error('[Stripe] Webhook rejected: STRIPE_WEBHOOK_SECRET is not configured.');
+      // Task #897 — a missing server-side webhook secret rejects EVERY
+      // legitimate Stripe delivery (no inbox row is ever written, so the
+      // watchdog can't see it either). Page with a distinct config phase;
+      // the error monitor's dedupe keeps Stripe's retries to one ping per
+      // window. Unlike the absent-request-signature case below, Stripe
+      // is really knocking here — this is our misconfiguration.
+      try {
+        require('../observability/paymentAlerts').reportPaymentWebhookFailure(
+          new Error('STRIPE_WEBHOOK_SECRET is not configured — rejecting all Stripe webhook deliveries (503); purchases cannot activate'),
+          { phase: 'config' }
+        );
+      } catch (_) {}
       return res.status(503).send('Stripe webhook secret not configured');
     }
     try {
       const stripe = require('../observability/stripeClient').getStripe();
       const sig = req.headers['stripe-signature'];
+      // Task #897 policy: an ABSENT signature header is unauthenticated
+      // noise (any scanner can POST here) — reject without alerting so an
+      // attacker can't drive owner pings. A PRESENT-but-invalid signature
+      // (constructEvent throws below) DOES alert via the outer catch: that
+      // is exactly how a rotated/mistyped STRIPE_WEBHOOK_SECRET or a
+      // misrouted endpoint manifests, and the error monitor's dedupe +
+      // burst cap bound any flood.
       if (!sig) return res.status(400).send('Missing stripe-signature header');
       const _opsReceivedAt = Date.now();
       const event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
@@ -3512,6 +3538,15 @@ function createServer(startupStatus = {}) {
           rec = await db.recordStripeWebhookEvent(event);
         } catch (e) {
           console.error('[Stripe] webhook inbox write failed — refusing to process (Stripe will retry):', e?.message || e);
+          // Task #897 — a persistent inbox-write failure blocks ALL
+          // fulfilment (we intentionally 500 so Stripe retries) and can
+          // evade the stuck-inbox watchdog when the row never lands, so it
+          // must page directly. Distinct phase for its own dedupe signature.
+          try {
+            require('../observability/paymentAlerts').reportPaymentWebhookFailure(e, {
+              phase: 'inbox-write', eventType: event?.type, eventId: event?.id,
+            });
+          } catch (_) {}
           return res.status(500).send('Webhook inbox unavailable');
         }
         if (rec) {
@@ -3548,9 +3583,33 @@ function createServer(startupStatus = {}) {
       res.json({ received: true });
     } catch (err) {
       console.error('[Stripe] Webhook error:', err.message);
+      // Task #897 — signature rejects and handler errors both land here;
+      // alert the owner webhook (rate-limited + deduped by the error
+      // monitor) so a broken payment pipeline surfaces in minutes, not
+      // when a customer complains.
+      try {
+        require('../observability/paymentAlerts').reportPaymentWebhookFailure(err, {
+          phase: 'request',
+        });
+      } catch (_) {}
       res.status(400).send(`Webhook error: ${err.message}`);
     }
   });
+
+  // Task #897 — stuck-inbox watchdog. Every 15 minutes, count inbox rows
+  // that are failed or stale-claimed past the threshold (default 30 min,
+  // STRIPE_INBOX_STUCK_MINUTES) and alert via the central error monitor if
+  // any exist. First check delayed 10 min so boot-time backlogs the retry
+  // sweep is about to heal don't page anyone.
+  async function _checkStuckStripeInbox() {
+    if (!process.env.STRIPE_SECRET_KEY) return null;
+    const { checkStuckStripeInbox } = require('../observability/paymentAlerts');
+    return checkStuckStripeInbox(db);
+  }
+  setTimeout(() => { _checkStuckStripeInbox().catch(() => {}); }, 10 * 60_000).unref();
+  setInterval(() => { _checkStuckStripeInbox().catch(() => {}); }, 15 * 60_000).unref();
+  // Exposed for tests — not a public API.
+  app.locals._checkStuckStripeInbox = _checkStuckStripeInbox;
 
   app.use(express.json());
 
