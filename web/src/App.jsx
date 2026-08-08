@@ -37,6 +37,8 @@ const HeroDetail = lazy(() => import('./pages/HeroDetail'));
 const Draft = lazy(() => import('./pages/Draft'));
 const DraftAssistant = lazy(() => import('./pages/DraftAssistant'));
 const DraftTrainer = lazy(() => import('./pages/DraftTrainer'));
+// Task #846 — Captain's Mode game (solo-vs-AI CM draft + sim + hero atlas).
+const CaptainMode = lazy(() => import('./pages/CaptainMode'));
 const ProReplayBrowser = lazy(() => import('./pages/ProReplayBrowser'));
 
 // Task #378 — runtime route gate. The Pro Replay Browser is gated by the
@@ -771,6 +773,7 @@ function Nav() {
           <DropdownItem to="/synergy">Synergy</DropdownItem>
           <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>
           <DropdownItem to="/heroes/draft-trainer">Draft Trainer</DropdownItem>
+          <DropdownItem to="/captain-mode">Captain&apos;s Mode</DropdownItem>
           <DropdownItem to="/ward-map">Ward Maps</DropdownItem>
           <DropdownItem to="/multikills">Multi-Kills</DropdownItem>
           <DropdownItem to="/pudge-stats">Pudge Hook Stats</DropdownItem>
@@ -1378,6 +1381,7 @@ function AppRoutes() {
                 <Route path="/draft" element={<Draft />} />
                 <Route path="/draft-assistant" element={<DraftAssistant />} />
                 <Route path="/heroes/draft-trainer" element={<DraftTrainer />} />
+                <Route path="/captain-mode" element={<CaptainMode />} />
                 <Route path="/heroes/:heroId" element={<HeroDetail />} />
                 <Route path="/pro-replays" element={<ProReplaysGuard />} />
                 <Route path="/draft-stats" element={<Draft />} />

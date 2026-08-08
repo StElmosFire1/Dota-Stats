@@ -6680,6 +6680,42 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #846 — Captain's Mode game. Serves the OpenDota /heroStats dataset
+  // (per-hero pub win rate, pick rate, pro pick/ban) that powers the Draft
+  // Atlas, the CM draft counter-pick scoring, and the match simulator.
+  // Cached in-memory for 6h (the upstream dataset only shifts patch-to-patch)
+  // and served stale on upstream failure so the game keeps working through
+  // OpenDota hiccups. Public, read-only — same trust as /heroes.
+  const cmHeroMetaCache = { at: 0, data: null, inflight: null };
+  router.get('/captain-mode/hero-meta', async (req, res) => {
+    const TTL = 6 * 60 * 60 * 1000;
+    try {
+      if (!cmHeroMetaCache.data || Date.now() - cmHeroMetaCache.at > TTL) {
+        if (!cmHeroMetaCache.inflight) {
+          const { getOpenDota } = require('../api/opendota');
+          cmHeroMetaCache.inflight = getOpenDota()
+            .getHeroStatsMeta()
+            .then((rows) => {
+              cmHeroMetaCache.data = rows;
+              cmHeroMetaCache.at = Date.now();
+            })
+            .finally(() => { cmHeroMetaCache.inflight = null; });
+        }
+        try {
+          await cmHeroMetaCache.inflight;
+        } catch (e) {
+          // Upstream failed — fall through to stale data if we have any.
+          if (!cmHeroMetaCache.data) throw e;
+          console.warn('[API] captain-mode/hero-meta serving stale cache:', e.message);
+        }
+      }
+      res.json({ fetchedAt: cmHeroMetaCache.at, heroes: cmHeroMetaCache.data });
+    } catch (err) {
+      console.error('[API] captain-mode/hero-meta:', err.message);
+      res.status(503).json({ error: 'Hero dataset unavailable — OpenDota unreachable' });
+    }
+  });
+
   router.get('/heroes', async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;

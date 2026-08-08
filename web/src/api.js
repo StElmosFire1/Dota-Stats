@@ -2926,3 +2926,12 @@ export const removeAdminRole = (superuserKey, accountId) =>
 // Task #803 — Admin cosmetics catalog (superuser-only, read-only audit).
 export const getAdminCosmeticsCatalog = (superuserKey) =>
   superuserJson('/admin/cosmetics-catalog', { superuserKey });
+
+// Task #846 — Captain's Mode game. OpenDota hero dataset (server-cached 6h):
+// { fetchedAt, heroes: [{ id, name, slug, attr, attackType, roles,
+//   winRate, pickRate, proPick, proBan, proWin, pbRate }] }
+export const getCaptainModeHeroMeta = () =>
+  fetch(`${BASE}/captain-mode/hero-meta`).then((r) => {
+    if (!r.ok) throw new Error('Hero dataset unavailable');
+    return r.json();
+  });

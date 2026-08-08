@@ -129,6 +129,52 @@ class OpenDotaClient {
     }
   }
 
+  // Task #846 — Captain's Mode game. Fetch the /heroStats dataset (one row
+  // per hero: pub picks/wins per bracket + pro pick/ban/win counts) and
+  // normalize it into the shape the Captain's Mode frontend consumes.
+  // Rates are computed here so the client never needs the raw totals:
+  //   winRate  — pub wins / pub picks (all brackets)
+  //   pickRate — share of pub matches this hero appears in (picks*10/Σpicks)
+  //   pbRate   — pro pick+ban rate per pro match ((pick+ban)*10/Σpro picks)
+  async getHeroStatsMeta() {
+    await this._rateLimit();
+    const res = await fetch(`${OPENDOTA_API}/heroStats`);
+    if (!res.ok) throw new Error(`OpenDota /heroStats error: ${res.status}`);
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error('OpenDota /heroStats returned empty payload');
+    }
+    let sumPubPicks = 0;
+    let sumProPicks = 0;
+    const rows = data.map((h) => {
+      let picks = 0;
+      let wins = 0;
+      for (let b = 1; b <= 8; b++) {
+        picks += h[`${b}_pick`] || 0;
+        wins += h[`${b}_win`] || 0;
+      }
+      sumPubPicks += picks;
+      sumProPicks += h.pro_pick || 0;
+      return { h, picks, wins };
+    });
+    const pubMatches = sumPubPicks / 10 || 1;
+    const proMatches = sumProPicks / 10 || 1;
+    return rows.map(({ h, picks, wins }) => ({
+      id: h.id,
+      name: h.localized_name,
+      slug: String(h.name || '').replace('npc_dota_hero_', ''),
+      attr: h.primary_attr,             // str | agi | int | all
+      attackType: h.attack_type,        // Melee | Ranged
+      roles: Array.isArray(h.roles) ? h.roles : [],
+      winRate: picks > 0 ? wins / picks : 0.5,
+      pickRate: picks / pubMatches,
+      proPick: h.pro_pick || 0,
+      proBan: h.pro_ban || 0,
+      proWin: h.pro_win || 0,
+      pbRate: ((h.pro_pick || 0) + (h.pro_ban || 0)) / proMatches,
+    }));
+  }
+
   _normalizeMatch(data) {
     if (!data || data.error) return null;
 
