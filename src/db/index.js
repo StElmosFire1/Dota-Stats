@@ -1534,6 +1534,17 @@ async function init() {
     `);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_entitlements_account ON entitlements(account_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_entitlements_sku ON entitlements(sku)`);
+    // Task #890 — refund revocation for Stripe-bought founder rings. A NULL
+    // revoked_at means the entitlement is live; charge.refunded stamps it.
+    // The payment intent used to match refunds lives in metadata
+    // (metadata->>'stripe_payment_intent'), written by the webhook at grant
+    // time. Expression index keeps the refund lookup cheap.
+    await p.query(`ALTER TABLE entitlements ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_entitlements_pi ON entitlements ((metadata->>'stripe_payment_intent')) WHERE metadata ? 'stripe_payment_intent'`);
+    // Task #890 — store the Stripe payment intent on frame purchases so
+    // charge.refunded can flip status='active' → 'refunded' by intent.
+    await p.query(`ALTER TABLE frame_purchases ADD COLUMN IF NOT EXISTS stripe_payment_intent TEXT`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_frame_purchases_pi ON frame_purchases (stripe_payment_intent) WHERE stripe_payment_intent IS NOT NULL`);
 
     // Task #256 — audit trail for Founders Pass cap-race refunds. When a paid
     // checkout loses the cap race (grantEntitlementWithCap returns
@@ -16657,7 +16668,7 @@ async function getOwnedEntitlements(accountId) {
   }
   const p = getPool();
   const r = await p.query(
-    `SELECT sku FROM entitlements WHERE account_id = $1`,
+    `SELECT sku FROM entitlements WHERE account_id = $1 AND revoked_at IS NULL`,
     [accountId]
   );
   return r.rows.map(row => row.sku);
@@ -16669,7 +16680,7 @@ async function hasEntitlement(accountId, sku) {
   if (isSuperuserAccountId(accountId)) return true;
   const p = getPool();
   const r = await p.query(
-    `SELECT 1 FROM entitlements WHERE account_id = $1 AND sku = $2 LIMIT 1`,
+    `SELECT 1 FROM entitlements WHERE account_id = $1 AND sku = $2 AND revoked_at IS NULL LIMIT 1`,
     [accountId, sku]
   );
   return r.rows.length > 0;
@@ -16678,7 +16689,7 @@ async function hasEntitlement(accountId, sku) {
 async function countEntitlementHolders(sku) {
   if (!sku) return 0;
   const p = getPool();
-  const r = await p.query(`SELECT COUNT(*)::int AS n FROM entitlements WHERE sku = $1`, [sku]);
+  const r = await p.query(`SELECT COUNT(*)::int AS n FROM entitlements WHERE sku = $1 AND revoked_at IS NULL`, [sku]);
   return r.rows[0]?.n || 0;
 }
 
@@ -16688,7 +16699,7 @@ async function listEntitlementHolders(sku, limit = 500) {
   const r = await p.query(
     `SELECT account_id, granted_at, granted_by, metadata
        FROM entitlements
-      WHERE sku = $1
+      WHERE sku = $1 AND revoked_at IS NULL
       ORDER BY granted_at ASC
       LIMIT $2`,
     [sku, Math.min(Math.max(parseInt(limit, 10) || 500, 1), 5000)]
@@ -16849,7 +16860,7 @@ async function listFounderRingPurchases(accountId) {
   const r = await p.query(
     `SELECT sku, granted_at, metadata
        FROM entitlements
-      WHERE account_id = $1 AND granted_by = 'stripe'
+      WHERE account_id = $1 AND granted_by = 'stripe' AND revoked_at IS NULL
         AND (sku LIKE 'founder_ring:%' OR sku = 'founders_pass_ring')
       ORDER BY granted_at DESC`,
     [accountId]
@@ -16966,8 +16977,10 @@ async function grantEntitlementWithCap({ accountId, sku, cap, grantedBy = null, 
     // drop — so a crashed worker can never wedge the cap forever.
     await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [sku]);
     // Idempotent — if the user already owns it, succeed without touching cap.
+    // Task #890 — a refund-revoked row must NOT short-circuit as
+    // 'already_owned'; a re-purchase revives it via the ON CONFLICT UPDATE.
     const ex = await client.query(
-      `SELECT 1 FROM entitlements WHERE account_id = $1 AND sku = $2 LIMIT 1`,
+      `SELECT 1 FROM entitlements WHERE account_id = $1 AND sku = $2 AND revoked_at IS NULL LIMIT 1`,
       [accountId, sku]
     );
     if (ex.rows.length > 0) {
@@ -16980,7 +16993,7 @@ async function grantEntitlementWithCap({ accountId, sku, cap, grantedBy = null, 
       // we COMMIT/ROLLBACK — the count + insert pair is now atomic
       // with respect to other grant_with_cap callers.
       const cnt = await client.query(
-        `SELECT COUNT(*)::int AS n FROM entitlements WHERE sku = $1`,
+        `SELECT COUNT(*)::int AS n FROM entitlements WHERE sku = $1 AND revoked_at IS NULL`,
         [sku]
       );
       if ((cnt.rows[0]?.n || 0) >= cap) {
@@ -16991,7 +17004,12 @@ async function grantEntitlementWithCap({ accountId, sku, cap, grantedBy = null, 
     await client.query(
       `INSERT INTO entitlements (account_id, sku, granted_by, metadata)
        VALUES ($1, $2, $3, COALESCE($4::jsonb, '{}'::jsonb))
-       ON CONFLICT (account_id, sku) DO NOTHING`,
+       ON CONFLICT (account_id, sku) DO UPDATE
+         SET revoked_at = NULL,
+             granted_at = NOW(),
+             granted_by = EXCLUDED.granted_by,
+             metadata = EXCLUDED.metadata
+       WHERE entitlements.revoked_at IS NOT NULL`,
       [accountId, sku, grantedBy, metadata ? JSON.stringify(metadata) : null]
     );
     await client.query('COMMIT');
@@ -17499,7 +17517,7 @@ async function listOwnedFounderRings(accountId) {
   // "inscribed", and any `founder_ring:<slug>` row as its slug.
   const p = getPool();
   const er = await p.query(
-    `SELECT sku FROM entitlements WHERE account_id = $1
+    `SELECT sku FROM entitlements WHERE account_id = $1 AND revoked_at IS NULL
        AND (sku = $2 OR sku LIKE 'founder_ring:%')`,
     [accountId, cosm.FOUNDERS_RING_SKU]
   );
@@ -17683,7 +17701,7 @@ async function createFrameCheckout({ accountId, frameId, stripeSessionId, amount
        SET stripe_session_id = EXCLUDED.stripe_session_id,
            amount_cents = EXCLUDED.amount_cents,
            created_at = NOW()
-     WHERE frame_purchases.status = 'pending'
+     WHERE frame_purchases.status IN ('pending', 'refunded')
      RETURNING *`,
     [accountId, frameId, stripeSessionId, amountCents, currency || 'aud']
   );
@@ -17707,21 +17725,64 @@ async function createFrameCheckout({ accountId, frameId, stripeSessionId, amount
 // recovery-created rows (no pending pre-record) still persist what was paid,
 // and the purchase-history view can always show a real amount. COALESCE keeps
 // any amount recorded at checkout-init time when the webhook omits it.
-async function confirmFramePurchase(stripeSessionId, accountId, frameId, { amountCents = null, currency = null } = {}) {
+// Task #890 — also records the Stripe payment intent (when the webhook has
+// one) so charge.refunded can later match this purchase and revoke it.
+async function confirmFramePurchase(stripeSessionId, accountId, frameId, { amountCents = null, currency = null, paymentIntent = null } = {}) {
   const p = getPool();
   const r = await p.query(
-    `INSERT INTO frame_purchases (account_id, frame_id, stripe_session_id, amount_cents, currency, status, purchased_at, created_at)
-     VALUES ($1, $2, $3, $4, COALESCE($5, 'aud'), 'active', NOW(), NOW())
+    `INSERT INTO frame_purchases (account_id, frame_id, stripe_session_id, amount_cents, currency, status, stripe_payment_intent, purchased_at, created_at)
+     VALUES ($1, $2, $3, $4, COALESCE($5, 'aud'), 'active', $6, NOW(), NOW())
      ON CONFLICT (account_id, frame_id) DO UPDATE
        SET status = 'active',
            purchased_at = COALESCE(frame_purchases.purchased_at, NOW()),
            amount_cents = COALESCE($4, frame_purchases.amount_cents),
            currency = COALESCE($5, frame_purchases.currency, 'aud'),
-           stripe_session_id = EXCLUDED.stripe_session_id
+           stripe_session_id = EXCLUDED.stripe_session_id,
+           stripe_payment_intent = COALESCE($6, frame_purchases.stripe_payment_intent)
      RETURNING *`,
-    [accountId, frameId, stripeSessionId, amountCents, currency]
+    [accountId, frameId, stripeSessionId, amountCents, currency, paymentIntent]
   );
   return r.rows[0] || null;
+}
+
+// Task #890 — charge.refunded revocation for Stripe-bought frames. Flips the
+// active row(s) whose stored payment intent matches to status='refunded'.
+// Idempotent (already-refunded rows don't match) and cheap to call for
+// unrelated refunds (no row matches → empty array). The status='active'
+// filters in hasFrameUnlocked / getOwnedFrames / listFramePurchases hide the
+// frame from ownership, equip and purchase history immediately.
+async function markFramePurchasesRefundedByIntent(paymentIntent) {
+  if (!paymentIntent) return [];
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE frame_purchases
+        SET status = 'refunded'
+      WHERE stripe_payment_intent = $1 AND status = 'active'
+      RETURNING *`,
+    [paymentIntent]
+  );
+  return r.rows;
+}
+
+// Task #890 — charge.refunded revocation for Stripe-bought founder rings
+// (per-slug SKUs + the limited Founders Pass ring). Matches by the payment
+// intent stored in metadata at grant time and stamps revoked_at = NOW().
+// Idempotent: already-revoked rows are skipped. revoked_at IS NULL filters
+// in the entitlement readers hide the ring everywhere immediately.
+async function markFounderRingsRefundedByIntent(paymentIntent) {
+  if (!paymentIntent) return [];
+  const p = getPool();
+  const r = await p.query(
+    `UPDATE entitlements
+        SET revoked_at = NOW()
+      WHERE metadata->>'stripe_payment_intent' = $1
+        AND granted_by = 'stripe'
+        AND revoked_at IS NULL
+        AND (sku LIKE 'founder_ring:%' OR sku = 'founders_pass_ring')
+      RETURNING *`,
+    [paymentIntent]
+  );
+  return r.rows;
 }
 
 // Frames included in the Pro tier at no extra charge.
@@ -26493,6 +26554,8 @@ module.exports = {
   listCoinPackPurchases,
   listFramePurchases,
   listFounderRingPurchases,
+  markFramePurchasesRefundedByIntent,
+  markFounderRingsRefundedByIntent,
   getCoinOwnedCosmetics,
   hasCoinCosmetic,
   purchaseCosmeticWithCoins,

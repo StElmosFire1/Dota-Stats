@@ -2670,6 +2670,8 @@ function createServer(startupStatus = {}) {
               grantedBy: 'stripe',
               metadata: {
                 stripe_session_id: session.id,
+                // Task #890 — stored so charge.refunded can revoke the ring.
+                stripe_payment_intent: (typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id) || null,
                 amount_cents: session.amount_total || null,
                 currency: session.currency || 'aud',
                 slug,
@@ -2696,6 +2698,8 @@ function createServer(startupStatus = {}) {
               grantedBy: 'stripe',
               metadata: {
                 stripe_session_id: session.id,
+                // Task #890 — stored so charge.refunded can revoke the ring.
+                stripe_payment_intent: (typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id) || null,
                 amount_cents: session.amount_total || null,
                 currency: session.currency || 'aud',
               },
@@ -2826,6 +2830,8 @@ function createServer(startupStatus = {}) {
             await db.confirmFramePurchase(session.id, frameAccountId, frameId, {
               amountCents: session.amount_total || null,
               currency: session.currency || null,
+              // Task #890 — stored so charge.refunded can revoke the frame.
+              paymentIntent: (typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id) || null,
             });
             console.log('[Stripe] Frame purchase confirmed:', frameId, 'for account', frameAccountId);
           }
@@ -3105,6 +3111,20 @@ function createServer(startupStatus = {}) {
           } catch (_) { /* best-effort — refund webhook must never 400 over perk revocation */ }
           for (const perk of revokedPerks) {
             console.log('[Stripe] Refund revoked one-off perk', perk.id, perk.perk_key, 'account', perk.account_id);
+          }
+          // Task #890 — Stripe-bought profile frames and founder rings lose
+          // access on refund too. Both helpers match by the payment intent
+          // stored at grant time, are idempotent across webhook retries, and
+          // are best-effort like the other refund handlers above. The
+          // status='active' / revoked_at IS NULL filters hide the cosmetics
+          // from ownership, equip and /me/purchase-history immediately.
+          const refundedFrames = (await db.markFramePurchasesRefundedByIntent(pi).catch(() => [])) || [];
+          for (const f of refundedFrames) {
+            console.log('[Stripe] Refund revoked profile frame', f.frame_id, 'account', f.account_id);
+          }
+          const refundedRings = (await db.markFounderRingsRefundedByIntent(pi).catch(() => [])) || [];
+          for (const ring of refundedRings) {
+            console.log('[Stripe] Refund revoked founder ring', ring.sku, 'account', ring.account_id);
           }
           // Task #421 — Ingest the refund's BalanceTransaction(s) so the
           // coach earnings dashboard can show the real cost of the refund

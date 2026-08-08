@@ -152,6 +152,7 @@ test('db list helpers filter refunded/pending rows at the SQL layer', async (t) 
   const rings = calls.pop();
   assert.match(rings.sql, /FROM entitlements/);
   assert.match(rings.sql, /granted_by = 'stripe'/); // admin/promo grants excluded
+  assert.match(rings.sql, /revoked_at IS NULL/); // Task #890 — refund-revoked rings excluded
   assert.match(rings.sql, /sku LIKE 'founder_ring:%' OR sku = 'founders_pass_ring'/);
 
   await db.listCoinPurchases(7);
@@ -298,6 +299,183 @@ test('refund-revoked perk vanishes from listOneOffPerks (the /me/perks + purchas
   await magDb.revokeOneOffPerksByPaymentIntent('pi_refund_me');
   assert.deepEqual(await magDb.listOneOffPerks(777), []);
   assert.equal(await magDb.hasOneOffPerk(777, 'cosmetic:vanity_url'), false);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Task #890 — charge.refunded also revokes Stripe-bought profile frames and
+// founder rings. The webhook matches by the payment intent stored at grant
+// time (frame_purchases.stripe_payment_intent; entitlements
+// metadata->>'stripe_payment_intent') and flips status / stamps revoked_at.
+// Idempotent + best-effort like the other refund handlers.
+// ───────────────────────────────────────────────────────────────────────────
+
+test('markFramePurchasesRefundedByIntent flips active rows to refunded (SQL guards + short-circuit)', async (t) => {
+  const { db, calls } = loadDbWithCapturingPool();
+  t.after(() => {
+    const dbEntry = require.resolve('../src/db/index.js');
+    delete require.cache[Module.createRequire(dbEntry).resolve('pg')];
+    delete require.cache[dbEntry];
+    delete require.cache[require.resolve('../src/db')];
+  });
+
+  // No payment intent → short-circuit, no query.
+  assert.deepEqual(await db.markFramePurchasesRefundedByIntent(null), []);
+  assert.deepEqual(await db.markFramePurchasesRefundedByIntent(''), []);
+  assert.equal(calls.length, 0);
+
+  await db.markFramePurchasesRefundedByIntent('pi_frame_refund');
+  const q = calls.pop();
+  assert.match(q.sql, /UPDATE frame_purchases/);
+  assert.match(q.sql, /SET status = 'refunded'/);
+  assert.match(q.sql, /stripe_payment_intent = \$1/);
+  assert.match(q.sql, /status = 'active'/); // idempotent — refunded rows skipped
+  assert.deepEqual(q.params, ['pi_frame_refund']);
+});
+
+test('markFounderRingsRefundedByIntent stamps revoked_at on stripe ring entitlements only', async (t) => {
+  const { db, calls } = loadDbWithCapturingPool();
+  t.after(() => {
+    const dbEntry = require.resolve('../src/db/index.js');
+    delete require.cache[Module.createRequire(dbEntry).resolve('pg')];
+    delete require.cache[dbEntry];
+    delete require.cache[require.resolve('../src/db')];
+  });
+
+  assert.deepEqual(await db.markFounderRingsRefundedByIntent(null), []);
+  assert.deepEqual(await db.markFounderRingsRefundedByIntent(undefined), []);
+  assert.equal(calls.length, 0);
+
+  await db.markFounderRingsRefundedByIntent('pi_ring_refund');
+  const q = calls.pop();
+  assert.match(q.sql, /UPDATE entitlements/);
+  assert.match(q.sql, /SET revoked_at = NOW\(\)/);
+  assert.match(q.sql, /metadata->>'stripe_payment_intent' = \$1/);
+  assert.match(q.sql, /granted_by = 'stripe'/); // admin/promo grants untouched
+  assert.match(q.sql, /revoked_at IS NULL/); // idempotent across webhook retries
+  assert.match(q.sql, /sku LIKE 'founder_ring:%' OR sku = 'founders_pass_ring'/);
+  assert.deepEqual(q.params, ['pi_ring_refund']);
+});
+
+test('entitlement readers all exclude revoked rings; grant revives a revoked row', async (t) => {
+  const { db, calls } = loadDbWithCapturingPool();
+  t.after(() => {
+    const dbEntry = require.resolve('../src/db/index.js');
+    delete require.cache[Module.createRequire(dbEntry).resolve('pg')];
+    delete require.cache[dbEntry];
+    delete require.cache[require.resolve('../src/db')];
+  });
+
+  await db.hasEntitlement(7, 'founder_ring:storm');
+  assert.match(calls.pop().sql, /revoked_at IS NULL/);
+  await db.getOwnedEntitlements(7);
+  assert.match(calls.pop().sql, /revoked_at IS NULL/);
+  await db.countEntitlementHolders('founders_pass_ring');
+  assert.match(calls.pop().sql, /revoked_at IS NULL/);
+  await db.listOwnedFounderRings(7);
+  const ringSql = calls.find(c => /FROM entitlements/.test(c.sql) && /founder_ring:%/.test(c.sql));
+  assert.ok(ringSql, 'listOwnedFounderRings queries entitlements');
+  assert.match(ringSql.sql, /revoked_at IS NULL/);
+});
+
+test('in-memory refund round-trip: refunded frame/ring vanish; unrelated intents untouched; re-grant revives', async () => {
+  // A tiny in-memory pg fake that actually applies the SQL semantics for the
+  // handful of statements this scenario touches, so the WHERE clauses (not
+  // just their text) are what is pinned.
+  const frames = [
+    { id: 1, account_id: 7, frame_id: 'cosmic', status: 'active', stripe_payment_intent: 'pi_frame' },
+    { id: 2, account_id: 7, frame_id: 'fire',   status: 'active', stripe_payment_intent: 'pi_other' },
+  ];
+  const rings = [
+    { id: 1, account_id: 7, sku: 'founder_ring:storm', granted_by: 'stripe',
+      granted_at: '2026-01-01T00:00:00Z', revoked_at: null,
+      metadata: { stripe_payment_intent: 'pi_ring' } },
+    { id: 2, account_id: 7, sku: 'founder_ring:laurel', granted_by: 'admin',
+      granted_at: '2026-01-02T00:00:00Z', revoked_at: null,
+      metadata: { stripe_payment_intent: 'pi_ring' } }, // admin grant — must survive
+  ];
+  const pool = {
+    async query(sqlRaw, params = []) {
+      const sql = String(sqlRaw).replace(/\s+/g, ' ').trim();
+      if (/UPDATE frame_purchases SET status = 'refunded'/.test(sql)) {
+        const hit = frames.filter(f => f.stripe_payment_intent === params[0] && f.status === 'active');
+        for (const f of hit) f.status = 'refunded';
+        return { rows: hit, rowCount: hit.length };
+      }
+      if (/UPDATE entitlements SET revoked_at = NOW\(\)/.test(sql)) {
+        const hit = rings.filter(r =>
+          r.metadata?.stripe_payment_intent === params[0] &&
+          r.granted_by === 'stripe' && r.revoked_at === null &&
+          (r.sku.startsWith('founder_ring:') || r.sku === 'founders_pass_ring'));
+        for (const r of hit) r.revoked_at = '2026-05-01T00:00:00Z';
+        return { rows: hit, rowCount: hit.length };
+      }
+      if (/FROM frame_purchases/.test(sql)) {
+        let out = frames.filter(f => String(f.account_id) === String(params[0]));
+        if (/status = 'active'/.test(sql)) out = out.filter(f => f.status === 'active');
+        return { rows: out, rowCount: out.length };
+      }
+      if (/FROM entitlements/.test(sql)) {
+        let out = rings.filter(r => String(r.account_id) === String(params[0]));
+        if (/granted_by = 'stripe'/.test(sql)) out = out.filter(r => r.granted_by === 'stripe');
+        if (/revoked_at IS NULL/.test(sql)) out = out.filter(r => r.revoked_at === null);
+        return { rows: out, rowCount: out.length };
+      }
+      throw new Error('unexpected query: ' + sql.slice(0, 100));
+    },
+  };
+  const dbEntry = require.resolve('../src/db/index.js');
+  stubModule('pg', { Pool: function Pool() { return pool; } }, dbEntry);
+  delete require.cache[dbEntry];
+  delete require.cache[require.resolve('../src/db')];
+  const db = require('../src/db');
+  try {
+    // Before the refund both purchases are listed.
+    assert.deepEqual((await db.listFramePurchases(7)).map(f => f.frame_id), ['cosmic', 'fire']);
+    assert.deepEqual((await db.listFounderRingPurchases(7)).map(r => r.sku), ['founder_ring:storm']);
+
+    // Refund the frame intent — only the matching frame flips.
+    assert.deepEqual((await db.markFramePurchasesRefundedByIntent('pi_frame')).map(f => f.id), [1]);
+    assert.deepEqual((await db.listFramePurchases(7)).map(f => f.frame_id), ['fire']);
+    // Retry (Stripe redelivery) is a no-op.
+    assert.deepEqual(await db.markFramePurchasesRefundedByIntent('pi_frame'), []);
+
+    // Refund the ring intent — only the stripe-granted ring is revoked; the
+    // admin grant sharing the same (bogus) intent survives.
+    assert.deepEqual((await db.markFounderRingsRefundedByIntent('pi_ring')).map(r => r.id), [1]);
+    assert.deepEqual(await db.listFounderRingPurchases(7), []);
+    assert.deepEqual(await db.markFounderRingsRefundedByIntent('pi_ring'), []);
+    assert.equal(rings[1].revoked_at, null, 'admin-granted ring untouched');
+  } finally {
+    delete require.cache[Module.createRequire(dbEntry).resolve('pg')];
+    delete require.cache[dbEntry];
+    delete require.cache[require.resolve('../src/db')];
+  }
+});
+
+test('charge.refunded webhook branch routes through the frame + founder-ring revokers', () => {
+  const fs = require('fs');
+  const src = fs.readFileSync(require.resolve('../src/web/server.js'), 'utf8');
+  const start = src.indexOf("event.type === 'charge.refunded'");
+  assert.ok(start > -1, 'charge.refunded branch exists');
+  const branch = src.slice(start, src.indexOf('} else if', start + 1));
+  assert.match(branch, /db\.markFramePurchasesRefundedByIntent\(pi\)/);
+  assert.match(branch, /db\.markFounderRingsRefundedByIntent\(pi\)/);
+  // Best-effort like the other refund handlers.
+  assert.match(branch, /markFramePurchasesRefundedByIntent\(pi\)\.catch\(\(\) => \[\]\)/);
+  assert.match(branch, /markFounderRingsRefundedByIntent\(pi\)\.catch\(\(\) => \[\]\)/);
+});
+
+test('grant paths store the payment intent the refund handler matches on', () => {
+  const fs = require('fs');
+  const src = fs.readFileSync(require.resolve('../src/web/server.js'), 'utf8');
+  // Frame confirmations pass paymentIntent through to confirmFramePurchase.
+  const frameStart = src.indexOf("purpose === 'frame_purchase'");
+  assert.ok(frameStart > -1);
+  const frameBranch = src.slice(frameStart, src.indexOf('} else if', frameStart + 1));
+  assert.match(frameBranch, /paymentIntent:/);
+  // Both founder-ring grant branches stamp stripe_payment_intent in metadata.
+  const ringMatches = src.match(/stripe_payment_intent: \(typeof session\.payment_intent === 'string'/g) || [];
+  assert.ok(ringMatches.length >= 2, 'both founder-ring grant branches store the intent');
 });
 
 test('charge.refunded webhook branch routes through revokeOneOffPerksByPaymentIntent', () => {
