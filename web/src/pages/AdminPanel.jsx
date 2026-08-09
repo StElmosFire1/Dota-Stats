@@ -9897,10 +9897,17 @@ function AnalyticsPanel({ superuserKey }) {
                 <tbody>
                   {games.perGame.map(row => (
                     <tr key={row.game}>
-                      <td style={{ ...tdStyle, fontWeight: 600 }}>{row.game}</td>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>
+                        {row.game}
+                        {row.standalone && (
+                          <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 500, color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle' }}>
+                            standalone
+                          </span>
+                        )}
+                      </td>
                       <td style={numTd}>{row.plays}</td>
-                      <td style={numTd}>{row.daily_plays}</td>
-                      <td style={numTd}>{row.endless_plays}</td>
+                      <td style={numTd}>{row.daily_plays ?? '—'}</td>
+                      <td style={numTd}>{row.endless_plays ?? '—'}</td>
                       <td style={numTd}>{row.plays ? `${Math.round((row.wins / row.plays) * 100)}%` : '—'}</td>
                       <td style={numTd}>{row.unique_players}</td>
                       <td style={numTd}>{row.avg_guesses ?? '—'}</td>

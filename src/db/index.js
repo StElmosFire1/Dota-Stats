@@ -26598,7 +26598,49 @@ async function getAnalyticsGameStats(days = 30) {
       [d]
     ),
   ]);
-  return { days: d, summary: summary.rows[0], perGame: perGame.rows, daily: daily.rows };
+  // Standalone games (Task #929): Draft Trainer and Captain Sim persist runs
+  // in their own tables (draft_trainer_runs / captain_mode_runs), not
+  // game_results, so they'd otherwise be invisible here. They have no
+  // daily/endless split or guess count. "Wins" for Captain Sim is the won
+  // flag; for Draft Trainer it's runs whose prediction was proven correct
+  // against a real matched inhouse game (matched_outcome joined with the
+  // predicted_advantage sign) — unmatched runs simply don't count as wins.
+  const [dtr, cms] = await Promise.all([
+    p.query(
+      `SELECT COUNT(*)::int AS plays,
+              COUNT(DISTINCT account_id)::int AS unique_players,
+              COUNT(*) FILTER (
+                WHERE matched_outcome IS NOT NULL
+                  AND matched_outcome = (CASE WHEN predicted_advantage >= 0 THEN 1 ELSE 0 END)
+              )::int AS wins
+         FROM draft_trainer_runs
+        WHERE ${range}`,
+      [d]
+    ),
+    p.query(
+      `SELECT COUNT(*)::int AS plays,
+              COUNT(DISTINCT account_id)::int AS unique_players,
+              COUNT(*) FILTER (WHERE won)::int AS wins
+         FROM captain_mode_runs
+        WHERE ${range}`,
+      [d]
+    ),
+  ]);
+  const standalone = [
+    { game: 'draft-trainer', ...dtr.rows[0] },
+    { game: 'captain-sim', ...cms.rows[0] },
+  ]
+    .filter(r => r.plays > 0)
+    .map(r => ({
+      ...r,
+      daily_plays: null,
+      endless_plays: null,
+      avg_guesses: null,
+      standalone: true,
+    }));
+  const allGames = [...perGame.rows, ...standalone]
+    .sort((a, b) => b.plays - a.plays);
+  return { days: d, summary: summary.rows[0], perGame: allGames, daily: daily.rows };
 }
 
 // Candidate scoreboard rows for the Statline mini-game. Pulls real inhouse
