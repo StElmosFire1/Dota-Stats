@@ -1,0 +1,941 @@
+n' +
+    '    at fulfillCompletedSession (/root/Dota-Stats-Full/src/web/server.js:2866:32)\n' +
+    '    at async _processStripeEvent (/root/Dota-Stats-Full/src/web/server.js:3145:11)\n' +
+    '    at async /root/Dota-Stats-Full/src/web/server.js:3713:9'
+} error captured (stripe-webhook:request)
+[Stripe] Season Pass self-purchase (session cs_fail_1 ) was already refunded — revoked at fulfillment
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Season Pass self-purchase confirmed for 111 season 12
+[Stripe] Webhook error: db down
+[error] {
+  component: 'error-monitor',
+  source: 'stripe-webhook:request',
+  route: '/api/stripe/webhook',
+  phase: 'request',
+  err: 'db down',
+  stack: 'Error: db down\n' +
+    '    at dbStub.markSeasonPassRefundedByIntent (/root/Dota-Stats-Full/tests/seasonPassRefundOrdering.test.js:304:63)\n' +
+    '    at _processStripeEvent (/root/Dota-Stats-Full/src/web/server.js:3258:44)\n' +
+    '    at async /root/Dota-Stats-Full/src/web/server.js:3713:9'
+} error captured (stripe-webhook:request)
+[Stripe] Refund revoked season pass season 12 account 111 (self)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Gift Season Pass for 222 season 12 was already refunded — revoked at fulfillment
+[Stripe] Gift Season Pass for 222 season 12 was already refunded — revoked at fulfillment
+✔ self purchase: fulfillment then refund → pass revoked (267.862967ms)
+✔ self purchase: refund BEFORE fulfillment → pass never stays active (83.110214ms)
+✔ gift: fulfillment then refund → recipient pass revoked, gift row flipped later by real helper (88.147474ms)
+✔ fulfillment: refund lookup failure → webhook non-2xx (Stripe retries), pass not granted silently (90.922846ms)
+✔ charge.refunded: season-pass revoke failure → webhook non-2xx (Stripe retries) (79.322494ms)
+✔ gift: refund BEFORE fulfillment → no active pass, no XP bonus (63.55007ms)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Webhook] dispatcher worker started
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+✔ validateExtras: null share_card_hero_id stays null (1.939464ms)
+✔ validateExtras: missing share_card_hero_id defaults to null (0.202096ms)
+✔ validateExtras: empty-string share_card_hero_id coerces to null (0.2598ms)
+✔ validateExtras: 'most_played' sentinel is preserved (0.188352ms)
+✔ validateExtras: positive integer hero id is preserved (0.207551ms)
+✔ validateExtras: numeric string hero id is parsed to int (1.077108ms)
+✔ validateExtras: garbage string is coerced to null (not persisted) (0.210172ms)
+✔ validateExtras: zero / negative / NaN hero ids coerce to null (0.280833ms)
+✔ validateExtras: out-of-range hero id (>= 1,000,000) coerces to null (0.410545ms)
+✔ validateExtras: object / non-numeric array shapes coerce to null (no crash) (0.475237ms)
+✔ OG by-id: anonymous ?preview_hero_id is IGNORED (saved override wins) (240.692201ms)
+✔ OG by-id: signed-in non-owner ?preview_hero_id is IGNORED (81.885415ms)
+✔ OG by-id: owner ?preview_hero_id IS honoured (86.748346ms)
+✔ OG by-id: owner ?preview_hero_id=most_played skips saved override (81.323637ms)
+✔ OG by-id: non-owner ?preview_hero_id=most_played is IGNORED (78.653523ms)
+✔ OG by-id: non-numeric accountId is rejected (302 to /oa-logo.png) (58.144566ms)
+✔ _diffAgainstBaseline: baseline absent → status ok, no diff computed (90.429229ms)
+✔ _diffAgainstBaseline: same size under threshold → status ok with ratio (26.156732ms)
+✔ _diffAgainstBaseline: same size over threshold → status failed (23.900277ms)
+✔ _diffAgainstBaseline: viewport mismatch → status failed (25.051532ms)
+✔ _diffAgainstBaseline: pixelmatch throws → status failed with error reason (24.340974ms)
+✔ runSmoke: missing optional deps → records SKIPPED bootstrap step (1.868628ms)
+[Owner DM] failed: Expected token to be set for this request, but none was present
+✔ runSmoke: second concurrent call returns skipped (in-flight guard) (11.801131ms)
+✔ runSmoke: lockdown on + no SUPERUSER_PASSWORD → records _lockdown skipped step and bails (3.101081ms)
+✔ runSmoke: SUPERUSER_PASSWORD set → context carries x-superuser-key header, no lockdown probe (1174.978598ms)
+✔ _probeJsonJourney: 2xx → ok (27.369056ms)
+✔ _probeJsonJourney: non-2xx → not ok with HTTP reason (23.63624ms)
+✔ _checkPageLoad: nav HTTP >= 400 → not ok (24.434008ms)
+✔ _checkPageLoad: no navigation response → not ok (24.225534ms)
+✔ _checkPageLoad: selector not found → not ok (27.713575ms)
+✔ _checkPageLoad: selector present (fast count pass) → ok (23.91381ms)
+✔ _checkPageLoad: no expect → ok on clean nav (30.16729ms)
+✔ _resolveAuthReadiness: not configured → skipped with clear reason (24.650524ms)
+✔ _resolveAuthReadiness: stored state validates against /api/auth/me → reused, no fresh login (29.313676ms)
+✔ _resolveAuthReadiness: stale stored state → falls through to fresh login success (24.186404ms)
+✔ _resolveAuthReadiness: fresh login non-2xx → recorded as skip reason (23.664532ms)
+✔ _resolveAuthReadiness: fresh login throws → recorded as skip reason (23.605243ms)
+✔ _resolveAuthReadiness: onCaptureState throwing does not unset authReady (23.308975ms)
+✔ _resolveSuperuserReadiness: password unset → skipped with clear reason (23.252108ms)
+✔ _resolveSuperuserReadiness: login 2xx → ready (23.316187ms)
+✔ _resolveSuperuserReadiness: login non-2xx → not ready with HTTP reason (25.093444ms)
+✔ _resolveSuperuserReadiness: login throws → not ready with failure reason (23.44209ms)
+✔ _alertOwner: no-op (no throw) when Discord bot unavailable (1.199029ms)
+✔ _alertOwner: no-op when bot lacks _dmOwner (0.908802ms)
+✔ _alertOwner: DMs the owner when bot is available (0.988481ms)
+✔ fingerprint signal: overlapping hashed IPs across two accounts contribute >0 and name the partner (3.069371ms)
+✔ fingerprint signal: no overlap returns 0 contribution with the "no overlapping fingerprints" detail (1.973952ms)
+✔ fingerprint signal: empty index degrades to "no fingerprint data available" (0.351739ms)
+✔ stampSession: no-op for anonymous sessions, writes for authenticated ones (1.412377ms)
+✔ stampSession: re-stamp is a no-op within the refresh window when prints are unchanged (0.533981ms)
+✔ round-trip: middleware-written prints overlap through the scorer (0.65008ms)
+✔ partners: no overlap yields an empty partners list and 0 contribution (3.214921ms)
+✔ partners: a single overlapping account yields exactly one partner (0.439665ms)
+✔ partners: multiple overlaps are sorted by hit count (desc) and capped at 10 (0.93751ms)
+✔ detail + contribution: weighting matches the documented math (0.530736ms)
+✔ detail: a single overlap uses the singular "overlap" wording (1.235209ms)
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Webhook] dispatcher worker started
+[mag-v3] weekly report worker started
+✔ SPA HTML shell is served no-store at the root and on deep routes (no stale-build pin) (357.844717ms)
+✔ isBot: missing or empty UA is treated as a bot (1.637148ms)
+✔ isBot: known crawlers and unfurlers are blocked (0.266959ms)
+✔ isBot: headless browsers and automation frameworks are blocked (0.22297ms)
+✔ isBot: generic HTTP clients are blocked (0.30688ms)
+✔ isBot: real browsers (desktop + mobile) are NOT blocked (0.272657ms)
+✔ isBot: matching is case-insensitive (0.151243ms)
+✔ BOT_UA_SUBSTRINGS: every entry is non-empty and already lowercased (0.382654ms)
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: initial login.
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: initial login.
+[Steam] Logged in successfully.
+[Steam] Reconnected to Steam — Dota GC session still established; not re-opening Dota.
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: initial login.
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: initial login.
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Suppressing Dota re-open — a gamesPlayed hello was already sent 0.0s ago (debounce).
+[Steam] Logged in successfully.
+[Steam] Suppressing Dota re-open — a gamesPlayed hello was already sent 0.0s ago (debounce).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: initial login.
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+✔ first login opens Dota exactly once and creates one GC client (4.74123ms)
+✔ reconnect with GC still established does NOT re-open Dota (0.436671ms)
+✔ reconnect with GC lost DOES re-open Dota to recover it (0.562285ms)
+✔ rapid reconnect storm is debounced to a single re-open (0.825947ms)
+✔ GC client and its listeners are bound exactly once across many re-logins (2.043874ms)
+﹣ claim lease: stale takeover invalidates the original worker's terminal writes (1.57496ms) # DATABASE_URL not set
+[Stripe] KEY MODE MISMATCH: STRIPE_SECRET_KEY is a test-mode key but NODE_ENV=production expects live mode — refusing to start. Set the correct key, or set STRIPE_ALLOW_MODE_MISMATCH=1 to override (dangerous).
+[Stripe] KEY MODE MISMATCH: STRIPE_SECRET_KEY is a test-mode key but NODE_ENV=production expects live mode — continuing because STRIPE_ALLOW_MODE_MISMATCH=1
+[Stripe] Key mode OK — live key matches NODE_ENV=production
+✔ getKeyMode classifies key prefixes (1.783964ms)
+✔ static check: matching modes pass (0.302319ms)
+✔ static check: test key in production fails (0.268993ms)
+✔ static check: live key outside production fails (0.185567ms)
+✔ static check: no key is ok (payments disabled) (0.183656ms)
+✔ static check: unrecognized key format fails (0.250899ms)
+✔ startup gate exits on mismatch, passes on match, honors override (1.641654ms)
+✔ attaches receipt URLs for every Stripe source and strips raw ids (20.735205ms)
+✔ coin cosmetic rows and refless rows get no receipt link (0.746678ms)
+✔ Stripe failures are best-effort — items survive without a link, ids still stripped (0.647227ms)
+✔ missing stripe client omits links without throwing (0.383401ms)
+✔ lookups are cached — a second pass hits Stripe zero times (1.694786ms)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Webhook] dispatcher worker started
+[mag-v3] weekly report worker started
+[Stripe] Confirmed tournament entry entry_1 session cs_test_tournament_entry
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_tournament_entry status= unpaid purpose= tournament_entry
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed tournament entry entry_1 session cs_test_async_tournament_entry
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed Pro purchase pro_1 session cs_test_pro_lifetime account 7777 plan undefined
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_pro_lifetime status= unpaid purpose= pro_lifetime
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed Pro purchase pro_1 session cs_test_async_pro_lifetime account 7777 plan undefined
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Coaching booking paid (session) booking_1
+[Webhook] dispatchEvent failed: Cannot read properties of null (reading 'length')
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_coaching_booking status= unpaid purpose= coaching_booking
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Coaching booking paid (session) booking_1
+[Webhook] dispatchEvent failed: Cannot read properties of null (reading 'length')
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Founders Pass ring granted: 4242 reason= null
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_founders_ring status= unpaid purpose= founders_ring
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Founders Pass ring granted: 4242 reason= null
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Frame purchase confirmed: frame_x for account 4242
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_frame_purchase status= unpaid purpose= frame_purchase
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Frame purchase confirmed: frame_x for account 4242
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Gift Pro confirmed for recipient 8888
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_gift_pro status= unpaid purpose= gift_pro
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Gift Pro confirmed for recipient 8888
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Gift Season Pass activated for 8888 season 1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_gift_season_pass status= unpaid purpose= gift_season_pass
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Gift Season Pass activated for 8888 season 1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed buyin for session cs_test_default
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_default status= unpaid purpose= undefined
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed buyin for session cs_test_async_default
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed buyin for session cs_test_default
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] async payment failed session= cs_test_async_failed purpose= coaching_booking
+[Stripe] Coaching booking async payment failed (slot freed) booking_1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] async payment failed session= cs_test_async_failed purpose= tournament_entry
+✔ checkout.session.completed PAID → fulfils tournament_entry (256.788696ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil tournament_entry (deferred) (123.16568ms)
+✔ checkout.session.async_payment_succeeded → fulfils tournament_entry (71.898664ms)
+✔ checkout.session.completed PAID → fulfils pro_lifetime (72.056765ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil pro_lifetime (deferred) (68.467103ms)
+✔ checkout.session.async_payment_succeeded → fulfils pro_lifetime (68.776752ms)
+✔ checkout.session.completed PAID → fulfils coaching_booking (65.402265ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil coaching_booking (deferred) (60.124057ms)
+✔ checkout.session.async_payment_succeeded → fulfils coaching_booking (67.138258ms)
+✔ checkout.session.completed PAID → fulfils founders_ring (67.028734ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil founders_ring (deferred) (67.577156ms)
+✔ checkout.session.async_payment_succeeded → fulfils founders_ring (71.002318ms)
+✔ checkout.session.completed PAID → fulfils frame_purchase (67.472097ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil frame_purchase (deferred) (66.010631ms)
+✔ checkout.session.async_payment_succeeded → fulfils frame_purchase (60.885717ms)
+✔ checkout.session.completed PAID → fulfils gift_pro (66.250359ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil gift_pro (deferred) (65.26973ms)
+✔ checkout.session.async_payment_succeeded → fulfils gift_pro (61.32748ms)
+✔ checkout.session.completed PAID → fulfils gift_season_pass (67.101354ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil gift_season_pass (deferred) (65.522098ms)
+✔ checkout.session.async_payment_succeeded → fulfils gift_season_pass (65.007503ms)
+✔ checkout.session.completed PAID → fulfils default buyin (no purpose metadata) (61.789865ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil default buyin (no purpose metadata) (deferred) (64.168131ms)
+✔ checkout.session.async_payment_succeeded → fulfils default buyin (no purpose metadata) (66.067053ms)
+✔ checkout.session.completed payment_status='no_payment_required' → fulfils (default buyin) (61.599779ms)
+✔ checkout.session.async_payment_failed for coaching_booking → frees the slot (65.674306ms)
+✔ checkout.session.async_payment_failed for non-coaching purpose → no DB mutation (73.968938ms)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Webhook] dispatcher worker started
+[mag-v3] weekly report worker started
+[Stripe] Confirmed tournament entry entry_1 session cs_test_tourn
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Duplicate webhook event (status=processed): evt_test_inbox_1 checkout.session.completed
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Duplicate webhook event (status=processing): evt_test_inbox_1 checkout.session.completed
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed tournament entry entry_1 session cs_test_tourn
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] webhook inbox write failed — refusing to process (Stripe will retry): inbox db down
+[error] {
+  component: 'error-monitor',
+  source: 'stripe-webhook:inbox-write',
+  route: '/api/stripe/webhook',
+  phase: 'inbox-write',
+  eventType: 'checkout.session.completed',
+  eventId: 'evt_test_inbox_1',
+  err: 'inbox db down',
+  stack: 'Error: inbox db down\n' +
+    '    at Proxy.recordStripeWebhookEvent (/root/Dota-Stats-Full/tests/stripeWebhookInbox.test.js:43:31)\n' +
+    '    at /root/Dota-Stats-Full/src/web/server.js:3688:26\n' +
+    '    at status (/root/Dota-Stats-Full/tests/stripeWebhookInbox.test.js:175:19)\n' +
+    '    at new Promise (<anonymous>)\n' +
+    '    at _invokeWebhook (/root/Dota-Stats-Full/tests/stripeWebhookInbox.test.js:173:9)\n' +
+    '    at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookInbox.test.js:247:19)\n' +
+    '    at Test.runInAsyncScope (node:async_hooks:206:9)\n' +
+    '    at Test.run (node:internal/test_runner/test:796:25)\n' +
+    '    at Test.processPendingSubtests (node:internal/test_runner/test:526:18)\n' +
+    '    at Test.postRun (node:internal/test_runner/test:889:19)'
+} error captured (stripe-webhook:inbox-write)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Webhook error: boom: transient db failure
+[error] {
+  component: 'error-monitor',
+  source: 'stripe-webhook:request',
+  route: '/api/stripe/webhook',
+  phase: 'request',
+  err: 'boom: transient db failure',
+  stack: 'Error: boom: transient db failure\n' +
+    '    at Proxy.markTournamentEntryPaid (/root/Dota-Stats-Full/tests/stripeWebhookInbox.test.js:68:34)\n' +
+    '    at fulfillCompletedSession (/root/Dota-Stats-Full/src/web/server.js:2566:34)\n' +
+    '    at _processStripeEvent (/root/Dota-Stats-Full/src/web/server.js:3145:17)\n' +
+    '    at /root/Dota-Stats-Full/src/web/server.js:3713:15'
+} error captured (stripe-webhook:request)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed tournament entry entry_1 session cs_test_stale
+[Stripe] inbox retry succeeded: evt_test_stale_1 checkout.session.completed
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] ⚠️ [Stripe Dispute] New chargeback dp_test_1 — 50.00 AUD (reason: fraudulent), affected: booking #42, payment_intent: pi_test_1. Flagged for admin review.
+[STRIPE DISPUTE] ⚠️ [Stripe Dispute] New chargeback dp_test_1 — 50.00 AUD (reason: fraudulent), affected: booking #42, payment_intent: pi_test_1. Flagged for admin review. (owner-alert channels unavailable — log-only)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Dispute dp_test_1 CLOSED (won) — booking #42
+✔ new event: claimed, fulfilled, marked processed BEFORE the 200 ACK (275.581649ms)
+✔ unclaimed replay (already processed): 200 duplicate, NO side effects (103.955901ms)
+✔ unclaimed replay (live claim by another worker): 200 duplicate, no processing (107.874394ms)
+✔ re-claimed replay (previously failed / stale claim): reprocessed (110.929883ms)
+✔ inbox write failure: retryable 5xx, event NOT processed (87.430909ms)
+✔ fulfillment failure: marked failed (awaited), 400 so Stripe retries (64.289919ms)
+✔ retry sweep: stale received/processing row is re-claimed and re-run (crash recovery) (67.016421ms)
+✔ retry sweep: skips rows whose claim is still live (claim lost) (65.865729ms)
+✔ charge.dispute.created: recorded + flagged for review (68.008058ms)
+✔ charge.dispute.closed: recorded as resolved (61.668523ms)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Webhook] dispatcher worker started
+[mag-v3] weekly report worker started
+[Stripe] Refunded Pro subscription pro_1 account 7777
+[Stripe] Refunded coaching booking booking_1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Coaching booking captured (PI safety net) booking_1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Coaching booking canceled (PI) booking_1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Coach KYC active 4242 stripe_account acct_kyc_1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Coaching booking checkout expired (slot freed) booking_1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+✔ charge.refunded with payment_intent → revokes Pro AND flips coaching booking (259.771942ms)
+✔ charge.refunded WITHOUT payment_intent → no DB mutation (79.903673ms)
+✔ payment_intent.succeeded for coaching_booking → marks booking completed (89.236047ms)
+✔ payment_intent.succeeded for non-coaching purpose → no DB mutation (66.435356ms)
+✔ payment_intent.succeeded with no metadata → no DB mutation (74.554682ms)
+✔ payment_intent.canceled for coaching_booking → flips booking refunded (68.828004ms)
+✔ payment_intent.canceled for non-coaching purpose → no DB mutation (64.71762ms)
+✔ account.updated with charges_enabled AND payouts_enabled → promotes coach to active (60.637139ms)
+✔ account.updated with charges_enabled only (payouts disabled) → coach NOT promoted (65.543338ms)
+✔ account.updated with payouts_enabled only (charges disabled) → coach NOT promoted (65.001222ms)
+✔ account.updated with neither flag → coach NOT promoted (65.876966ms)
+✔ checkout.session.expired for coaching_booking → frees the slot (66.156131ms)
+✔ checkout.session.expired for non-coaching purpose → no DB mutation (62.801363ms)
+✔ checkout.session.expired with no metadata → no DB mutation (64.546038ms)
+✔ superuser admin routes: live set matches the expected manifest exactly (214.622493ms)
+✔ superuser admin routes: every gated route rejects unauthorized callers (401/401/403) (92.347859ms)
+[Owner DM] failed: Expected token to be set for this request, but none was present
+✔ burst bucket: 5 failures allowed, 6th is a 429 with an empty body (1350.19977ms)
+✔ the limiter is a stacked array of two buckets (0.376717ms)
+✔ _resetAlertState is callable and idempotent (0.270283ms)
+✔ helpers are exported from module scope (so the lockdown gate can call them) (1.545007ms)
+✔ parseSuperuserSteamIds: unset/empty/whitespace → just the owner default (0.475284ms)
+✔ parseSuperuserSteamIds: comma/space/newline separated, trims + drops blanks (0.885623ms)
+✔ isAllowlistedSteamSuperuser: allow-listed account (number or string) → true (0.260281ms)
+✔ isAllowlistedSteamSuperuser: signed-in but not allow-listed → false (0.223873ms)
+✔ isAllowlistedSteamSuperuser: no session / no accountId → false (0.247664ms)
+✔ isAllowlistedSteamSuperuser: non-owner with empty/unset allow-list → false (fail closed for everyone but the owner) (0.304747ms)
+✔ isAllowlistedSteamSuperuser: owner is allowed even when SUPERUSER_STEAM_IDS is empty/unset (0.229579ms)
+✔ recommendedSwissRounds boundary table (1.601736ms)
+✔ pairRound1 splits top/bottom halves with no duplicates (even) (0.548318ms)
+✔ pairRound1 odd field assigns lowest seed as bye (0.326987ms)
+✔ pairNextRound: no-repeat pairing across multiple constrained rounds (0.954804ms)
+✔ pairNextRound: odd field gives bye to lowest scorer who has not had one (0.368467ms)
+✔ pairNextRound: every account appears exactly once even under heavy constraints (0.440284ms)
+✔ computeStandings: Buchholz and Sonneborn–Berger ordering (0.613961ms)
+✔ buildPlayerStatsFromMatches surfaces opponents + wins (0.902541ms)
+✔ computePayouts: rounding remainder goes to first place (0.495137ms)
+✔ pairNextRound: score-group integrity — same-score players pair together when possible (0.453779ms)
+✔ pairNextRound: odd score group floats exactly one player down (0.378489ms)
+✔ computeStandings: Buchholz and Sonneborn–Berger disagree on tied players (0.754861ms)
+✔ computePayouts: first place absorbs the rounding remainder exactly (0.325657ms)
+✔ computePayouts: guards against empty splits and non-positive pools (0.25959ms)
+[task320Isolation] ✓ tenant scoping + commission ladder all pass
+✔ /root/Dota-Stats-Full/tests/task320Isolation.test.js (83.401099ms)
+[task333TenantRowIsolation] ✓ row-level + detail-route + create-path tenant isolation all hold
+✔ /root/Dota-Stats-Full/tests/task333TenantRowIsolation.test.js (84.781765ms)
+✔ evaluateCertWindow: comfortable margin is ok (1.925741ms)
+✔ evaluateCertWindow: exactly at the threshold is ok (< warnDays warns, not <=) (0.22034ms)
+✔ evaluateCertWindow: under 14 days warns, partial days floor (warn early not late) (0.237656ms)
+✔ evaluateCertWindow: past valid_to is expired (0.189077ms)
+✔ evaluateCertWindow: future valid_from is not_yet_valid (0.187351ms)
+✔ evaluateCertWindow: custom warnDays respected (0.174869ms)
+✔ evaluateCertWindow: garbage valid_to throws (never a silent ok) (0.421522ms)
+✔ resolveCheckHost: explicit TLS_CERT_CHECK_HOST wins (0.215245ms)
+✔ resolveCheckHost: derives host from https PUBLIC_BASE_URL (0.564407ms)
+✔ resolveCheckHost: http/dev base URL or nothing set → null (skip) (0.335444ms)
+✔ runTlsCertCheck: near-expiry cert DMs the owner and records error heartbeat (114.38356ms)
+✔ runTlsCertCheck: healthy cert → no DM, ok heartbeat (4.97409ms)
+✔ runTlsCertCheck: expired cert DM says EXPIRED (4.080702ms)
+✔ runTlsCertCheck: fetch failure DMs the owner (blind spot must not be silent) (4.304357ms)
+[TlsCert] owner DM failed: discord down
+✔ runTlsCertCheck: malformed valid_to → owner DM + error heartbeat, no rejection (6.905237ms)
+✔ runTlsCertCheck: DM failure is non-fatal and visible in the heartbeat (5.310739ms)
+✔ runTlsCertCheck: no https host configured → skipped heartbeat, no DM (6.719793ms)
+✔ runTlsCertCheck: TLS_CERT_WARN_DAYS env override widens the window (5.959462ms)
+✔ buildOwnerMessage: warn message includes renewal instructions and expiry date (0.355399ms)
+✔ upload-key admin routes: live set matches the expected manifest exactly (229.148645ms)
+✔ upload-key admin routes: every gated route rejects unauthorized callers (403/403) (77.670613ms)
+✔ calculateNewRatingsV3: sigma floor enforced when prior sigma is well below 2.5 (6.254548ms)
+✔ calculateNewRatingsV3: sigma floor does not inflate already-large sigma (1.428508ms)
+✔ calculateNewRatingsV3: modifier clamped at lower bound 0.80 (2.277539ms)
+✔ calculateNewRatingsV3: modifier clamped at upper bound 1.20 (2.244279ms)
+✔ calculateNewRatingsV3: missing modifier falls back to 1.0 (lobby-only matches) (3.513167ms)
+✔ calculateNewRatingsV3: NaN/Infinite modifier falls back to 1.0 (2.141966ms)
+✔ _v3ScoresToModifiers: maps z=-2σ to 0.80 and z=+2σ to 1.20 (0.719324ms)
+✔ _v3ScoresToModifiers: clamps extreme outliers to 0.80 / 1.20 (0.528505ms)
+✔ _v3ScoresToModifiers: zero variance returns 1.0 for all players (0.31446ms)
+✔ _v3ScoresToModifiers: empty input returns empty object (0.901444ms)
+✔ _v3HasCrossTeamCollision: detects same canonical id on both teams (0.241376ms)
+✔ _v3HasCrossTeamCollision: returns false when teams are disjoint (0.18604ms)
+✔ _v3HasCrossTeamCollision: returns false for empty teams (0.142509ms)
+✔ _v3PerfScore: smoke test — winning play scores higher than equal losing play (0.294467ms)
+✔ computeSeasonTrueSkillV3: cross-team canonical-id collision skips the match end-to-end (2.803677ms)
+✔ calculateNewRatingsV3: MMR formula = round((mu - 3*sigma) * 100) + 5000 (1.178924ms)
+✔ _v3PerfScoreBreakdown: component sum equals _v3PerfScore (0.604886ms)
+✔ _v3PerfScoreBreakdown: includes every documented component key (0.394987ms)
+✔ getMatchV3Modifiers: returns per-player modifier + breakdown matching season math (1.822871ms)
+✔ getMatchV3Modifiers: lobby-only match (no stats) defaults all modifiers to 1.0 (0.47047ms)
+✔ getMatchV3Modifiers: missing match returns empty modifier list (0.518245ms)
+✔ getPlayerV3ModifierHistory: returns chronologically-ordered modifiers for matches the player participated in (1.221061ms)
+✔ getPlayerV3ModifierHistory: includes lobby-only matches as a 1.00× modifier (0.363198ms)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Webhook] dispatcher worker started
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+✔ GET /p/:slug serves an OG card to Discordbot UA with all required meta tags (253.238143ms)
+✔ GET /p/:slug redirects a real browser UA (Chrome) to /player/<id> (75.04648ms)
+✔ GET /player/:accountId serves an OG card to Discordbot UA with the same hero meta tags (100.174221ms)
+✔ GET /player/:accountId falls through to the SPA for real browser UAs (96.059719ms)
+✔ GET /player/:accountId uses the by-id card when no slug is claimed (64.452596ms)
+✔ GET /player/:accountId rejects non-numeric IDs (falls through to SPA) (66.443181ms)
+✔ GET /api/player/:id/vanity-slug returns slug for a claimed account (60.67232ms)
+✔ GET /api/player/:id/vanity-slug returns {slug:null} for an unclaimed account (55.168607ms)
+✔ _resolveVanityLookup slug extraction handles bare slug, /p/slug, and full URL (0.844785ms)
+✔ vanity URL perk: pending checkout row does NOT grant access (2.355232ms)
+✔ vanity URL perk: Stripe webhook (one_off_perk purpose) activates the perk (0.666737ms)
+✔ vanity URL perk: webhook redelivery is idempotent (0.378602ms)
+✔ GET /api/me/vanity-slug: post-webhook perk holder gets has_perk + can_claim (209.288195ms)
+✔ GET /api/me/vanity-slug: account WITHOUT the perk cannot claim (80.344221ms)
+✔ [precondition] sample clips exist and differ (2.327228ms)
+✔ valid voice token streams exactly the matching clip (13.164829ms)
+✔ a token for one slug never resolves another slug (2.680985ms)
+✔ a token forged with the wrong signing key is rejected (0.647253ms)
+✔ a tampered signature is rejected (0.531755ms)
+✔ a tampered payload is rejected (signature no longer matches) (0.499108ms)
+✔ swapping a valid B-payload onto a valid A-signature is rejected (0.464921ms)
+✔ empty and malformed tokens are rejected (0.766522ms)
+✔ a validly-signed non-voice token cannot be replayed at the audio proxy (0.859682ms)
+✔ a validly-signed voice token with a missing slug field is rejected (0.421855ms)
+✔ a validly-signed token for an unknown slug yields no clip (404) (0.350197ms)
+✔ a validly-signed token with a path-traversal slug yields no clip (404) (0.651977ms)
+✔ VOICE_LINES has no duplicate heroIds (2.061551ms)
+✔ VOICE_LINES has no duplicate slugs (0.259013ms)
+✔ every VOICE_LINES entry is well-formed (1.670656ms)
+✔ every VOICE_LINES entry has a matching clip file on disk (2.188982ms)
+✔ no orphan .mp3 in voice-lines/ lacks a VOICE_LINES entry (0.59215ms)
+✔ voiceReadyHeroIds() length equals VOICE_LINES length (1.507842ms)
+✔ each slug matches the canonical hero slug (HERO_ID_TO_SLUG) (0.746795ms)
+✔ clipPathForSlug resolves a known slug to an on-disk path (0.302024ms)
+✔ clipPathForSlug rejects unknown slugs and path-traversal (0.462497ms)
+✔ slugForHero round-trips against VOICE_LINES (0.345243ms)
+✔ drainVoiceEvents returns empty for unknown account (2.186841ms)
+✔ pushVoiceEvent persists, drainVoiceEvents clears in FIFO order (0.483ms)
+✔ pushVoiceEvent rejects invalid event names and zero/null accountIds (0.288623ms)
+✔ pushVoiceEvent caps queue at MAX_EVENTS_PER_ACCOUNT (0.322954ms)
+✔ pushMatchVoiceEvents emits win/loss + first-blood for every player (0.585757ms)
+✔ pushMatchVoiceEvents skips first-blood when no killer recorded (0.428932ms)
+✔ pushMatchVoiceEvents accepts snake_case firstblood_claimed (0.249411ms)
+✔ pushMatchVoiceEvents handles player_slot fallback (no team field) (0.364342ms)
+✔ pushMatchVoiceEvents tolerates malformed input (0.334308ms)
+✔ pushAchievementVoiceEvents emits achievement-unlock per granted player (0.446798ms)
+✔ pushAchievementVoiceEvents tolerates non-array input (0.197419ms)
+✔ pushVoiceEvent persists to injected pool and drain returns DB rows (1.306684ms)
+[voiceEvents] persist failed: hiccup
+✔ duplicate events with one rejected INSERT do not lose cues (13.643226ms)
+[voiceEvents] trim failed: trim failure
+[voiceEvents] persist failed: db down
+[voiceEvents] drain failed: db down
+✔ drain-before-insert-commit then drain-after surfaces event exactly once (1.310858ms)
+✔ drain sorts DB rows into FIFO order even when stub returns shuffled (0.636657ms)
+✔ INSERT success with trim DELETE failure delivers cue exactly once (0.989977ms)
+✔ drainVoiceEvents falls back to in-memory shadow if DB query throws (0.660275ms)
+[lootbox] route mount failed: Error: mountLootboxRoutes: `deps.lootbox` is required
+    at mountLootboxRoutes (/root/Dota-Stats-Full/src/monetization/lootbox/routes.js:35:37)
+    at createApiRouter (/root/Dota-Stats-Full/src/web/server.js:23861:5)
+    at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/voicePackProfileValidation.test.js:107:19)
+    at TestHook.runInAsyncScope (node:async_hooks:206:9)
+    at TestHook.run (node:internal/test_runner/test:796:25)
+    at TestHook.run (node:internal/test_runner/test:1041:18)
+    at TestHook.run (node:internal/util:527:20)
+    at Test.createHook (node:internal/test_runner/test:639:33)
+    at node:internal/test_runner/harness:297:12
+    at Object.<anonymous> (/root/Dota-Stats-Full/tests/voicePackProfileValidation.test.js:99:1)
+✔ rejects an unknown voice pack with HTTP 400 (83.189143ms)
+[API] me/profile POST: db.hasCoinCosmetic is not a function
+✖ rejects a non-Pro user picking a premium pack with HTTP 403 (17.255574ms)
+  AssertionError [ERR_ASSERTION]: pack captain should be 403 for non-Pro
+  
+  500 !== 403
+  
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/voicePackProfileValidation.test.js:165:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+      at async Test.run (node:internal/test_runner/test:797:9)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 403,
+    operator: 'strictEqual'
+  }
+
+✔ persists a valid voice pack for a Pro user (8.052792ms)
+✔ null clears the selected voice pack column (5.502543ms)
+✔ empty string clears the selected voice pack column (normalised to null) (8.055676ms)
+✔ omitting the field entirely is treated as null/clear (6.662635ms)
+ℹ tests 945
+ℹ suites 0
+ℹ pass 932
+ℹ fail 12
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 71886.073275
+
+✖ failing tests:
+
+test at tests/checkFeatureList.test.js:111:1
+✖ every real App.jsx route is documented in website-features.txt (5.87948ms)
+  AssertionError [ERR_ASSERTION]: undocumented routes: /ward-heatmap-lab
+  + actual - expected
+  
+  + [
+  +   '/ward-heatmap-lab'
+  + ]
+  - []
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/checkFeatureList.test.js:127:10)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ '/ward-heatmap-lab' ],
+    expected: [],
+    operator: 'deepStrictEqual'
+  }
+
+test at tests/foundersRingCheckoutWebhook.test.js:232:1
+✖ founders-ring/checkout: 409 when caller already owns the ring (75.64827ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  503 !== 409
+  
+      at /root/Dota-Stats-Full/tests/foundersRingCheckoutWebhook.test.js:244:10
+      at async TestContext.<anonymous> (/root/Dota-Stats-Full/tests/foundersRingCheckoutWebhook.test.js:210:18)
+      at async Test.run (node:internal/test_runner/test:797:9)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 503,
+    expected: 409,
+    operator: 'strictEqual'
+  }
+
+test at tests/foundersRingCheckoutWebhook.test.js:251:1
+✖ founders-ring/checkout: 409 sold_out when cap reached (84.834398ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  503 !== 409
+  
+      at /root/Dota-Stats-Full/tests/foundersRingCheckoutWebhook.test.js:265:12
+      at async TestContext.<anonymous> (/root/Dota-Stats-Full/tests/foundersRingCheckoutWebhook.test.js:210:18)
+      at async Test.run (node:internal/test_runner/test:797:9)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 503,
+    expected: 409,
+    operator: 'strictEqual'
+  }
+
+test at tests/magazineV3.test.js:149:1
+✖ POST /api/pickem/pick: free signed-in user gets 402 paywall (43.628157ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  200 !== 402
+  
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/magazineV3.test.js:152:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+      at async Test.run (node:internal/test_runner/test:797:9)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 402,
+    operator: 'strictEqual'
+  }
+
+test at tests/magazineV3/pickem.test.js:47:1
+✖ pickem.submitPickemPick: forwards all 7 params and stringifies matchRef (3.97401ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected ... Lines skipped
+  
+    [
+      1,
+  ...
+      'over',
+      'medium',
+  +   null,
+  +   null,
+  +   null,
+  +   null
+    ]
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/magazineV3/pickem.test.js:57:10)
+      at async Test.run (node:internal/test_runner/test:797:9)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [
+      1,        2,
+      '333',    'radiant',
+      'dire',   'over',
+      'medium', null,
+      null,     null,
+      null
+    ],
+    expected: [ 1, 2, '333', 'radiant', 'dire', 'over', 'medium' ],
+    operator: 'deepStrictEqual'
+  }
+
+test at tests/magazineV3/pickem.test.js:60:1
+✖ pickem.submitPickemPick: defaults side bets to null when not provided (0.565259ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   null,
+  +   null,
+  +   null,
+  +   null,
+      null,
+      null,
+      null
+    ]
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/magazineV3/pickem.test.js:66:10)
+      at async Test.run (node:internal/test_runner/test:797:9)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [
+      null, null,
+      null, null,
+      null, null,
+      null
+    ],
+    expected: [ null, null, null ],
+    operator: 'deepStrictEqual'
+  }
+
+test at tests/magazineV3/pickem.test.js:69:1
+✖ pickem.resolvePickemMatch: passes the 8 documented params in order (0.80805ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected ... Lines skipped
+  
+    [
+      9,
+  ...
+      'under',
+      'long',
+  +   null,
+  +   null,
+  +   null,
+  +   null
+    ]
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/magazineV3/pickem.test.js:79:10)
+      at async Test.run (node:internal/test_runner/test:797:9)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [
+      9,         '42',
+      'radiant', 10,
+      5,         'radiant',
+      'under',   'long',
+      null,      null,
+      null,      null
+    ],
+    expected: [ 9, '42', 'radiant', 10, 5, 'radiant', 'under', 'long' ],
+    operator: 'deepStrictEqual'
+  }
+
+test at tests/notificationDefaults.test.js:64:1
+✖ v2 NOTIFICATION_EVENTS default matrix matches Task #455 policy (3.955506ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected ... Lines skipped
+  
+    {
+      achievement_unlocked: {
+  ...
+      },
+      vod_delivered: {
+  +     discord: true,
+  +     push: true
+  +   },
+  +   vod_purchased: {
+        discord: true,
+        push: true
+      }
+    }
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/notificationDefaults.test.js:72:10)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { match_result: { discord: false, push: false }, mvp_vote: { discord: true, push: false }, hot_streak: { discord: false, push: false }, vod_purchased: { discord: true, push: true }, vod_delivered: { discord: true, push: true }, group_session_reminder: { discord: true, push: true }, lobby_invite: { discord: false, push: false }, achievement_unlocked: { discord: false, push: false }, prize_pool_change: { discord: false, push: false }, tournament_checkin: { discord: false, push: false }, tournament_payout_pending: { discord: true, push: true }, tournament_payout_paid: { discord: true, push: true }, coach_booking_confirmed: { discord: true, push: true }, coach_booking_reminder: { discord: true, push: true }, league_scrim_accepted: { discord: false, push: false }, season_rollover: { discord: false, push: false }, coach_of_the_month: { discord: false, push: false }, quest_completed: { discord: false, push: false }, season_wrapped: { discord: true, push: false }, anniversary_shoutout: { discord: true, push: false }, prediction_graded: { discord: false, push: false } },
+    expected: { match_result: { discord: false, push: false }, mvp_vote: { discord: true, push: false }, hot_streak: { discord: false, push: false }, vod_delivered: { discord: true, push: true }, group_session_reminder: { discord: true, push: true }, lobby_invite: { discord: false, push: false }, achievement_unlocked: { discord: false, push: false }, prize_pool_change: { discord: false, push: false }, tournament_checkin: { discord: false, push: false }, tournament_payout_pending: { discord: true, push: true }, tournament_payout_paid: { discord: true, push: true }, coach_booking_confirmed: { discord: true, push: true }, coach_booking_reminder: { discord: true, push: true }, league_scrim_accepted: { discord: false, push: false }, season_rollover: { discord: false, push: false }, coach_of_the_month: { discord: false, push: false }, quest_completed: { discord: false, push: false }, season_wrapped: { discord: true, push: false }, anniversary_shoutout: { discord: true, push: false }, prediction_graded: { discord: false, push: false } },
+    operator: 'deepStrictEqual'
+  }
+
+test at tests/notificationDefaults.test.js:75:1
+✖ only transactional + milestone events are default-ON (v2) (0.693115ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected ... Lines skipped
+  
+    [
+      'anniversary_shoutout',
+  ...
+      'tournament_payout_pending',
+      'vod_delivered',
+  +   'vod_purchased'
+    ]
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/notificationDefaults.test.js:80:10)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at Test.postRun (node:internal/test_runner/test:889:19)
+      at Test.run (node:internal/test_runner/test:835:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'anniversary_shoutout', 'coach_booking_confirmed', 'coach_booking_reminder', 'group_session_reminder', 'mvp_vote', 'season_wrapped', 'tournament_payout_paid', 'tournament_payout_pending', 'vod_delivered', 'vod_purchased' ],
+    expected: [ 'anniversary_shoutout', 'coach_booking_confirmed', 'coach_booking_reminder', 'group_session_reminder', 'mvp_vote', 'season_wrapped', 'tournament_payout_paid', 'tournament_payout_pending', 'vod_delivered' ],
+    operator: 'deepStrictEqual'
+  }
+
+test at tests/payoutPaidReceiptMigration.test.js:30:1
+✖ rollout backfill stamps historical paid rows so they never get a receipt (29.519215ms)
+  Error: SASL: SCRAM-SERVER-FIRST-MESSAGE: client password must be a string
+      at /root/Dota-Stats-Full/node_modules/pg-pool/index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+      at async TestContext.<anonymous> (/root/Dota-Stats-Full/tests/payoutPaidReceiptMigration.test.js:33:18)
+      at async Test.run (node:internal/test_runner/test:797:9)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7)
+
+test at tests/proRouteGateSweep.test.js:120:1
+✖ pro routes: live requirePro set matches the expected manifest exactly (230.249501ms)
+  AssertionError [ERR_ASSERTION]: New requirePro-gated routes mounted but not added to EXPECTED_PRO_ROUTES. Add them (with their feature key) so the paywall sweep covers them:
+    GET /ward-placements
+  + actual - expected
+  
+  + [
+  +   'GET /ward-placements'
+  + ]
+  - []
+      at /root/Dota-Stats-Full/tests/proRouteGateSweep.test.js:133:10
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/fixtures/serverHarness.js:161:24)
+      at Test.runInAsyncScope (node:async_hooks:206:9)
+      at Test.run (node:internal/test_runner/test:796:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:526:18)
+      at node:internal/test_runner/harness:255:12
+      at node:internal/process/task_queues:140:7
+      at AsyncResource.runInAsyncScope (node:async_hooks:206:9)
+      at AsyncResource.runMicrotask (node:internal/process/task_queues:137:8) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'GET /ward-placements' ],
+    expected: [],
+    operator: 'deepStrictEqual'
+  }
+
+test at tests/voicePackProfileValidation.test.js:160:1
+✖ rejects a non-Pro user picking a premium pack with HTTP 403 (17.255574ms)
+  AssertionError [ERR_ASSERTION]: pack captain should be 403 for non-Pro
+  
+  500 !== 403
+  
+      at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/voicePackProfileValidation.test.js:165:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+      at async Test.run (node:internal/test_runner/test:797:9)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:526:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 500,
+    expected: 403,
+    operator: 'strictEqual'
+  }
