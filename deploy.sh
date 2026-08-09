@@ -235,7 +235,32 @@ process.stdin.on("end", () => {
   } catch {}
 });
 ' "${PM2_APP}" 2>/dev/null || true)"
-HEALTH_PORT="${PM2_ENV_PORT:-${PORT:-5000}}"
+HEALTH_PORT="${PM2_ENV_PORT:-${PORT:-}}"
+if [ -z "${HEALTH_URL:-}" ] && [ -z "${HEALTH_PORT}" ]; then
+  # PM2 didn't expose PORT and the shell has none. Do NOT blindly assume a
+  # default port — another process may be squatting there and answer
+  # /api/health with a foreign shape (this burned a deploy: a stranger on
+  # :5000 replied {"status":"ok",...} and the gate polled it for 120s while
+  # the actual bot sat healthy on :3001). Scan candidates and pick the first
+  # port whose /api/health carries OUR bot's fingerprint (a `services` object).
+  for cand in 3001 3000 5000; do
+    if curl -fsS --max-time 3 "http://127.0.0.1:${cand}/api/health" 2>/dev/null | node -e '
+let raw = "";
+process.stdin.on("data", c => raw += c);
+process.stdin.on("end", () => {
+  try {
+    const j = JSON.parse(raw);
+    process.exit(j && typeof j.services === "object" && j.services !== null ? 0 : 1);
+  } catch { process.exit(1); }
+});
+'; then
+      HEALTH_PORT="${cand}"
+      echo "    (PORT not in PM2 env — found our bot's health endpoint on :${cand})"
+      break
+    fi
+  done
+  HEALTH_PORT="${HEALTH_PORT:-5000}"
+fi
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${HEALTH_PORT}/api/health}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
 elapsed=0
@@ -245,8 +270,13 @@ process.stdin.on("data", c => raw += c);
 process.stdin.on("end", () => {
   try {
     const j = JSON.parse(raw);
-    if (j && j.ok === true) process.exit(0);
-    console.error("health responded but not ok:", JSON.stringify(j && j.services || j));
+    if (!j || typeof j.services !== "object" || j.services === null) {
+      console.error("health responder is NOT our bot (no services object) — another process is on this port. Response:", JSON.stringify(j));
+      console.error("hint: override with HEALTH_URL=http://127.0.0.1:<bot-port>/api/health bash deploy.sh");
+      process.exit(1);
+    }
+    if (j.ok === true) process.exit(0);
+    console.error("health responded but not ok:", JSON.stringify(j.services));
   } catch (e) { console.error("health response was not JSON"); }
   process.exit(1);
 });
