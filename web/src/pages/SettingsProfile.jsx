@@ -21,9 +21,8 @@ import useRovingTabs from '../hooks/useRovingTabs';
 import { createVoicePackPlayer, VOICE_PACK_EVENTS } from '../lib/voicePack';
 import VanitySlugPicker from '../components/VanitySlugPicker';
 import { oauthErrorMessage } from '../components/DiscordLinkModal';
-import ProfileCard from '../components/ProfileCard';
-import MagazineCover from '../components/MagazineCover';
-import '../components/MagazineCover.css';
+// (The old snippet preview imported MagazineCover/ProfileCard here; the rail
+// now embeds the real /players/:id page in an iframe and streams edits into it.)
 import {
   OVERLAY_THEME_OPTIONS, OVERLAY_ELEMENT_GROUPS, defaultOverlayPrefs,
 } from '../overlayTheme';
@@ -46,6 +45,89 @@ const SETTINGS_TABS = [
   { id: 'showcase',    label: 'Showcase',    icon: '★' },
   { id: 'connections', label: 'Connections', icon: '⚡' },
 ];
+
+// ── Live full-profile preview ─────────────────────────────────────────────────
+// Embeds the player's REAL public profile page (`/players/:id`) in a scaled
+// iframe (chrome stripped via `?streamer=1`) and streams the unsaved editor
+// state into it over postMessage, so every option change is reflected on the
+// actual profile in real time — not a miniature snippet.
+const PREVIEW_BASE_WIDTH = 1180;
+function LiveProfilePreview({ accountId, payloadJson }) {
+  const wrapRef = useRef(null);
+  const frameRef = useRef(null);
+  const [dims, setDims] = useState({ scale: 0.35, height: 640 });
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const w = el.clientWidth || PREVIEW_BASE_WIDTH;
+      const h = el.clientHeight || 640;
+      setDims({ scale: Math.max(0.2, Math.min(1, w / PREVIEW_BASE_WIDTH)), height: h });
+    };
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, []);
+
+  // Keep the latest payload in a ref so the ready handler can push it
+  // immediately — including after an iframe reload re-handshakes.
+  const payloadRef = useRef(payloadJson);
+  payloadRef.current = payloadJson;
+
+  const pushPayload = useCallback(() => {
+    try {
+      frameRef.current?.contentWindow?.postMessage(
+        { type: 'oi-profile-preview', customization: JSON.parse(payloadRef.current) },
+        window.location.origin,
+      );
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    const onMsg = (e) => {
+      // Only trust the embedded profile frame itself (same origin AND source).
+      if (e.origin !== window.location.origin) return;
+      if (e.source !== frameRef.current?.contentWindow) return;
+      if (e.data && e.data.type === 'oi-profile-preview-ready') {
+        setReady(true);
+        // Re-handshake (first load OR reload): send the current edits now.
+        pushPayload();
+      }
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [pushPayload]);
+
+  // Push the latest edits into the iframe (debounced so typing stays smooth).
+  useEffect(() => {
+    if (!ready) return undefined;
+    const t = setTimeout(pushPayload, 150);
+    return () => clearTimeout(t);
+  }, [ready, payloadJson, pushPayload]);
+
+  const { scale, height } = dims;
+  return (
+    <div ref={wrapRef} className="pb-settings-live-preview">
+      <iframe
+        ref={frameRef}
+        title="Live profile preview"
+        src={`/player/${accountId}?streamer=1&livePreview=1`}
+        style={{
+          width: PREVIEW_BASE_WIDTH,
+          height: Math.round(height / scale),
+          border: 0,
+          transform: `scale(${scale})`,
+          transformOrigin: 'top left',
+          background: 'var(--bg, #0d1424)',
+          display: 'block',
+        }}
+      />
+    </div>
+  );
+}
 
 // ── Small reusable sub-components ─────────────────────────────────────────────
 
@@ -812,7 +894,6 @@ export default function SettingsProfile() {
 
   const [ownMatches, setOwnMatches] = useState([]);
   const [ownHeroes, setOwnHeroes] = useState([]);
-  const [streak, setStreak] = useState(null);
 
   const accountId = steamUser?.accountId;
   const displayName = steamUser?.displayName || (accountId ? `Player ${accountId}` : 'Your profile');
@@ -862,10 +943,6 @@ export default function SettingsProfile() {
         if (d?.recentMatches) setOwnMatches(d.recentMatches);
         if (d?.heroes) setOwnHeroes(d.heroes);
       })
-      .catch(() => {});
-    fetch(`/api/players/${accountId}/streak`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.streak != null) setStreak(d.streak); })
       .catch(() => {});
   }, [accountId]);
 
@@ -957,7 +1034,7 @@ export default function SettingsProfile() {
     return <SignInPrompt title="Profile Customization" message="Sign in with Steam to customize your profile bio, title, theme, and frame." />;
   }
 
-  // Build preview data for MagazineCover + ProfileCard.
+  // Build the full unsaved-edits payload streamed into the live profile preview.
   const previewCustomization = {
     bio,
     custom_title: customTitle,
@@ -968,21 +1045,6 @@ export default function SettingsProfile() {
     pinned_match_id: pinnedMatchId ? parseInt(pinnedMatchId, 10) : null,
     extras,
   };
-  const previewPinnedHeroRow = previewCustomization.pinned_hero_id
-    ? ownHeroes.find(h => Number(h.hero_id) === Number(previewCustomization.pinned_hero_id))
-    : null;
-  const previewPinnedHero = previewCustomization.pinned_hero_id ? {
-    hero_id: previewCustomization.pinned_hero_id,
-    name: previewPinnedHeroRow ? (previewPinnedHeroRow.hero_name || getHeroName(previewCustomization.pinned_hero_id)) : getHeroName(previewCustomization.pinned_hero_id),
-    games: previewPinnedHeroRow ? parseInt(previewPinnedHeroRow.games || 0) : 0,
-    wins: previewPinnedHeroRow ? parseInt(previewPinnedHeroRow.wins || 0) : 0,
-    kda: previewPinnedHeroRow
-      ? (parseFloat(previewPinnedHeroRow.avg_kills || 0) + parseFloat(previewPinnedHeroRow.avg_assists || 0))
-        / Math.max(parseFloat(previewPinnedHeroRow.avg_deaths || 0), 1)
-      : null,
-    caption: pinnedHeroCaption || null,
-    borderColor: extras.pinned_hero_border || null,
-  } : null;
   const previewPinnedMatchRow = previewCustomization.pinned_match_id
     ? ownMatches.find(m => Number(m.match_id) === Number(previewCustomization.pinned_match_id))
     : null;
@@ -998,16 +1060,17 @@ export default function SettingsProfile() {
       || (previewPinnedMatchRow.date ? Math.floor(new Date(previewPinnedMatchRow.date).getTime() / 1000) : null),
     player_won: (previewPinnedMatchRow.team === 'radiant') === !!previewPinnedMatchRow.radiant_win,
   } : null;
-  const previewPinnedAchievement = extras.pinned_achievement_id
-    ? (() => {
-        const a = (achievementsList || []).find(x => (x.key || x.id) === extras.pinned_achievement_id);
-        if (!a) return null;
-        return { emoji: a.emoji || a.icon || '🏆', label: a.label || a.title || a.key, sub: a.description || a.sub || null };
-      })()
-    : null;
-  const previewTopHeroes = (ownHeroes || []).slice(0, 5).map(h => ({
-    hero_id: h.hero_id, games: parseInt(h.games || 0), wins: parseInt(h.wins || 0),
-  }));
+  // Serialised so the preview only re-posts when something actually changed.
+  const previewPayloadJson = JSON.stringify({
+    ...previewCustomization,
+    profile_layout_theme: layoutTheme || null,
+    cover_fx: Array.isArray(coverFx) ? coverFx : [],
+    pinned_achievements: pinnedAchievements,
+    selected_voice_pack: selectedVoicePack || null,
+    // Hydrated client-side so pinning a match previews instantly (the server
+    // only hydrates pinnedMatch from the SAVED value).
+    pinnedMatch: previewPinnedMatch,
+  });
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -1793,33 +1856,10 @@ export default function SettingsProfile() {
           {/* ── Right: sticky preview rail ── */}
           <div className="pb-settings-preview-col">
             <div className="pb-card pb-settings-card pb-settings-preview-rail">
-              <div className="pb-settings-preview-label">Live preview · Cover</div>
-              <div className={`magazine-v3 v3-theme-${layoutTheme || 'court-pitch'}`} style={{ marginTop: 6 }}>
-                <MagazineCover
-                  accountId={accountId}
-                  displayName={displayName}
-                  customTitle={customTitle || null}
-                  bio={bio || null}
-                  pinnedHero={previewPinnedHero}
-                  topHero={ownHeroes[0] || null}
-                  streak={streak}
-                  themeAccent={themeAccent || null}
-                  foundersRing={Array.isArray(ownedEntitlements) && ownedEntitlements.includes('founders_pass_ring')}
-                  coverFx={Array.isArray(coverFx) ? coverFx : []}
-                />
-              </div>
-              <div className="pb-settings-preview-label" style={{ marginTop: 16 }}>Live preview · Profile card</div>
-              <div style={{ marginTop: 6 }}>
-                <ProfileCard
-                  displayName={displayName}
-                  customization={previewCustomization}
-                  pinnedHero={previewPinnedHero}
-                  pinnedMatch={previewPinnedMatch}
-                  pinnedAchievement={previewPinnedAchievement}
-                  topHeroes={previewTopHeroes}
-                  streak={streak}
-                  frame={profileFrame}
-                />
+              <div className="pb-settings-preview-label">Live preview · Your profile page</div>
+              <LiveProfilePreview accountId={accountId} payloadJson={previewPayloadJson} />
+              <div className="pb-settings-preview-hint">
+                This is your real profile page — changes appear as you make them. Scroll inside the preview to see every section. Nothing is public until you hit Save.
               </div>
             </div>
           </div>

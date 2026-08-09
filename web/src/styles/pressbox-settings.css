@@ -343,6 +343,22 @@
   font-size: clamp(0.7rem, 2.4cqw, 1rem);
 }
 
+/* Live full-profile preview: the real /players/:id page scaled into the rail. */
+.pb-settings-live-preview {
+  height: calc(100vh - 240px);
+  min-height: 480px;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid var(--pb-hairline, rgba(255, 255, 255, 0.08));
+  background: var(--bg, #0d1424);
+}
+
+.pb-settings-preview-hint {
+  font-size: 0.74rem;
+  color: var(--pb-faint);
+  line-height: 1.45;
+}
+
 .pb-settings-preview-label {
   font-family: var(--font-condensed);
   font-size: 0.68rem;
@@ -353,15 +369,12 @@
   margin-bottom: 4px;
 }
 
-/* Push the preview below the form on mobile */
+/* On narrow screens the scaled full-page preview would be unreadably small
+   and push the form below the fold — hide it; the phone user can just open
+   their real profile page after saving. */
 @media (max-width: 1099px) {
-  .pb-settings-layout {
-    display: flex;
-    flex-direction: column-reverse;
-    gap: 24px;
-  }
   .pb-settings-preview-col {
-    order: -1;
+    display: none;
   }
 }
 

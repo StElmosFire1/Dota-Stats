@@ -866,7 +866,31 @@ export default function PlayerProfile() {
   const showProfileCustomization = true;
   const [seasonPass, setSeasonPass] = useState(null);
   const [mvpTrends, setMvpTrends] = useState(null);
-  const [profileCard, setProfileCard] = useState(null);
+  // Live-preview mode: the Settings editor embeds this page in an iframe
+  // (`?streamer=1&livePreview=1`) and streams unsaved customization edits in
+  // via postMessage, so the preview shows the REAL profile page updating live.
+  const isLivePreview = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('livePreview') === '1';
+  const [previewOverride, setPreviewOverride] = useState(null);
+  const [profileCardSaved, setProfileCard] = useState(null);
+  const profileCard = (isLivePreview && previewOverride)
+    ? { ...(profileCardSaved || {}), ...previewOverride }
+    : profileCardSaved;
+  useEffect(() => {
+    if (!isLivePreview) return undefined;
+    const onMsg = (e) => {
+      // Only accept edits from the embedding Settings page: same origin AND
+      // the actual parent window (blocks other same-origin frames/windows).
+      if (e.origin !== window.location.origin || e.source !== window.parent) return;
+      if (e.data && e.data.type === 'oi-profile-preview' && e.data.customization) {
+        setPreviewOverride(e.data.customization);
+      }
+    };
+    window.addEventListener('message', onMsg);
+    // Tell the parent editor we're ready to receive customization updates.
+    try { window.parent?.postMessage({ type: 'oi-profile-preview-ready' }, window.location.origin); } catch { /* ignore */ }
+    return () => window.removeEventListener('message', onMsg);
+  }, [isLivePreview]);
   const [scoutingReport, setScoutingReport] = useState(null);
   const [scoutingLoading, setScoutingLoading] = useState(false);
   const [scoutingError, setScoutingError] = useState(null);
