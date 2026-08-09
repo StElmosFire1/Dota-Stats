@@ -151,6 +151,13 @@ Full per-variable reference lives in **`docs/env-vars.md`** (moved out to keep t
 - `BLOCK_AI_AGENTS` — AI scraper / clone-builder hardening; observability-only unless set to `1`.
 - `CSP_REPORT_ONLY` / `CSP_REPORT_URI` — Content-Security-Policy (full edition); enforcing by default, report-only is the instant rollback.
 
+## Analytics & game-data tracking conventions (required for all new work)
+- **Every page/route is tracked automatically.** `usePageTracking()` runs once at the App level and records a pageview on every route change (routes are normalized, batched to `POST /api/analytics/events`). Adding a new route in `App.jsx` is all that's needed — do NOT add per-page tracking calls. Never bypass the router (raw `window.location` navigation) or the pageview is lost.
+- **Feature-level events:** use `trackToolEvent('name')` from `web/src/hooks/usePageTracking.js` for notable in-page actions (see CommandPalette, ReplayViewer, H2H, DraftAssistant for examples).
+- **Daily mini-games:** every new game MUST be added to the central catalog in `src/games/puzzles.js` (`GAMES`/`GAME_META`) and complete via the generic guess/complete flow so `recordGameResult` / `getGameStats` / streaks / XP cover it automatically. No per-game tables.
+- **Standalone games** (outside the daily suite, e.g. Draft Trainer → `draft_trainer_runs`, Captain Sim → `captain_mode_runs`): persist finished runs server-side with an auth-gated POST + a client-generated idempotency `run_key` (unique per account) and clamped values, plus a stats GET. Follow the `captain_mode_runs` pattern.
+- Admin can see site + game analytics in Admin Panel → Analytics (`/api/admin/analytics/site|games`).
+
 ## External Dependencies
 - **Discord:** `discord.js`
 - **Steam:** `steam-user`, `dota2-user`

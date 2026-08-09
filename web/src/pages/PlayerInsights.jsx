@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Social from './Social';
 import PlayerBenchmarks from './PlayerBenchmarks';
 import PaywallBlur from '../components/PaywallBlur';
@@ -21,8 +22,18 @@ const TAB_HEADINGS = {
   },
 };
 
+// Tab → canonical URL. Tab state is derived from the URL (not local state) so
+// /benchmarks can never render the Network tab, switching tabs updates the
+// address bar, and every tab view produces its own analytics pageview.
+const TAB_ROUTES = { network: '/social', benchmarks: '/benchmarks' };
+
 export default function PlayerInsights({ defaultTab = 'network' }) {
-  const [tab, setTab] = useState(defaultTab);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const tab = location.pathname.startsWith('/benchmarks') ? 'benchmarks'
+    : (location.pathname.startsWith('/social') || location.pathname.startsWith('/player-network')) ? 'network'
+    : defaultTab;
+  const setTab = (id) => navigate(TAB_ROUTES[id] || TAB_ROUTES.network);
   const heading = TAB_HEADINGS[tab] || TAB_HEADINGS.network;
 
   return (
