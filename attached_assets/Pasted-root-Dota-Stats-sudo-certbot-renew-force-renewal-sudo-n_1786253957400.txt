@@ -1,0 +1,67 @@
+root@Dota-Stats:~# sudo certbot renew --force-renewal && \
+{ sudo nginx -t && sudo systemctl reload nginx; } 2>/dev/null; \
+sudo certbot certificates 2>/dev/null | grep -A2 "oceinhouse.gg"; \
+curl -sSI https://oceinhouse.gg/api/health | head -3
+Saving debug log to /var/log/letsencrypt/letsencrypt.log
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Processing /etc/letsencrypt/renewal/dota.stats.corvidaeinc.com.conf
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Renewing an existing certificate for dota.stats.corvidaeinc.com
+Reloading nginx server after certificate renewal
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Processing /etc/letsencrypt/renewal/oceinhouse.gg.conf
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Failed to renew certificate oceinhouse.gg with error: The manual plugin is not working; there may be problems with your existing configuration.
+The error was: PluginError('An authentication script must be provided with --manual-auth-hook when using the manual plugin non-interactively.')
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+The following renewals succeeded:
+  /etc/letsencrypt/live/dota.stats.corvidaeinc.com/fullchain.pem (success)
+
+The following renewals failed:
+  /etc/letsencrypt/live/oceinhouse.gg/fullchain.pem (failure)
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+1 renew failure(s), 0 parse failure(s)
+Ask for help or search for solutions at https://community.letsencrypt.org. See the logfile /var/log/letsencrypt/letsencrypt.log or re-run Certbot with -v for more details.
+  Certificate Name: oceinhouse.gg
+    Serial Number: 69ff64ae1ff2ae7ca53a9fc7e13e38d9452
+    Key Type: ECDSA
+    Domains: oceinhouse.gg www.oceinhouse.gg
+    Expiry Date: 2026-08-01 09:49:01+00:00 (INVALID: EXPIRED)
+    Certificate Path: /etc/letsencrypt/live/oceinhouse.gg/fullchain.pem
+    Private Key Path: /etc/letsencrypt/live/oceinhouse.gg/privkey.pem
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+curl: (60) SSL certificate problem: certificate has expired
+More details here: https://curl.se/docs/sslcerts.html
+
+curl failed to verify the legitimacy of the server and therefore could not
+establish a secure connection to it. To learn more about this situation and
+how to fix it, please visit the web page mentioned above.
+root@Dota-Stats:~# sudo certbot renew --dry-run 2>&1 | tail -20; \
+sudo systemctl list-timers 2>/dev/null | grep -i certbot; \
+sudo ss -tlnp | grep ':80 '
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Processing /etc/letsencrypt/renewal/dota.stats.corvidaeinc.com.conf
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Simulating renewal of an existing certificate for dota.stats.corvidaeinc.com
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Processing /etc/letsencrypt/renewal/oceinhouse.gg.conf
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Failed to renew certificate oceinhouse.gg with error: The manual plugin is not working; there may be problems with your existing configuration.
+The error was: PluginError('An authentication script must be provided with --manual-auth-hook when using the manual plugin non-interactively.')
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+The following simulated renewals succeeded:
+  /etc/letsencrypt/live/dota.stats.corvidaeinc.com/fullchain.pem (success)
+
+The following simulated renewals failed:
+  /etc/letsencrypt/live/oceinhouse.gg/fullchain.pem (failure)
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+1 renew failure(s), 0 parse failure(s)
+Ask for help or search for solutions at https://community.letsencrypt.org. See the logfile /var/log/letsencrypt/letsencrypt.log or re-run Certbot with -v for more details.
+Sun 2026-08-09 15:30:16 UTC       9h Sun 2026-08-09 03:04:53 UTC 2h 34min ago certbot.timer                  certbot.service
+LISTEN 0      511          0.0.0.0:80        0.0.0.0:*    users:(("nginx",pid=1606469,fd=6),("nginx",pid=1606468,fd=6),("nginx",pid=1467206,fd=6))
+root@Dota-Stats:~# 
