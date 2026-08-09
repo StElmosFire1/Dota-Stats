@@ -37,6 +37,7 @@ const EXPECTED_EVENT_DEFAULTS = {
   mvp_vote:                { discord: true,  push: false },
   hot_streak:              { discord: false, push: false },
   vod_delivered:           { discord: true,  push: true  },
+  vod_purchased:           { discord: true,  push: true  },
   group_session_reminder:  { discord: true,  push: true  },
   lobby_invite:            { discord: false, push: false },
   achievement_unlocked:    { discord: false, push: false },
@@ -87,5 +88,6 @@ test('only transactional + milestone events are default-ON (v2)', () => {
     'tournament_payout_paid',
     'tournament_payout_pending',
     'vod_delivered',
+    'vod_purchased',
   ]);
 });

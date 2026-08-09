@@ -54,7 +54,8 @@ test('pickem.submitPickemPick: forwards all 7 params and stringifies matchRef', 
   });
   assert.ok(out.ok);
   const insert = pool.calls.find(c => c.sql.startsWith('INSERT'));
-  assert.deepEqual(insert.params, [1, 2, '333', 'radiant', 'dire', 'over', 'medium']);
+  // Prop bets v2 appended firstTower / mvpTeam / comeback / firstRosh (null when omitted).
+  assert.deepEqual(insert.params, [1, 2, '333', 'radiant', 'dire', 'over', 'medium', null, null, null, null]);
 });
 
 test('pickem.submitPickemPick: defaults side bets to null when not provided', async () => {
@@ -63,7 +64,8 @@ test('pickem.submitPickemPick: defaults side bets to null when not provided', as
   ]);
   await db.submitPickemPick({ seasonId: 1, accountId: 2, matchRef: 'm', pickedWinner: 'dire' });
   const insert = pool.calls.find(c => c.sql.startsWith('INSERT'));
-  assert.deepEqual(insert.params.slice(4), [null, null, null]);
+  // 3 original side bets + 4 prop-bets-v2 dims, all null when not provided.
+  assert.deepEqual(insert.params.slice(4), [null, null, null, null, null, null, null]);
 });
 
 test('pickem.resolvePickemMatch: passes the 8 documented params in order', async () => {
@@ -76,7 +78,8 @@ test('pickem.resolvePickemMatch: passes the 8 documented params in order', async
     actualFirstBlood: 'radiant', actualTotalKillsBucket: 'under', actualDurationTier: 'long',
   });
   const upd = pool.calls.find(c => c.sql.startsWith('UPDATE'));
-  assert.deepEqual(upd.params, [9, '42', 'radiant', 10, 5, 'radiant', 'under', 'long']);
+  // Prop bets v2 appended actualFirstTower / actualMvpTeam / actualComeback / actualFirstRosh.
+  assert.deepEqual(upd.params, [9, '42', 'radiant', 10, 5, 'radiant', 'under', 'long', null, null, null, null]);
 });
 
 test('pickem.autoResolvePickemForMatch: returns [] when no active season', async () => {

@@ -146,12 +146,11 @@ function request(app, method, path, body) {
   });
 }
 
-test('POST /api/pickem/pick: free signed-in user gets 402 paywall', async () => {
+test('POST /api/pickem/pick: free signed-in user is allowed (Pickem is free — Task #316)', async () => {
   const app = buildApp({ isPro: false, isSu: false });
   const r = await request(app, 'POST', '/api/pickem/pick', { matchRef: 'm1', pickedWinner: 'radiant' });
-  assert.strictEqual(r.status, 402);
-  assert.strictEqual(r.body.paywall, true);
-  assert.strictEqual(r.body.feature, 'pickem_entry');
+  assert.strictEqual(r.status, 200);
+  assert.ok(r.body.pick);
 });
 
 test('POST /api/pickem/pick: Pro user is allowed through', async () => {

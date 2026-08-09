@@ -77,6 +77,7 @@ function resetMocks() {
       return { account_id: _accountId, ...fields };
     },
     getOwnedEntitlements: async () => [],
+    hasCoinCosmetic: async () => false,
     hasFrameUnlocked: async () => true,
     getMergedAccountIds: async (id) => [id],
     getPlayerAchievements: async () => [],
@@ -163,7 +164,7 @@ test('rejects a non-Pro user picking a premium pack with HTTP 403', async () => 
     isProValue = false;
     const { status, body } = await postProfile(baseBody({ selected_voice_pack: pack }));
     assert.strictEqual(status, 403, `pack ${pack} should be 403 for non-Pro`);
-    assert.strictEqual(body.error, 'Voice packs are reserved for Pro members');
+    assert.strictEqual(body.error, 'Voice packs are reserved for Pro members (or unlock with coins in the shop)');
     assert.strictEqual(savedFields, null, `pack ${pack} must not persist for non-Pro`);
   }
 });

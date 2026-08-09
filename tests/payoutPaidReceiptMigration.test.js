@@ -27,7 +27,7 @@ const CANDIDATE_SQL = `
      AND paid_notified_at IS NULL
    ORDER BY id`;
 
-test('rollout backfill stamps historical paid rows so they never get a receipt', async () => {
+test('rollout backfill stamps historical paid rows so they never get a receipt', { skip: !process.env.DATABASE_URL && '# DATABASE_URL not set' }, async () => {
   await db.init();
   const p = db.getPool();
   const client = await p.connect();

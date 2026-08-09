@@ -57,6 +57,7 @@ const EXPECTED_PRO_ROUTES = [
   ['get', '/benchmarks',                          'player_benchmarks'],
   ['get', '/heroes/meta-v2',                      'hero_meta_v2'],
   ['get', '/players/:id/matches/export.csv',      'csv_export'],
+  ['get', '/ward-placements',                     'ward_heatmap'],
 ];
 
 // Routes intentionally excluded from the per-route 402 probe sweep. Keep

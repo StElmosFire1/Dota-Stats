@@ -39,6 +39,12 @@ function stubModule(specifier, exports, fromPath = __filename) {
 // hasEntitlement / countEntitlementHolders / grantEntitlementWithCap
 // behaviours and capture every grantEntitlementWithCap call so the
 // webhook test can assert "called with the right args".
+// The checkout route 503s before any ownership/cap logic when
+// STRIPE_SECRET_KEY is absent, so hosts that run tests without a Stripe env
+// (e.g. the prod deploy gate shell) need a dummy key for the 4xx-path tests.
+// The Stripe client itself is stubbed — no network calls are ever made.
+if (!process.env.STRIPE_SECRET_KEY) process.env.STRIPE_SECRET_KEY = 'sk_test_dummy';
+
 function _stubServerDeps(dbOverrides = {}) {
   const captured = {
     grantCalls: [],

@@ -8,6 +8,7 @@ const {
   joinPaths,
   extractRoutes,
   extractDocPaths,
+  IGNORED_PATHS,
 } = require('../scripts/check-feature-list');
 
 // -----------------------------------------------------------------------------
@@ -122,7 +123,7 @@ test('every real App.jsx route is documented in website-features.txt', () => {
   const routes = extractRoutes(appSrc);
   const docPaths = new Set([...extractDocPaths(docSrc)].map(normalize));
   const missing = [...routes]
-    .filter((r) => r !== '/*')
+    .filter((r) => !IGNORED_PATHS.has(r))
     .filter((r) => !docPaths.has(normalize(r)));
   assert.deepStrictEqual(missing, [], `undocumented routes: ${missing.join(', ')}`);
 });
