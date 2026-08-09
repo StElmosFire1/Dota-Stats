@@ -21,6 +21,7 @@ const FEATURES_PATH = path.join(__dirname, '..', 'docs', 'website-features.txt')
 // Keep this list short and explain every entry.
 const IGNORED_PATHS = new Set([
   '/*', // react-router catch-all wrappers, not a real page
+  '/ward-heatmap-lab', // superuser-only internal tuning lab, intentionally unlisted/undocumented
 ]);
 
 function fail(msg) {
