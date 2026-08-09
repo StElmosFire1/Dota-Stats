@@ -5,19 +5,21 @@ import PlayerBenchmarks from './PlayerBenchmarks';
 import PaywallBlur from '../components/PaywallBlur';
 
 const TABS = [
-  { id: 'network', label: '★ Player Network', desc: 'Top duos, synergy, and player connections (Pro)', pro: true },
+  { id: 'network', label: '★ Network', desc: 'Top duos, synergy, and player connections (Pro)', pro: true },
   { id: 'benchmarks', label: '★ Benchmarks', desc: 'Compare average stats across all players (Pro)', pro: true },
 ];
 
 // Per-tab titles so /social and /benchmarks read as clearly different pages
 // (they share this shell, which used to make them look identical).
+// The combined page is called "Player Network" (Benchmarks folded in as a
+// tab). The title is constant; only the per-tab description changes.
 const TAB_HEADINGS = {
   network: {
     title: 'Player Network',
     desc: 'Who plays with whom — top duos, teammate synergy, and the connection graph across the league.',
   },
   benchmarks: {
-    title: 'Benchmarks',
+    title: 'Player Network',
     desc: 'League-wide averages — compare every player\u2019s KDA, GPM, and core stats side by side in one table.',
   },
 };
