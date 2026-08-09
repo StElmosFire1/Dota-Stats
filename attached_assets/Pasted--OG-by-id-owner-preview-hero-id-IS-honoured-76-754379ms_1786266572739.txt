@@ -1,0 +1,947 @@
+✔ OG by-id: owner ?preview_hero_id IS honoured (76.754379ms)
+✔ OG by-id: owner ?preview_hero_id=most_played skips saved override (75.128746ms)
+✔ OG by-id: non-owner ?preview_hero_id=most_played is IGNORED (81.234805ms)
+✔ OG by-id: non-numeric accountId is rejected (302 to /oa-logo.png) (63.697006ms)
+✔ _diffAgainstBaseline: baseline absent → status ok, no diff computed (91.596359ms)
+✔ _diffAgainstBaseline: same size under threshold → status ok with ratio (26.5863ms)
+✔ _diffAgainstBaseline: same size over threshold → status failed (24.20538ms)
+✔ _diffAgainstBaseline: viewport mismatch → status failed (25.517265ms)
+✔ _diffAgainstBaseline: pixelmatch throws → status failed with error reason (24.613792ms)
+✔ runSmoke: missing optional deps → records SKIPPED bootstrap step (1.873092ms)
+[Owner DM] failed: Expected token to be set for this request, but none was present
+✔ runSmoke: second concurrent call returns skipped (in-flight guard) (11.280198ms)
+✔ runSmoke: lockdown on + no SUPERUSER_PASSWORD → records _lockdown skipped step and bails (3.02691ms)
+✔ runSmoke: SUPERUSER_PASSWORD set → context carries x-superuser-key header, no lockdown probe (1165.928908ms)
+✔ _probeJsonJourney: 2xx → ok (26.256577ms)
+✔ _probeJsonJourney: non-2xx → not ok with HTTP reason (23.930852ms)
+✔ _checkPageLoad: nav HTTP >= 400 → not ok (25.526757ms)
+✔ _checkPageLoad: no navigation response → not ok (24.005854ms)
+✔ _checkPageLoad: selector not found → not ok (28.718989ms)
+✔ _checkPageLoad: selector present (fast count pass) → ok (24.651955ms)
+✔ _checkPageLoad: no expect → ok on clean nav (49.656282ms)
+✔ _resolveAuthReadiness: not configured → skipped with clear reason (37.761164ms)
+✔ _resolveAuthReadiness: stored state validates against /api/auth/me → reused, no fresh login (23.984956ms)
+✔ _resolveAuthReadiness: stale stored state → falls through to fresh login success (24.725962ms)
+✔ _resolveAuthReadiness: fresh login non-2xx → recorded as skip reason (24.345335ms)
+✔ _resolveAuthReadiness: fresh login throws → recorded as skip reason (24.365988ms)
+✔ _resolveAuthReadiness: onCaptureState throwing does not unset authReady (23.702982ms)
+✔ _resolveSuperuserReadiness: password unset → skipped with clear reason (23.708662ms)
+✔ _resolveSuperuserReadiness: login 2xx → ready (25.11333ms)
+✔ _resolveSuperuserReadiness: login non-2xx → not ready with HTTP reason (23.609491ms)
+✔ _resolveSuperuserReadiness: login throws → not ready with failure reason (23.412434ms)
+✔ _alertOwner: no-op (no throw) when Discord bot unavailable (1.187605ms)
+✔ _alertOwner: no-op when bot lacks _dmOwner (0.919454ms)
+✔ _alertOwner: DMs the owner when bot is available (0.965602ms)
+✔ fingerprint signal: overlapping hashed IPs across two accounts contribute >0 and name the partner (3.019088ms)
+✔ fingerprint signal: no overlap returns 0 contribution with the "no overlapping fingerprints" detail (1.951795ms)
+✔ fingerprint signal: empty index degrades to "no fingerprint data available" (0.338319ms)
+✔ stampSession: no-op for anonymous sessions, writes for authenticated ones (1.400634ms)
+✔ stampSession: re-stamp is a no-op within the refresh window when prints are unchanged (0.577281ms)
+✔ round-trip: middleware-written prints overlap through the scorer (0.614348ms)
+✔ partners: no overlap yields an empty partners list and 0 contribution (3.216174ms)
+✔ partners: a single overlapping account yields exactly one partner (0.45343ms)
+✔ partners: multiple overlaps are sorted by hit count (desc) and capped at 10 (0.947351ms)
+✔ detail + contribution: weighting matches the documented math (0.514351ms)
+✔ detail: a single overlap uses the singular "overlap" wording (1.261181ms)
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Webhook] dispatcher worker started
+[mag-v3] weekly report worker started
+✔ SPA HTML shell is served no-store at the root and on deep routes (no stale-build pin) (348.852244ms)
+✔ isBot: missing or empty UA is treated as a bot (1.72047ms)
+✔ isBot: known crawlers and unfurlers are blocked (0.27122ms)
+✔ isBot: headless browsers and automation frameworks are blocked (0.225051ms)
+✔ isBot: generic HTTP clients are blocked (0.299751ms)
+✔ isBot: real browsers (desktop + mobile) are NOT blocked (0.27323ms)
+✔ isBot: matching is case-insensitive (0.160298ms)
+✔ BOT_UA_SUBSTRINGS: every entry is non-empty and already lowercased (0.42281ms)
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: initial login.
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: initial login.
+[Steam] Logged in successfully.
+[Steam] Reconnected to Steam — Dota GC session still established; not re-opening Dota.
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: initial login.
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: initial login.
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Suppressing Dota re-open — a gamesPlayed hello was already sent 0.0s ago (debounce).
+[Steam] Logged in successfully.
+[Steam] Suppressing Dota re-open — a gamesPlayed hello was already sent 0.0s ago (debounce).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: initial login.
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+[Steam] Logged in successfully.
+[Steam] Opening Dota 2 — sending gamesPlayed([570]) hello. Reason: Steam reconnect (GC session was lost).
+✔ first login opens Dota exactly once and creates one GC client (4.787856ms)
+✔ reconnect with GC still established does NOT re-open Dota (0.447428ms)
+✔ reconnect with GC lost DOES re-open Dota to recover it (0.579426ms)
+✔ rapid reconnect storm is debounced to a single re-open (0.8233ms)
+✔ GC client and its listeners are bound exactly once across many re-logins (3.907814ms)
+﹣ claim lease: stale takeover invalidates the original worker's terminal writes (1.619271ms) # DATABASE_URL not set
+[Stripe] KEY MODE MISMATCH: STRIPE_SECRET_KEY is a test-mode key but NODE_ENV=production expects live mode — refusing to start. Set the correct key, or set STRIPE_ALLOW_MODE_MISMATCH=1 to override (dangerous).
+[Stripe] KEY MODE MISMATCH: STRIPE_SECRET_KEY is a test-mode key but NODE_ENV=production expects live mode — continuing because STRIPE_ALLOW_MODE_MISMATCH=1
+[Stripe] Key mode OK — live key matches NODE_ENV=production
+✔ getKeyMode classifies key prefixes (1.797276ms)
+✔ static check: matching modes pass (0.302543ms)
+✔ static check: test key in production fails (0.287172ms)
+✔ static check: live key outside production fails (0.186184ms)
+✔ static check: no key is ok (payments disabled) (0.182441ms)
+✔ static check: unrecognized key format fails (0.264884ms)
+✔ startup gate exits on mismatch, passes on match, honors override (1.606425ms)
+✔ attaches receipt URLs for every Stripe source and strips raw ids (20.945492ms)
+✔ coin cosmetic rows and refless rows get no receipt link (0.508186ms)
+✔ Stripe failures are best-effort — items survive without a link, ids still stripped (0.650522ms)
+✔ missing stripe client omits links without throwing (0.418467ms)
+✔ lookups are cached — a second pass hits Stripe zero times (1.778355ms)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Webhook] dispatcher worker started
+[mag-v3] weekly report worker started
+[Stripe] Confirmed tournament entry entry_1 session cs_test_tournament_entry
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_tournament_entry status= unpaid purpose= tournament_entry
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed tournament entry entry_1 session cs_test_async_tournament_entry
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed Pro purchase pro_1 session cs_test_pro_lifetime account 7777 plan undefined
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_pro_lifetime status= unpaid purpose= pro_lifetime
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed Pro purchase pro_1 session cs_test_async_pro_lifetime account 7777 plan undefined
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Coaching booking paid (session) booking_1
+[Webhook] dispatchEvent failed: Cannot read properties of null (reading 'length')
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_coaching_booking status= unpaid purpose= coaching_booking
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Coaching booking paid (session) booking_1
+[Webhook] dispatchEvent failed: Cannot read properties of null (reading 'length')
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Founders Pass ring granted: 4242 reason= null
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_founders_ring status= unpaid purpose= founders_ring
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Founders Pass ring granted: 4242 reason= null
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Frame purchase confirmed: frame_x for account 4242
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_frame_purchase status= unpaid purpose= frame_purchase
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Frame purchase confirmed: frame_x for account 4242
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Gift Pro confirmed for recipient 8888
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_gift_pro status= unpaid purpose= gift_pro
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Gift Pro confirmed for recipient 8888
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Gift Season Pass activated for 8888 season 1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_gift_season_pass status= unpaid purpose= gift_season_pass
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Gift Season Pass activated for 8888 season 1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed buyin for session cs_test_default
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] checkout.session.completed deferred (async settlement) session= cs_test_default status= unpaid purpose= undefined
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed buyin for session cs_test_async_default
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed buyin for session cs_test_default
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] async payment failed session= cs_test_async_failed purpose= coaching_booking
+[Stripe] Coaching booking async payment failed (slot freed) booking_1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] async payment failed session= cs_test_async_failed purpose= tournament_entry
+✔ checkout.session.completed PAID → fulfils tournament_entry (261.933287ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil tournament_entry (deferred) (82.389157ms)
+✔ checkout.session.async_payment_succeeded → fulfils tournament_entry (96.264623ms)
+✔ checkout.session.completed PAID → fulfils pro_lifetime (76.164522ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil pro_lifetime (deferred) (81.521139ms)
+✔ checkout.session.async_payment_succeeded → fulfils pro_lifetime (66.725249ms)
+✔ checkout.session.completed PAID → fulfils coaching_booking (68.726463ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil coaching_booking (deferred) (67.24173ms)
+✔ checkout.session.async_payment_succeeded → fulfils coaching_booking (68.501874ms)
+✔ checkout.session.completed PAID → fulfils founders_ring (63.477658ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil founders_ring (deferred) (66.768595ms)
+✔ checkout.session.async_payment_succeeded → fulfils founders_ring (86.67993ms)
+✔ checkout.session.completed PAID → fulfils frame_purchase (69.815497ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil frame_purchase (deferred) (64.125665ms)
+✔ checkout.session.async_payment_succeeded → fulfils frame_purchase (65.984056ms)
+✔ checkout.session.completed PAID → fulfils gift_pro (64.956987ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil gift_pro (deferred) (61.128705ms)
+✔ checkout.session.async_payment_succeeded → fulfils gift_pro (64.97385ms)
+✔ checkout.session.completed PAID → fulfils gift_season_pass (64.795268ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil gift_season_pass (deferred) (64.300971ms)
+✔ checkout.session.async_payment_succeeded → fulfils gift_season_pass (59.65351ms)
+✔ checkout.session.completed PAID → fulfils default buyin (no purpose metadata) (65.104919ms)
+✔ checkout.session.completed UNPAID → does NOT fulfil default buyin (no purpose metadata) (deferred) (63.288302ms)
+✔ checkout.session.async_payment_succeeded → fulfils default buyin (no purpose metadata) (64.41431ms)
+✔ checkout.session.completed payment_status='no_payment_required' → fulfils (default buyin) (67.011218ms)
+✔ checkout.session.async_payment_failed for coaching_booking → frees the slot (67.612325ms)
+✔ checkout.session.async_payment_failed for non-coaching purpose → no DB mutation (94.725111ms)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Webhook] dispatcher worker started
+[mag-v3] weekly report worker started
+[Stripe] Confirmed tournament entry entry_1 session cs_test_tourn
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Duplicate webhook event (status=processed): evt_test_inbox_1 checkout.session.completed
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Duplicate webhook event (status=processing): evt_test_inbox_1 checkout.session.completed
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed tournament entry entry_1 session cs_test_tourn
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] webhook inbox write failed — refusing to process (Stripe will retry): inbox db down
+[error] {
+  component: 'error-monitor',
+  source: 'stripe-webhook:inbox-write',
+  route: '/api/stripe/webhook',
+  phase: 'inbox-write',
+  eventType: 'checkout.session.completed',
+  eventId: 'evt_test_inbox_1',
+  err: 'inbox db down',
+  stack: 'Error: inbox db down\n' +
+    '    at Proxy.recordStripeWebhookEvent (/root/Dota-Stats-Full/tests/stripeWebhookInbox.test.js:43:31)\n' +
+    '    at /root/Dota-Stats-Full/src/web/server.js:3688:26\n' +
+    '    at status (/root/Dota-Stats-Full/tests/stripeWebhookInbox.test.js:175:19)\n' +
+    '    at new Promise (<anonymous>)\n' +
+    '    at _invokeWebhook (/root/Dota-Stats-Full/tests/stripeWebhookInbox.test.js:173:9)\n' +
+    '    at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/stripeWebhookInbox.test.js:247:19)\n' +
+    '    at Test.runInAsyncScope (node:async_hooks:206:9)\n' +
+    '    at Test.run (node:internal/test_runner/test:796:25)\n' +
+    '    at Test.processPendingSubtests (node:internal/test_runner/test:526:18)\n' +
+    '    at Test.postRun (node:internal/test_runner/test:889:19)'
+} error captured (stripe-webhook:inbox-write)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Webhook error: boom: transient db failure
+[error] {
+  component: 'error-monitor',
+  source: 'stripe-webhook:request',
+  route: '/api/stripe/webhook',
+  phase: 'request',
+  err: 'boom: transient db failure',
+  stack: 'Error: boom: transient db failure\n' +
+    '    at Proxy.markTournamentEntryPaid (/root/Dota-Stats-Full/tests/stripeWebhookInbox.test.js:68:34)\n' +
+    '    at fulfillCompletedSession (/root/Dota-Stats-Full/src/web/server.js:2566:34)\n' +
+    '    at _processStripeEvent (/root/Dota-Stats-Full/src/web/server.js:3145:17)\n' +
+    '    at /root/Dota-Stats-Full/src/web/server.js:3713:15'
+} error captured (stripe-webhook:request)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Confirmed tournament entry entry_1 session cs_test_stale
+[Stripe] inbox retry succeeded: evt_test_stale_1 checkout.session.completed
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] ⚠️ [Stripe Dispute] New chargeback dp_test_1 — 50.00 AUD (reason: fraudulent), affected: booking #42, payment_intent: pi_test_1. Flagged for admin review.
+[STRIPE DISPUTE] ⚠️ [Stripe Dispute] New chargeback dp_test_1 — 50.00 AUD (reason: fraudulent), affected: booking #42, payment_intent: pi_test_1. Flagged for admin review. (owner-alert channels unavailable — log-only)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Dispute dp_test_1 CLOSED (won) — booking #42
+✔ new event: claimed, fulfilled, marked processed BEFORE the 200 ACK (273.431141ms)
+✔ unclaimed replay (already processed): 200 duplicate, NO side effects (98.123443ms)
+✔ unclaimed replay (live claim by another worker): 200 duplicate, no processing (112.570364ms)
+✔ re-claimed replay (previously failed / stale claim): reprocessed (82.059253ms)
+✔ inbox write failure: retryable 5xx, event NOT processed (80.144528ms)
+✔ fulfillment failure: marked failed (awaited), 400 so Stripe retries (63.485949ms)
+✔ retry sweep: stale received/processing row is re-claimed and re-run (crash recovery) (66.161259ms)
+✔ retry sweep: skips rows whose claim is still live (claim lost) (62.605863ms)
+✔ charge.dispute.created: recorded + flagged for review (64.28665ms)
+✔ charge.dispute.closed: recorded as resolved (60.11659ms)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Webhook] dispatcher worker started
+[mag-v3] weekly report worker started
+[Stripe] Refunded Pro subscription pro_1 account 7777
+[Stripe] Refunded coaching booking booking_1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Coaching booking captured (PI safety net) booking_1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Coaching booking canceled (PI) booking_1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Coach KYC active 4242 stripe_account acct_kyc_1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Stripe] Coaching booking checkout expired (slot freed) booking_1
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+✔ charge.refunded with payment_intent → revokes Pro AND flips coaching booking (262.210994ms)
+✔ charge.refunded WITHOUT payment_intent → no DB mutation (80.189405ms)
+✔ payment_intent.succeeded for coaching_booking → marks booking completed (90.109688ms)
+✔ payment_intent.succeeded for non-coaching purpose → no DB mutation (67.433986ms)
+✔ payment_intent.succeeded with no metadata → no DB mutation (75.652253ms)
+✔ payment_intent.canceled for coaching_booking → flips booking refunded (69.758954ms)
+✔ payment_intent.canceled for non-coaching purpose → no DB mutation (64.453462ms)
+✔ account.updated with charges_enabled AND payouts_enabled → promotes coach to active (61.96313ms)
+✔ account.updated with charges_enabled only (payouts disabled) → coach NOT promoted (66.637004ms)
+✔ account.updated with payouts_enabled only (charges disabled) → coach NOT promoted (66.217901ms)
+✔ account.updated with neither flag → coach NOT promoted (69.62308ms)
+✔ checkout.session.expired for coaching_booking → frees the slot (67.265204ms)
+✔ checkout.session.expired for non-coaching purpose → no DB mutation (63.972983ms)
+✔ checkout.session.expired with no metadata → no DB mutation (64.808127ms)
+✔ superuser admin routes: live set matches the expected manifest exactly (250.633636ms)
+✔ superuser admin routes: every gated route rejects unauthorized callers (401/401/403) (107.466087ms)
+[Owner DM] failed: Expected token to be set for this request, but none was present
+✔ burst bucket: 5 failures allowed, 6th is a 429 with an empty body (1329.109215ms)
+✔ the limiter is a stacked array of two buckets (0.369913ms)
+✔ _resetAlertState is callable and idempotent (0.270409ms)
+✔ helpers are exported from module scope (so the lockdown gate can call them) (1.53715ms)
+✔ parseSuperuserSteamIds: unset/empty/whitespace → just the owner default (0.476116ms)
+✔ parseSuperuserSteamIds: comma/space/newline separated, trims + drops blanks (0.884073ms)
+✔ isAllowlistedSteamSuperuser: allow-listed account (number or string) → true (0.259484ms)
+✔ isAllowlistedSteamSuperuser: signed-in but not allow-listed → false (0.245677ms)
+✔ isAllowlistedSteamSuperuser: no session / no accountId → false (0.216392ms)
+✔ isAllowlistedSteamSuperuser: non-owner with empty/unset allow-list → false (fail closed for everyone but the owner) (0.301328ms)
+✔ isAllowlistedSteamSuperuser: owner is allowed even when SUPERUSER_STEAM_IDS is empty/unset (0.236151ms)
+✔ recommendedSwissRounds boundary table (1.565992ms)
+✔ pairRound1 splits top/bottom halves with no duplicates (even) (0.568702ms)
+✔ pairRound1 odd field assigns lowest seed as bye (0.349054ms)
+✔ pairNextRound: no-repeat pairing across multiple constrained rounds (1.051656ms)
+✔ pairNextRound: odd field gives bye to lowest scorer who has not had one (0.398033ms)
+✔ pairNextRound: every account appears exactly once even under heavy constraints (0.450001ms)
+✔ computeStandings: Buchholz and Sonneborn–Berger ordering (0.599759ms)
+✔ buildPlayerStatsFromMatches surfaces opponents + wins (0.949272ms)
+✔ computePayouts: rounding remainder goes to first place (0.480119ms)
+✔ pairNextRound: score-group integrity — same-score players pair together when possible (0.491316ms)
+✔ pairNextRound: odd score group floats exactly one player down (0.363453ms)
+✔ computeStandings: Buchholz and Sonneborn–Berger disagree on tied players (0.762187ms)
+✔ computePayouts: first place absorbs the rounding remainder exactly (0.292337ms)
+✔ computePayouts: guards against empty splits and non-positive pools (0.257675ms)
+[task320Isolation] ✓ tenant scoping + commission ladder all pass
+✔ /root/Dota-Stats-Full/tests/task320Isolation.test.js (83.368155ms)
+[task333TenantRowIsolation] ✓ row-level + detail-route + create-path tenant isolation all hold
+✔ /root/Dota-Stats-Full/tests/task333TenantRowIsolation.test.js (86.643472ms)
+✔ evaluateCertWindow: comfortable margin is ok (1.891318ms)
+✔ evaluateCertWindow: exactly at the threshold is ok (< warnDays warns, not <=) (0.223922ms)
+✔ evaluateCertWindow: under 14 days warns, partial days floor (warn early not late) (0.23933ms)
+✔ evaluateCertWindow: past valid_to is expired (0.242449ms)
+✔ evaluateCertWindow: future valid_from is not_yet_valid (0.203044ms)
+✔ evaluateCertWindow: custom warnDays respected (0.174166ms)
+✔ evaluateCertWindow: garbage valid_to throws (never a silent ok) (0.457897ms)
+✔ resolveCheckHost: explicit TLS_CERT_CHECK_HOST wins (0.215821ms)
+✔ resolveCheckHost: derives host from https PUBLIC_BASE_URL (0.528736ms)
+✔ resolveCheckHost: http/dev base URL or nothing set → null (skip) (0.331007ms)
+✔ runTlsCertCheck: near-expiry cert DMs the owner and records error heartbeat (114.979842ms)
+✔ runTlsCertCheck: healthy cert → no DM, ok heartbeat (4.0771ms)
+✔ runTlsCertCheck: expired cert DM says EXPIRED (3.823281ms)
+✔ runTlsCertCheck: fetch failure DMs the owner (blind spot must not be silent) (3.960707ms)
+[TlsCert] owner DM failed: discord down
+✔ runTlsCertCheck: malformed valid_to → owner DM + error heartbeat, no rejection (4.053437ms)
+✔ runTlsCertCheck: DM failure is non-fatal and visible in the heartbeat (4.186417ms)
+✔ runTlsCertCheck: no https host configured → skipped heartbeat, no DM (5.767819ms)
+✔ runTlsCertCheck: TLS_CERT_WARN_DAYS env override widens the window (8.05238ms)
+✔ buildOwnerMessage: warn message includes renewal instructions and expiry date (0.285135ms)
+✔ upload-key admin routes: live set matches the expected manifest exactly (220.328212ms)
+✔ upload-key admin routes: every gated route rejects unauthorized callers (403/403) (97.063421ms)
+✔ calculateNewRatingsV3: sigma floor enforced when prior sigma is well below 2.5 (6.276337ms)
+✔ calculateNewRatingsV3: sigma floor does not inflate already-large sigma (1.366893ms)
+✔ calculateNewRatingsV3: modifier clamped at lower bound 0.80 (2.261245ms)
+✔ calculateNewRatingsV3: modifier clamped at upper bound 1.20 (2.198505ms)
+✔ calculateNewRatingsV3: missing modifier falls back to 1.0 (lobby-only matches) (2.411665ms)
+✔ calculateNewRatingsV3: NaN/Infinite modifier falls back to 1.0 (2.056591ms)
+✔ _v3ScoresToModifiers: maps z=-2σ to 0.80 and z=+2σ to 1.20 (0.490616ms)
+✔ _v3ScoresToModifiers: clamps extreme outliers to 0.80 / 1.20 (0.516023ms)
+✔ _v3ScoresToModifiers: zero variance returns 1.0 for all players (0.307436ms)
+✔ _v3ScoresToModifiers: empty input returns empty object (0.862162ms)
+✔ _v3HasCrossTeamCollision: detects same canonical id on both teams (0.294379ms)
+✔ _v3HasCrossTeamCollision: returns false when teams are disjoint (0.162534ms)
+✔ _v3HasCrossTeamCollision: returns false for empty teams (0.140684ms)
+✔ _v3PerfScore: smoke test — winning play scores higher than equal losing play (0.298736ms)
+✔ computeSeasonTrueSkillV3: cross-team canonical-id collision skips the match end-to-end (2.715119ms)
+✔ calculateNewRatingsV3: MMR formula = round((mu - 3*sigma) * 100) + 5000 (1.241693ms)
+✔ _v3PerfScoreBreakdown: component sum equals _v3PerfScore (0.53922ms)
+✔ _v3PerfScoreBreakdown: includes every documented component key (0.375866ms)
+✔ getMatchV3Modifiers: returns per-player modifier + breakdown matching season math (1.656503ms)
+✔ getMatchV3Modifiers: lobby-only match (no stats) defaults all modifiers to 1.0 (0.462125ms)
+✔ getMatchV3Modifiers: missing match returns empty modifier list (0.499198ms)
+✔ getPlayerV3ModifierHistory: returns chronologically-ordered modifiers for matches the player participated in (1.091757ms)
+✔ getPlayerV3ModifierHistory: includes lobby-only matches as a 1.00× modifier (0.435529ms)
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[Webhook] dispatcher worker started
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+[Session] Reusing persisted session secret (.session-secret) — sessions survive restarts. Set SESSION_SECRET to manage it via env.
+[Session] Using Postgres-backed session store (table=user_sessions).
+[mag-v3] weekly report worker started
+✔ GET /p/:slug serves an OG card to Discordbot UA with all required meta tags (253.477235ms)
+✔ GET /p/:slug redirects a real browser UA (Chrome) to /player/<id> (72.368876ms)
+✔ GET /player/:accountId serves an OG card to Discordbot UA with the same hero meta tags (91.71687ms)
+✔ GET /player/:accountId falls through to the SPA for real browser UAs (90.435849ms)
+✔ GET /player/:accountId uses the by-id card when no slug is claimed (62.916605ms)
+✔ GET /player/:accountId rejects non-numeric IDs (falls through to SPA) (65.453529ms)
+✔ GET /api/player/:id/vanity-slug returns slug for a claimed account (60.942551ms)
+✔ GET /api/player/:id/vanity-slug returns {slug:null} for an unclaimed account (54.416772ms)
+✔ _resolveVanityLookup slug extraction handles bare slug, /p/slug, and full URL (0.768418ms)
+✔ vanity URL perk: pending checkout row does NOT grant access (2.361562ms)
+✔ vanity URL perk: Stripe webhook (one_off_perk purpose) activates the perk (0.632399ms)
+✔ vanity URL perk: webhook redelivery is idempotent (0.313305ms)
+✔ GET /api/me/vanity-slug: post-webhook perk holder gets has_perk + can_claim (216.754059ms)
+✔ GET /api/me/vanity-slug: account WITHOUT the perk cannot claim (79.541732ms)
+✔ [precondition] sample clips exist and differ (2.27189ms)
+✔ valid voice token streams exactly the matching clip (13.252057ms)
+✔ a token for one slug never resolves another slug (2.688613ms)
+✔ a token forged with the wrong signing key is rejected (0.647793ms)
+✔ a tampered signature is rejected (0.535ms)
+✔ a tampered payload is rejected (signature no longer matches) (0.481844ms)
+✔ swapping a valid B-payload onto a valid A-signature is rejected (0.425546ms)
+✔ empty and malformed tokens are rejected (0.771449ms)
+✔ a validly-signed non-voice token cannot be replayed at the audio proxy (0.858759ms)
+✔ a validly-signed voice token with a missing slug field is rejected (0.430446ms)
+✔ a validly-signed token for an unknown slug yields no clip (404) (0.333381ms)
+✔ a validly-signed token with a path-traversal slug yields no clip (404) (0.61943ms)
+✔ VOICE_LINES has no duplicate heroIds (2.162315ms)
+✔ VOICE_LINES has no duplicate slugs (0.286024ms)
+✔ every VOICE_LINES entry is well-formed (1.662051ms)
+✔ every VOICE_LINES entry has a matching clip file on disk (2.006736ms)
+✔ no orphan .mp3 in voice-lines/ lacks a VOICE_LINES entry (0.584062ms)
+✔ voiceReadyHeroIds() length equals VOICE_LINES length (1.528037ms)
+✔ each slug matches the canonical hero slug (HERO_ID_TO_SLUG) (0.713552ms)
+✔ clipPathForSlug resolves a known slug to an on-disk path (0.295705ms)
+✔ clipPathForSlug rejects unknown slugs and path-traversal (1.242714ms)
+✔ slugForHero round-trips against VOICE_LINES (0.387358ms)
+✔ drainVoiceEvents returns empty for unknown account (2.205915ms)
+✔ pushVoiceEvent persists, drainVoiceEvents clears in FIFO order (0.421666ms)
+✔ pushVoiceEvent rejects invalid event names and zero/null accountIds (0.260245ms)
+✔ pushVoiceEvent caps queue at MAX_EVENTS_PER_ACCOUNT (0.30981ms)
+✔ pushMatchVoiceEvents emits win/loss + first-blood for every player (0.556463ms)
+✔ pushMatchVoiceEvents skips first-blood when no killer recorded (0.431005ms)
+✔ pushMatchVoiceEvents accepts snake_case firstblood_claimed (0.258514ms)
+✔ pushMatchVoiceEvents handles player_slot fallback (no team field) (0.385866ms)
+✔ pushMatchVoiceEvents tolerates malformed input (0.318994ms)
+✔ pushAchievementVoiceEvents emits achievement-unlock per granted player (0.484623ms)
+✔ pushAchievementVoiceEvents tolerates non-array input (0.194573ms)
+✔ pushVoiceEvent persists to injected pool and drain returns DB rows (1.35371ms)
+[voiceEvents] persist failed: hiccup
+✔ duplicate events with one rejected INSERT do not lose cues (18.093989ms)
+[voiceEvents] trim failed: trim failure
+[voiceEvents] persist failed: db down
+[voiceEvents] drain failed: db down
+✔ drain-before-insert-commit then drain-after surfaces event exactly once (1.180076ms)
+✔ drain sorts DB rows into FIFO order even when stub returns shuffled (0.549335ms)
+✔ INSERT success with trim DELETE failure delivers cue exactly once (1.005155ms)
+✔ drainVoiceEvents falls back to in-memory shadow if DB query throws (0.64152ms)
+[lootbox] route mount failed: Error: mountLootboxRoutes: `deps.lootbox` is required
+    at mountLootboxRoutes (/root/Dota-Stats-Full/src/monetization/lootbox/routes.js:35:37)
+    at createApiRouter (/root/Dota-Stats-Full/src/web/server.js:23861:5)
+    at TestContext.<anonymous> (/root/Dota-Stats-Full/tests/voicePackProfileValidation.test.js:108:19)
+    at TestHook.runInAsyncScope (node:async_hooks:206:9)
+    at TestHook.run (node:internal/test_runner/test:796:25)
+    at TestHook.run (node:internal/test_runner/test:1041:18)
+    at TestHook.run (node:internal/util:527:20)
+    at Test.createHook (node:internal/test_runner/test:639:33)
+    at node:internal/test_runner/harness:297:12
+    at Object.<anonymous> (/root/Dota-Stats-Full/tests/voicePackProfileValidation.test.js:100:1)
+✔ rejects an unknown voice pack with HTTP 400 (82.990165ms)
+✔ rejects a non-Pro user picking a premium pack with HTTP 403 (31.305831ms)
+✔ persists a valid voice pack for a Pro user (5.15235ms)
+✔ null clears the selected voice pack column (4.420868ms)
+✔ empty string clears the selected voice pack column (normalised to null) (4.643942ms)
+✔ omitting the field entirely is treated as null/clear (4.517194ms)
+ℹ tests 948
+ℹ suites 0
+ℹ pass 946
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 2
+ℹ todo 0
+ℹ duration_ms 71710.315557
+==> Applying pending database migrations (Task #856)...
+
+> dota2-inhouse-bot@1.0.0 migrate
+> node-pg-migrate -m migrations -j sql --ignore-pattern '.*\.md' up
+
+> Migrating files:
+> - 0000_baseline
+### MIGRATION 0000_baseline (UP) ###
+-- 0000_baseline.sql
+--
+-- No-op baseline. The live production schema was created by
+-- src/db/index.js init() — not by a migration. This file exists so that
+-- node-pg-migrate has a starting point and so future migration files can
+-- reference "post-baseline" without ambiguity.
+--
+-- New schema work should land in 0001_*.sql onwards.
+
+SELECT 1;
+;
+INSERT INTO "public"."pgmigrations" (name, run_on) VALUES ('0000_baseline', NOW());
+
+
+Migrations complete!
+==> Installing frontend dependencies...
+==> Building frontend...
+
+> build
+> vite build
+
+vite v5.4.21 building for production...
+✓ 927 modules transformed.
+dist/index.html                                     1.17 kB │ gzip:   0.62 kB
+dist/assets/pressbox-inhouse-DFkv0zqV.css           2.39 kB │ gzip:   0.82 kB
+dist/assets/Leaderboard-Bd0L7Ym5.css                6.23 kB │ gzip:   1.42 kB
+dist/assets/SettingsProfile-BpTqAPGg.css            6.25 kB │ gzip:   1.74 kB
+dist/assets/PlayerProfile-CQh-5-FK.css              6.71 kB │ gzip:   1.46 kB
+dist/assets/CosmeticsShop-pCiM7qt4.css              6.72 kB │ gzip:   1.76 kB
+dist/assets/games-By8dr3U1.css                      7.60 kB │ gzip:   2.06 kB
+dist/assets/MatchDetail-BqFGVzgu.css                7.94 kB │ gzip:   1.57 kB
+dist/assets/Home-ClVUnBEw.css                      12.90 kB │ gzip:   2.75 kB
+dist/assets/CaptainMode-kMhLyAq5.css               13.66 kB │ gzip:   3.11 kB
+dist/assets/MagazineCover-CxoPaJ8L.css             24.13 kB │ gzip:   5.23 kB
+dist/assets/index-DNKnT6n6.css                     60.85 kB │ gzip:  12.49 kB
+dist/assets/useRovingTabs-BO_HcgxQ.js               0.46 kB │ gzip:   0.32 kB
+dist/assets/SortableTh-DlG6hY_c.js                  0.53 kB │ gzip:   0.35 kB
+dist/assets/useProStatus-DSqdQgVA.js                0.61 kB │ gzip:   0.39 kB
+dist/assets/displayName-Cj_-rKxH.js                 0.69 kB │ gzip:   0.30 kB
+dist/assets/voicePack-YpLK71T2.js                   0.70 kB │ gzip:   0.44 kB
+dist/assets/ProBadge-BqXn_cFh.js                    0.75 kB │ gzip:   0.53 kB
+dist/assets/HeroIcon-BBqzulwu.js                    0.81 kB │ gzip:   0.54 kB
+dist/assets/SignInPrompt-PbNLm_qd.js                0.98 kB │ gzip:   0.60 kB
+dist/assets/CosmeticPreview-D--9HAcU.js             1.08 kB │ gzip:   0.55 kB
+dist/assets/ImpactBadge-DQbzT5Rz.js                 1.37 kB │ gzip:   0.68 kB
+dist/assets/overlayTheme-eBB-GBLS.js                1.38 kB │ gzip:   0.69 kB
+dist/assets/SponsorshipTrendChart-D_cRCNSu.js       1.58 kB │ gzip:   0.88 kB
+dist/assets/OverlaySeason-BzLxzldo.js               1.66 kB │ gzip:   0.73 kB
+dist/assets/PaywallCard-C1p062dM.js                 1.78 kB │ gzip:   0.99 kB
+dist/assets/PlayerInsights-D015gNcO.js              1.88 kB │ gzip:   1.00 kB
+dist/assets/challengeSummary-DOWxTdi4.js            1.93 kB │ gzip:   0.85 kB
+dist/assets/CoachRecommendationsTile-CZsOc6PN.js    1.96 kB │ gzip:   0.95 kB
+dist/assets/OverlayDraft-kdMapOL2.js                2.14 kB │ gzip:   0.95 kB
+dist/assets/SponsorshipBanner-CKWoXZzj.js           2.23 kB │ gzip:   1.09 kB
+dist/assets/TeamCreate-Dpf1LIvB.js                  2.24 kB │ gzip:   0.98 kB
+dist/assets/PaywallBlur-DPQEKjjo.js                 2.33 kB │ gzip:   1.18 kB
+dist/assets/MyGroupSessions-DZDQ3GtC.js             2.35 kB │ gzip:   1.07 kB
+dist/assets/BuyinSuccess-DQfZJb64.js                2.43 kB │ gzip:   1.03 kB
+dist/assets/OverlayTicker-DGwgiVYp.js               2.45 kB │ gzip:   0.80 kB
+dist/assets/BuyCoins-DynIz4mc.js                    2.50 kB │ gzip:   1.28 kB
+dist/assets/OverlayRecap-DliIg1H8.js                2.59 kB │ gzip:   1.04 kB
+dist/assets/GroupSessions-hL2B4wlE.js               2.80 kB │ gzip:   1.32 kB
+dist/assets/OverlayScoreboard-D4qK7rQA.js           2.89 kB │ gzip:   1.22 kB
+dist/assets/Teams-Dh17Uh4m.js                       3.03 kB │ gzip:   1.23 kB
+dist/assets/AdminSmokeTest-BDUHz_7G.js              3.10 kB │ gzip:   1.36 kB
+dist/assets/MyVodReviews-Dx2b-sBX.js                3.20 kB │ gzip:   1.21 kB
+dist/assets/MoodFormWidget-DNG9SHGf.js              3.27 kB │ gzip:   1.60 kB
+dist/assets/OverlayLive-DXe9jmpe.js                 3.43 kB │ gzip:   1.12 kB
+dist/assets/Games-DScjFzbL.js                       3.47 kB │ gzip:   1.47 kB
+dist/assets/ThisWeek-uK8NeLKt.js                    3.52 kB │ gzip:   1.46 kB
+dist/assets/Leagues-BgQOQxgG.js                     3.52 kB │ gzip:   1.37 kB
+dist/assets/SponsorshipInbox-C52Q2bz5.js            3.54 kB │ gzip:   1.36 kB
+dist/assets/CoachOnboarding-Cky0P63I.js             3.77 kB │ gzip:   1.75 kB
+dist/assets/ChallengeDetail-C0iC0j6r.js             3.91 kB │ gzip:   1.50 kB
+dist/assets/RankBadge-CukWcxem.js                   3.97 kB │ gzip:   1.83 kB
+dist/assets/PlayerBenchmarks-DkygdOQv.js            4.00 kB │ gzip:   1.75 kB
+dist/assets/MeNotifications-DsRypWuS.js             4.08 kB │ gzip:   1.80 kB
+dist/assets/HowItWorks-Dr8iKOw0.js                  4.10 kB │ gzip:   1.63 kB
+dist/assets/VodReviewRequest-Bskyli0r.js            4.31 kB │ gzip:   1.79 kB
+dist/assets/Synergy-Bloo0PDb.js                     4.34 kB │ gzip:   1.78 kB
+dist/assets/recapHighlights-BCxi745G.js             4.52 kB │ gzip:   1.34 kB
+dist/assets/SeasonPass-twz1ddzn.js                  4.53 kB │ gzip:   1.85 kB
+dist/assets/Collection-7Fb6o4u-.js                  4.53 kB │ gzip:   1.93 kB
+dist/assets/MultiKills-CAK_AQCx.js                  4.78 kB │ gzip:   1.72 kB
+dist/assets/SettingsDangerZone-BzE1txg_.js          4.83 kB │ gzip:   1.79 kB
+dist/assets/WardHeatmapLab-DrWx2640.js              5.02 kB │ gzip:   2.49 kB
+dist/assets/SettingsSessions-D-3DoZnR.js            5.15 kB │ gzip:   2.01 kB
+dist/assets/OverallStats-zTsRe4BA.js                5.19 kB │ gzip:   1.82 kB
+dist/assets/Sponsorships-BLgaV2bH.js                5.83 kB │ gzip:   2.27 kB
+dist/assets/VanitySlugPicker-VpnDJWuK.js            5.86 kB │ gzip:   2.24 kB
+dist/assets/CoachGroupSessionsManage-B3Q_NqkX.js    5.88 kB │ gzip:   1.86 kB
+dist/assets/Settings-BPIL8hOg.js                    5.95 kB │ gzip:   2.28 kB
+dist/assets/AdminMatchInsights-Oq21L36Z.js          6.18 kB │ gzip:   2.42 kB
+dist/assets/VodReviewDetail-N6hsvZm1.js             6.35 kB │ gzip:   2.23 kB
+dist/assets/LeagueProfile-FDLtqh7J.js               6.47 kB │ gzip:   2.32 kB
+dist/assets/TwitchLive-OX086bSZ.js                  6.55 kB │ gzip:   2.43 kB
+dist/assets/PatchNotes-BMxmD6lS.js                  6.61 kB │ gzip:   2.48 kB
+dist/assets/Join-DBk8uM8G.js                        6.67 kB │ gzip:   2.50 kB
+dist/assets/SeasonSummary-P9dFqyNc.js               6.89 kB │ gzip:   2.13 kB
+dist/assets/profileCosmetics-CbLTOemq.js            7.00 kB │ gzip:   2.81 kB
+dist/assets/SettingsAccount-BXdYRpdX.js             7.00 kB │ gzip:   2.28 kB
+dist/assets/MyBookings-CLJ-uutv.js                  7.07 kB │ gzip:   2.35 kB
+dist/assets/AdminSmokeTestRun-dBClaD1V.js           7.09 kB │ gzip:   2.83 kB
+dist/assets/CoachPremium-eab7SGXs.js                7.36 kB │ gzip:   2.91 kB
+dist/assets/ProReplayBrowser-CmzBcK6P.js            7.38 kB │ gzip:   2.49 kB
+dist/assets/WrappedSlideshow-tRAT9vBc.js            7.48 kB │ gzip:   2.85 kB
+dist/assets/CoachEarnings-CXQIKlwu.js               7.56 kB │ gzip:   2.52 kB
+dist/assets/DraftAssistant-BMhtrgRg.js              7.60 kB │ gzip:   2.55 kB
+dist/assets/ApiDocs-DA5-Uizv.js                     7.71 kB │ gzip:   2.78 kB
+dist/assets/RecordMatch-DERuZdoL.js                 7.79 kB │ gzip:   2.81 kB
+dist/assets/InhouseMarkets-kN93DQJq.js              7.82 kB │ gzip:   2.76 kB
+dist/assets/AdminFeatureHealth-CXswkCIm.js          7.85 kB │ gzip:   2.71 kB
+dist/assets/AdminSpotlight-D9t_Sziw.js              7.88 kB │ gzip:   2.66 kB
+dist/assets/AdminBrowserSmoke-CCSq5htx.js           7.94 kB │ gzip:   2.83 kB
+dist/assets/Social-CgHLcecn.js                      8.15 kB │ gzip:   2.65 kB
+dist/assets/QuestTracker-C8m-Gp6H.js                8.48 kB │ gzip:   2.88 kB
+dist/assets/AdminSmurfWatch-CIqi2LgO.js             8.63 kB │ gzip:   2.85 kB
+dist/assets/DraftTrainer-BfQyjS0h.js                8.89 kB │ gzip:   3.21 kB
+dist/assets/Pro-CgnURWYm.js                         8.97 kB │ gzip:   3.13 kB
+dist/assets/HallOfFame-TGcdg2Vl.js                  9.82 kB │ gzip:   3.08 kB
+dist/assets/MagazineCover-Bz1QKzm_.js               9.90 kB │ gzip:   3.03 kB
+dist/assets/SettingsNotifications-B0HWD_nD.js      10.05 kB │ gzip:   3.69 kB
+dist/assets/Spectate-DunLaEe1.js                   10.07 kB │ gzip:   3.33 kB
+dist/assets/HeroDetail-BfKkgTZd.js                 10.20 kB │ gzip:   3.10 kB
+dist/assets/WardMap-AVfYp-c_.js                    10.26 kB │ gzip:   3.50 kB
+dist/assets/Schedule-BxxINLEj.js                   10.81 kB │ gzip:   3.59 kB
+dist/assets/AdminOps-CWGkJh5F.js                   10.86 kB │ gzip:   3.61 kB
+dist/assets/PudgeStats-nfIB98m8.js                 10.96 kB │ gzip:   3.43 kB
+dist/assets/PositionStats-CZKtBx60.js              11.05 kB │ gzip:   3.03 kB
+dist/assets/Upload-DLg7fpeZ.js                     11.41 kB │ gzip:   4.05 kB
+dist/assets/PlayerTools-N9WJZOab.js                11.89 kB │ gzip:   3.45 kB
+dist/assets/SettingsBilling-CMOdUqI4.js            13.09 kB │ gzip:   4.05 kB
+dist/assets/StatsEditor-CdEW55So.js                13.26 kB │ gzip:   4.03 kB
+dist/assets/CoachProfile-C5jukxrl.js               13.53 kB │ gzip:   4.64 kB
+dist/assets/Lootbox-BiU-7jEk.js                    13.59 kB │ gzip:   4.71 kB
+dist/assets/WeekendTournament-TurEarqK.js          14.01 kB │ gzip:   4.80 kB
+dist/assets/Coaches-D6E3BgQv.js                    14.23 kB │ gzip:   4.12 kB
+dist/assets/ProfileDemo-CTKWkaM2.js                14.51 kB │ gzip:   4.11 kB
+dist/assets/Records-MSPeJQwK.js                    15.92 kB │ gzip:   4.70 kB
+dist/assets/H2H-DZFSrTUE.js                        16.14 kB │ gzip:   4.24 kB
+dist/assets/MatchList-tgrLb0l9.js                  16.28 kB │ gzip:   5.73 kB
+dist/assets/Pickem-CJlbkZ0D.js                     16.87 kB │ gzip:   4.59 kB
+dist/assets/GamePlay-BIX82anM.js                   17.24 kB │ gzip:   5.69 kB
+dist/assets/DraftSandbox-o6GH1FNo.js               17.33 kB │ gzip:   4.85 kB
+dist/assets/Players-ShJ1BAbb.js                    17.77 kB │ gzip:   5.55 kB
+dist/assets/TeamProfile-C2lxAAOZ.js                18.49 kB │ gzip:   4.69 kB
+dist/assets/PlayerGrowth-Dh9Q3C0J.js               18.71 kB │ gzip:   5.90 kB
+dist/assets/Developers-Cao7XYGv.js                 19.04 kB │ gzip:   6.39 kB
+dist/assets/SettingsApi-DsBp80W-.js                19.65 kB │ gzip:   5.64 kB
+dist/assets/Draft-B95R0ZF8.js                      20.04 kB │ gzip:   5.05 kB
+dist/assets/CoachEdit-C6U_O8A9.js                  22.06 kB │ gzip:   5.81 kB
+dist/assets/Predictions-dfQd4hp0.js                22.37 kB │ gzip:   6.28 kB
+dist/assets/Seasons-qgDKMg0-.js                    25.41 kB │ gzip:   6.54 kB
+dist/assets/Leaderboard-BdgGgKOT.js                26.81 kB │ gzip:   8.06 kB
+dist/assets/ReplayViewer-BaZmYp8A.js               26.89 kB │ gzip:   8.90 kB
+dist/assets/FounderRing-Duep3kkK.js                28.36 kB │ gzip:   6.17 kB
+dist/assets/CaptainMode-UBQGHjqA.js                30.69 kB │ gzip:   9.45 kB
+dist/assets/CosmeticsShop-BDOAyIh_.js              31.23 kB │ gzip:   9.17 kB
+dist/assets/ProfileSandbox-BxeSfDAC.js             31.33 kB │ gzip:   9.57 kB
+dist/assets/Home-BuoB9W1U.js                       43.83 kB │ gzip:  11.56 kB
+dist/assets/Heroes-B7sRS0Ie.js                     48.84 kB │ gzip:  12.98 kB
+dist/assets/SettingsProfile-BwlJX3lh.js            49.34 kB │ gzip:  14.12 kB
+dist/assets/Tournaments-BMMCsbLs.js                52.71 kB │ gzip:  13.32 kB
+dist/assets/Inhouse-CR7dKPmv.js                    72.71 kB │ gzip:  18.92 kB
+dist/assets/PlayerProfile-B08phydo.js             116.92 kB │ gzip:  29.86 kB
+dist/assets/MatchDetail-CcesxcXQ.js               153.93 kB │ gzip:  42.34 kB
+dist/assets/LineChart-BxymQIgN.js                 350.99 kB │ gzip: 104.59 kB
+dist/assets/index-CT8k9XCM.js                     366.82 kB │ gzip: 108.80 kB
+dist/assets/AdminPanel-BrUFS9AO.js                413.63 kB │ gzip:  93.00 kB
+✓ built in 9.77s
+==> Restarting bot...
+[PM2] Applying action restartProcessId on app [oi-bot](ids: [ 0 ])
+[PM2] [oi-bot](0) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ inhouse-bot        │ fork     │ 3    │ online    │ 0%       │ 393.5mb  │
+│ 0  │ oi-bot             │ fork     │ 5    │ online    │ 0%       │ 18.8mb   │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+==> Post-restart health check (Task #856)...
+health responded but not ok: {"status":"ok","db":true,"uptime":69163,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (5s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69168,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (10s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69173,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (15s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69178,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (20s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69183,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (25s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69188,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (30s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69193,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (35s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69198,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (40s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69203,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (45s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69208,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (50s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69213,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (55s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69218,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (60s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69223,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (65s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69228,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (70s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69233,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (75s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69238,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (80s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69243,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (85s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69248,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (90s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69253,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (95s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69258,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (100s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69264,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (105s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69269,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (110s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69274,"version":"1.0.0"}
+    ... waiting for http://127.0.0.1:5000/api/health (115s/120s)
+health responded but not ok: {"status":"ok","db":true,"uptime":69279,"version":"1.0.0"}
+
+██████████████████████████████████████████████████████████
+ERROR: post-restart health check FAILED after 120s.
+       http://127.0.0.1:5000/api/health never reported ok:true — the new build may be broken.
+       Recent PM2 logs follow; roll back with:
+         git reset --hard <previous-good-sha> && bash deploy.sh
+██████████████████████████████████████████████████████████
+[TAILING] Tailing last 60 lines for [oi-bot] process (change the value with --lines option)
+/root/.pm2/logs/oi-bot-out.log last 60 lines:
+0|oi-bot   | [DB] Schema migrations applied.
+0|oi-bot   | [DB] Patch notes seeded/updated (507 entries).
+0|oi-bot   | [info] { app: 'dota2-inhouse-bot', pino: false } logger initialised
+0|oi-bot   | [Startup] Google Sheets: disabled (config.features.sheets = false)
+0|oi-bot   | [Replay] Clearing port 5600 before spawn...
+0|oi-bot   | [Replay] Starting parser service on port 5600
+0|oi-bot   | [Replay] Parser service is ready.
+0|oi-bot   | [Startup] Lobby/friend monitor: skipped (Steam not connected)
+0|oi-bot   | [Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+0|oi-bot   | [TwitchPoller] Starting (every 60s)
+0|oi-bot   | [ProMatchSync] Starting — header sweep every 6h, details every 5m
+0|oi-bot   | [Startup] Pro match syncer: started (flag=on)
+0|oi-bot   | 
+0|oi-bot   | [Startup] Bot is running! Use !help in Discord.
+0|oi-bot   | [Startup] Active features:
+0|oi-bot   |   - Discord:        YES
+0|oi-bot   |   - Database:       YES
+0|oi-bot   |   - Steam:          NO
+0|oi-bot   |   - Replay parser:  YES (full stats)
+0|oi-bot   |   - TrueSkill MMR:  YES
+0|oi-bot   |   - Google Sheets:  DORMANT
+0|oi-bot   |   - Match poller:   DORMANT
+0|oi-bot   |   - Lobby/monitor:  DORMANT
+0|oi-bot   | [Stripe] Key mode OK — test key matches NODE_ENV=(unset)
+0|oi-bot   | [Discord] Bot online as Dota Bot 2#6555
+0|oi-bot   | [Discord] Weekly recap scheduled (Mondays 9am AEST).
+0|oi-bot   | [Discord] Weekly summary DMs scheduled (Sundays 19:00 AEDT).
+0|oi-bot   | [Discord] Season 10 launch is manual-only (Admin Panel button).
+0|oi-bot   | [Discord] Weekly Rivals auto-pair scheduled (Mondays 00:05 Australia/Sydney).
+0|oi-bot   | [Discord] Weekly Rivals recap DM scheduled (Sundays 20:00 Australia/Sydney).
+0|oi-bot   | [Discord] Position baselines recompute scheduled (Mondays 03:00 UTC).
+0|oi-bot   | [Discord] Profile Spotlight rotation scheduled (hourly).
+0|oi-bot   | [Discord] Profile Spotlight weekly auto-pick scheduled (Mondays 09:00 UTC).
+0|oi-bot   | [Discord] Coaching reminder + auto-release crons scheduled.
+0|oi-bot   | [Discord] Pro winback DM cron scheduled (09:00 Australia/Sydney).
+0|oi-bot   | [Discord] Anniversary shout-out cron scheduled (09:00 Australia/Sydney).
+0|oi-bot   | [Discord] Coach of the Month DM cron scheduled (1st of month, 09:00 UTC).
+0|oi-bot   | [Discord] Daily season end-condition check scheduled (midnight Australia/Sydney time).
+0|oi-bot   | [Stripe] STRIPE_SECRET_KEY present — payments enabled.
+0|oi-bot   | [Session] Using Postgres-backed session store (table=user_sessions).
+0|oi-bot   | [Webhook] dispatcher worker started
+0|oi-bot   | [mag-v3] weekly report worker started
+0|oi-bot   | [Web] Dashboard running on port 3001
+0|oi-bot   | [Startup] All systems ready.
+0|oi-bot   | 
+0|oi-bot   | [Startup] Feature health scheduler started (every 30m)
+0|oi-bot   | [Startup] Browser-smoke weekly cron scheduled (Sun 03:00 Australia/Sydney)
+0|oi-bot   | [Startup] Mini-games puzzle cron scheduled (hourly, Australia/Sydney)
+0|oi-bot   | [Startup] Nightly DB backup cron scheduled (02:30 Australia/Sydney)
+0|oi-bot   | [Startup] TLS cert expiry check scheduled (daily 09:00 Australia/Sydney)
+0|oi-bot   | [Startup] API quota lapse sweep scheduled (hourly)
+0|oi-bot   | [DiscordRPC] pusher started (tick=30000ms, app_id=unset)
+0|oi-bot   | [InhouseAutoStart] Started (every 5000ms)
+0|oi-bot   | [ServerHealth] Started — pinging RCON every 60s, alert after 3 failures, SSH auto-restart enabled (unit: dota-server.service).
+0|oi-bot   | [Discord] Registered 2 slash command(s) to guild 1491698695807172658.
+0|oi-bot   | [PatchNotes] 327 unannounced note(s): v6.30, v6.29, v7.10, v6.72, v6.84, v6.98, v6.78.1, v6.68, v6.95, v6.75, v6.76, v6.77, v6.78, v6.96, v6.90, v6.93, v6.82, v6.79, v6.81, v6.83, v7.08, v6.57, v6.88, v6.74.1, v6.86, v7.10.5, v6.66, v6.71, v6.80, v6.40, v6.43, v6.41, v6.44, v6.42, v7.04, v6.46, v6.51, v6.52, v6.53, v6.54, v6.91, v6.59, v6.60, v6.61, v6.62, v6.63, v6.64, v6.65, v6.94, v6.69, v6.70, v6.56, v6.67, v6.50, v6.99, v7.00, v7.13, v6.47, v6.85, v6.87, v6.89, v6.38, v6.73, v6.97, v6.45, v7.01, v7.12, v7.02, v7.14, v7.03, v7.05, v7.07, v6.74, v6.58, v6.49, v6.48, v7.06, v6.55, v7.09, v6.39, v7.11, v7.17, v7.15, v7.19, v7.16, v7.20, v7.18, v7.22, v6.79.1, v7.27, v7.30, v7.31, v7.32, v7.21, v7.28, v7.24, v7.29, v7.23, v7.26, v7.25, v7.36, v7.52, v7.42, v7.35, v7.40, v7.39, v7.38, v7.49, v7.37, v7.51, v7.48, v7.54, v7.45, v7.56, v7.55, v7.57, v7.50, v7.43, v7.44, v7.41, v7.33, v7.47, v7.46, v7.34, v7.53, v7.68, v7.61, v7.59, v7.64, v7.58, v7.66, v7.65, v7.63, v7.69, v7.67, v7.60, v7.62, v7.74, v7.71, v7.72, v7.73, v7.75, v7.76, v7.77, v7.70, v7.79, v7.83, v7.84, v7.78, v7.91, v7.81, v7.80, v7.85, v7.88, v7.87, v7.82, v7.86, v7.89, v7.93, v7.95, v7.96, v8.07, v7.92, v7.94, v8.04, v8.03, v8.02, v8.01, v8.00, v7.99, v7.98, v8.06, v8.05, v7.97, v7.90, v8.08, v8.11, v8.16, v8.13, v8.18, v8.10, v8.17, v8.12, v8.09, v8.15, v8.14, v8.41, v8.48, v8.35, v8.40, v8.33, v8.27, v8.42, v8.39, v8.36, v8.20, v8.29, v8.28, v8.34, v8.37, v8.44, v8.38, v8.43, v8.24, v8.26, v8.25, v8.19, v8.21, v8.23, v8.32, v8.30, v8.31, v8.22, v8.86, v8.81, v8.55, v8.70, v8.63, v8.90, v8.51, v8.64, v8.59, v8.74, v8.66, v8.67, v8.69, v8.82, v8.78, v8.60, v8.65, v8.75, v8.76, v8.49, v8.50, v8.85, v8.83, v8.93, v8.68, v8.88, v8.62, v8.61, v8.58, v8.57, v8.92, v8.91, v8.45, v8.56, v8.53, v8.71, v8.47, v8.80, v8.54, v8.72, v8.46, v8.52, v8.73, v8.77, v8.87, v8.84, v8.89, v8.79, v8.96, v8.94, v8.97, v8.95, v8.98, v8.99, v9.03, v9.06, v9.04, v9.08, v9.00, v9.05, v9.02, v9.07, v9.01, v9.25, v9.15, v9.27, v9.20, v9.28, v9.14, v9.09, v9.21, v9.17, v9.18, v9.11, v9.23, v9.10, v9.12, v9.16, v9.22, v9.24, v9.26, v9.13, v9.19, v9.46, v9.38, v9.32, v9.41, v9.37, v9.43, v9.44, v9.45, v9.29, v9.42, v9.34, v9.40, v9.39, v9.30, v9.36, v9.31, v9.33, v9.35, v9.48, v9.47, v9.49, v9.50, v9.53, v9.52, v9.51, v9.54, v9.55, v9.56, v9.57, v9.58, v9.59
+0|oi-bot   | [PatchNotes] Posting to 1 channel(s)...
+0|oi-bot   | [ProMatchSync] Header sweep done — 200 rows upserted
+0|oi-bot   | [Season] Running startup end-condition check...
+0|oi-bot   | [Baselines] Startup check OK (rows=3185, ageDays=6.3) — skipping recompute.
+
+/root/.pm2/logs/oi-bot-error.log last 60 lines:
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (3/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [Startup] Steam/Dota intentionally DISABLED (DISABLE_STEAM=true). Skipping Steam login — no Dota GC connection, no "now playing Dota 2" presence. Web dashboard, Discord bot, Stripe and the replay parser still run. Re-enable by removing DISABLE_STEAM (or setting it to anything other than "true") and restarting.
+0|oi-bot   | (node:1613275) DeprecationWarning: The ready event has been renamed to clientReady to distinguish it from the gateway READY event and will only emit under that name in v15. Please use clientReady instead.
+0|oi-bot   | (Use `node --trace-deprecation ...` to show where the warning was created)
+0|oi-bot   | [ServerHealth] health check failed (1/3): connect ECONNREFUSED 134.199.166.223:27015
+0|oi-bot   | [ServerHealth] health check failed (2/3): connect ECONNREFUSED 134.199.166.223:27015
