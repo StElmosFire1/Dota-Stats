@@ -5,7 +5,7 @@
 // ban/pick order, and the simulator + captain rating derive from the drafted
 // lineups and the chosen win plan (see web/src/lib/captainMode.js).
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { getCaptainModeHeroMeta } from '../api';
+import { getCaptainModeHeroMeta, saveCaptainModeRun, getCaptainModeStats } from '../api';
 import {
   CM_ORDER, ROLE_LABELS, HERO_IMG, STRATEGY_SLIDERS, DEFAULT_PLAN,
   powerCurve, powerSpike, heroIdentity, likelyPositions,
@@ -74,7 +74,7 @@ function Hub({ heroes, rating, history, onStart, onAtlas }) {
     <div>
       <div className="cmx-hub-hero">
         <div>
-          <span className="pb-eyebrow">Captain&apos;s Mode · OCE</span>
+          <span className="pb-eyebrow">Captain Sim · OCE</span>
           <h1 className="cmx-hub-title">
             Draft.<br /><span className="cmx-amber">Simulate.</span><br />Climb.
           </h1>
@@ -521,7 +521,11 @@ function SimulatorStage({ result, rating, onRematch, onHome }) {
   useEffect(() => {
     if (finished && !doneRef.current) {
       doneRef.current = true;
-      setNewRating(recordResult(result.delta, result.won));
+      const nr = recordResult(result.delta, result.won);
+      setNewRating(nr);
+      // Server-side stat tracking — fire-and-forget; anonymous players just
+      // get a 401 we ignore (localStorage remains their record).
+      saveCaptainModeRun({ won: result.won, delta: result.delta, rating: nr, runKey: result.runKey }).catch(() => {});
     }
   }, [finished, result]);
 
@@ -729,6 +733,13 @@ export default function CaptainMode() {
   const [result, setResult] = useState(null);
   const [rating, setRating] = useState(loadRating);
   const [history, setHistory] = useState(loadHistory);
+  // Server-synced record (signed-in players only; null when anonymous).
+  const [serverStats, setServerStats] = useState(null);
+
+  const refreshServerStats = () => {
+    getCaptainModeStats().then(setServerStats).catch(() => {});
+  };
+  useEffect(refreshServerStats, []);
 
   useEffect(() => {
     let alive = true;
@@ -773,18 +784,25 @@ export default function CaptainMode() {
     // planCoherence); fold them in by nudging the risk axis.
     const dup = roles.length - new Set(roles).size;
     const effPlan = dup > 0 ? { ...plan, risk: plan.risk + dup * 10 } : plan;
-    setResult(simulateMatch({
+    const sim = simulateMatch({
       myPicks: userPicks,
       enemyPicks: aiPicks,
       plan: effPlan,
       seed: Date.now() % 2147483647,
-    }));
+    });
+    // Per-simulation idempotency key — the server dedupes on it so retries or
+    // component remounts can never double-count a run.
+    sim.runKey = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `run-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    setResult(sim);
     setStage('sim');
   };
 
   const backToHub = () => {
     setRating(loadRating());
     setHistory(loadHistory());
+    refreshServerStats();
     setStage('hub');
   };
 
@@ -805,6 +823,17 @@ export default function CaptainMode() {
 
   return (
     <div className="cmx-root">
+      {stage === 'hub' && serverStats && serverStats.games > 0 && (
+        <div className="pb-card" style={{ padding: '10px 16px', marginBottom: 12, display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'baseline' }}>
+          <span className="pb-eyebrow">Synced record</span>
+          <span style={{ fontSize: 14 }}>
+            <b className="cmx-num">{serverStats.games}</b> games ·{' '}
+            <b className="cmx-num">{serverStats.wins}</b>–<b className="cmx-num">{serverStats.losses}</b> ·{' '}
+            rating <b className="cmx-num">{serverStats.current_rating}</b>
+            {serverStats.best_rating > serverStats.current_rating ? <> (best {serverStats.best_rating})</> : null}
+          </span>
+        </div>
+      )}
       {stage === 'hub' && (
         <Hub
           heroes={heroes}

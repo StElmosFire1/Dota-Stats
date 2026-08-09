@@ -762,6 +762,13 @@ export default function Leaderboard() {
                     </td>
                     <td className="col-player">
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        {/* Equipped cosmetic ring (from the shop) — shown on
+                            the leaderboard, not just the profile page. */}
+                        {p.founder_ring ? (
+                          <span title="Equipped ring" style={{ display: 'inline-flex', flexShrink: 0 }}>
+                            <FounderRing sku={p.founder_ring} size={30} disc="emblem" />
+                          </span>
+                        ) : null}
                         <TierEmblemImg mmr={p.mmr} isLeader={rank === 1} />
                         {(() => {
                           const frameMeta = p.profile_frame ? FRAME_META[p.profile_frame] : null;

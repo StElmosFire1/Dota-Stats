@@ -8,14 +8,28 @@ const TABS = [
   { id: 'benchmarks', label: '★ Benchmarks', desc: 'Compare average stats across all players (Pro)', pro: true },
 ];
 
+// Per-tab titles so /social and /benchmarks read as clearly different pages
+// (they share this shell, which used to make them look identical).
+const TAB_HEADINGS = {
+  network: {
+    title: 'Player Network',
+    desc: 'Who plays with whom — top duos, teammate synergy, and the connection graph across the league.',
+  },
+  benchmarks: {
+    title: 'Benchmarks',
+    desc: 'League-wide averages — compare every player\u2019s KDA, GPM, and core stats side by side in one table.',
+  },
+};
+
 export default function PlayerInsights({ defaultTab = 'network' }) {
   const [tab, setTab] = useState(defaultTab);
+  const heading = TAB_HEADINGS[tab] || TAB_HEADINGS.network;
 
   return (
     <div>
-      <h1 className="page-title">Player Insights</h1>
+      <h1 className="page-title">{heading.title}</h1>
       <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-        Community statistics, player networks, and performance benchmarks in one place.
+        {heading.desc}
       </p>
 
       {/* Tab bar */}

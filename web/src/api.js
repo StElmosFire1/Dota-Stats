@@ -931,6 +931,21 @@ export async function saveDraftTrainerRun({ side, picksA, picksB, bans, predicte
   return r.json();
 }
 
+// Captain Sim (Captain's Mode mini-game) — server-side stat tracking.
+export async function saveCaptainModeRun({ won, delta, rating, runKey } = {}) {
+  const r = await fetch('/api/captain-mode/runs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ won, delta, rating, run_key: runKey }),
+  });
+  if (!r.ok) throw new Error('Failed to save Captain Sim run');
+  return r.json();
+}
+
+export async function getCaptainModeStats() {
+  return fetchJson('/captain-mode/stats');
+}
+
 export async function getDraftTrainerAccuracy(accountId) {
   return fetchJson(`/player/${accountId}/draft-trainer-accuracy`);
 }

@@ -6593,15 +6593,20 @@ function createApiRouter(startupStatus = {}, _app = null) {
       const [leaderboard, streaks, framesRes] = await Promise.all([
         db.getComputedLeaderboard(seasonId),
         db.getPlayerStreaks(seasonId),
-        pool.query(`SELECT account_id, profile_frame FROM player_profiles WHERE profile_frame IS NOT NULL AND profile_frame != 'none'`).catch(() => ({ rows: [] })),
+        pool.query(`SELECT account_id, profile_frame, equipped_founder_ring FROM player_profiles WHERE (profile_frame IS NOT NULL AND profile_frame != 'none') OR equipped_founder_ring IS NOT NULL`).catch(() => ({ rows: [] })),
       ]);
       const framesByAccountId = {};
+      const ringsByAccountId = {};
       for (const fr of framesRes.rows) {
-        framesByAccountId[String(fr.account_id)] = fr.profile_frame;
+        if (fr.profile_frame && fr.profile_frame !== 'none') framesByAccountId[String(fr.account_id)] = fr.profile_frame;
+        if (fr.equipped_founder_ring) ringsByAccountId[String(fr.account_id)] = fr.equipped_founder_ring;
       }
       for (const p of leaderboard) {
         p.streak = streaks[p.player_id?.toString()] || 0;
         p.profile_frame = framesByAccountId[String(p.player_id)] || null;
+        // Equipped cosmetic ring — rendered around the tier emblem on the
+        // leaderboard so equipped rings show beyond the profile page.
+        p.founder_ring = ringsByAccountId[String(p.player_id)] || null;
       }
       // v5.90 — V3 is the only supported engine; field kept for client compat.
       res.json({ leaderboard, useV3: true });
@@ -7385,6 +7390,39 @@ function createApiRouter(startupStatus = {}, _app = null) {
     } catch (err) {
       console.error('[API] heroes/draft-trainer/runs:', err.message);
       res.status(500).json({ error: 'Failed to save trainer run' });
+    }
+  });
+
+  // ── Captain Sim (Captain's Mode mini-game) server-side stat tracking ─────
+  router.post('/captain-mode/runs', async (req, res) => {
+    try {
+      if (!req.session || !req.session.accountId) {
+        return res.status(401).json({ error: 'Sign in to save Captain Sim results' });
+      }
+      const body = req.body || {};
+      const out = await db.recordCaptainModeRun({
+        accountId: req.session.accountId,
+        won: !!body.won,
+        delta: body.delta,
+        rating: body.rating,
+        runKey: body.run_key,
+      });
+      res.json({ ok: true, id: out.id, duplicate: !!out.duplicate });
+    } catch (err) {
+      console.error('[API] captain-mode/runs:', err.message);
+      res.status(500).json({ error: 'Failed to save run' });
+    }
+  });
+
+  router.get('/captain-mode/stats', async (req, res) => {
+    try {
+      if (!req.session || !req.session.accountId) {
+        return res.status(401).json({ error: 'sign_in_required' });
+      }
+      res.json(await db.getCaptainModeStats(req.session.accountId));
+    } catch (err) {
+      console.error('[API] captain-mode/stats:', err.message);
+      res.status(500).json({ error: 'Failed to load stats' });
     }
   });
 
@@ -13830,6 +13868,12 @@ NOTES
       const session = await db.getActiveInhouseSession({ tenantId });
       if (!session) return res.json({ session: null });
       const players = await db.getInhouseSessionPlayers(session.id);
+      // Enrich the lobby roster with current win/loss streaks (same source as
+      // the leaderboard). Best-effort — the lobby must render without it.
+      try {
+        const streaks = await db.getPlayerStreaks(null);
+        for (const p of players) p.streak = streaks[String(p.account_id)] || 0;
+      } catch { /* non-fatal */ }
       res.json({ session, players });
     } catch (err) {
       res.status(500).json({ error: err.message });

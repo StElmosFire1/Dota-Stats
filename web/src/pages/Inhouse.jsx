@@ -160,6 +160,29 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
           MMR {mmr}
           {balanceScore != null && <span> · <span title="Auto-balance score that fed into the projected balance" style={{ color: 'var(--brass)', fontWeight: 600 }}>Score {balanceScore.toLocaleString()}</span></span>}
           {player.preferred_positions && <span> · Prefers {player.preferred_positions}</span>}
+          {/* Lobby enrichment — win rate, streak, last-played so waiting
+              players can size each other up at a glance. */}
+          {(() => {
+            const w = Number(player.wins) || 0;
+            const l = Number(player.losses) || 0;
+            const g = w + l;
+            if (!g) return null;
+            return <span> · {Math.round((w / g) * 100)}% WR <span style={{ opacity: 0.7 }}>({g}g)</span></span>;
+          })()}
+          {(() => {
+            const st = Number(player.streak) || 0;
+            if (!st) return null;
+            return st > 0
+              ? <span> · <span style={{ color: '#4caf50', fontWeight: 600 }}>🔥 W{st}</span></span>
+              : <span> · <span style={{ color: '#90a4ae', fontWeight: 600 }}>❄️ L{-st}</span></span>;
+          })()}
+          {(() => {
+            if (!player.last_played) return null;
+            const days = Math.floor((Date.now() - new Date(player.last_played).getTime()) / 86400000);
+            if (!Number.isFinite(days) || days < 0) return null;
+            const label = days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days}d ago`;
+            return <span> · Last played {label}</span>;
+          })()}
           {player.roll != null && <span> · Roll {player.roll}</span>}
           {player.voice_verified && <span> · 🎙 In voice</span>}
           {player.not_in_dota === false && player.status === 'accepted' && <span> · 🎮 In Dota</span>}
@@ -1974,6 +1997,34 @@ export default function Inhouse() {
                   </span>
                 )}
               </div>
+              {/* Role coverage — the single most useful "shape of the draft"
+                  signal while waiting: which positions nobody has claimed. */}
+              {players.length > 0 && (() => {
+                const covered = new Set();
+                for (const p of players) {
+                  const s = String(p.preferred_positions || '');
+                  for (const m of s.match(/[1-5]/g) || []) covered.add(Number(m));
+                }
+                const missing = [1, 2, 3, 4, 5].filter(n => !covered.has(n));
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12, fontSize: 12 }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Role coverage:</span>
+                    {[1, 2, 3, 4, 5].map(n => (
+                      <span key={n} title={covered.has(n) ? `Someone prefers position ${n}` : `Nobody prefers position ${n} yet`} style={{
+                        padding: '2px 8px', borderRadius: 10, fontWeight: 700,
+                        background: covered.has(n) ? 'rgba(76,175,80,0.15)' : 'rgba(244,67,54,0.12)',
+                        color: covered.has(n) ? '#4caf50' : '#ef9a9a',
+                        border: `1px solid ${covered.has(n) ? 'rgba(76,175,80,0.4)' : 'rgba(244,67,54,0.35)'}`,
+                      }}>{n}</span>
+                    ))}
+                    {missing.length > 0 && (
+                      <span style={{ color: '#ef9a9a' }}>
+                        — no pos {missing.join(', ')} yet
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
               {players.sort((a,b)=>Number(b.trueskill_mmr)-Number(a.trueskill_mmr)).map(p => (
                 <PlayerRow key={p.account_id} player={p} session={session} isCurrentUser={Number(p.account_id) === myAccountId} />
               ))}

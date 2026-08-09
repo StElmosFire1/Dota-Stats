@@ -1472,6 +1472,23 @@ async function init() {
     // account actually owns the slug before persisting.
     await p.query(`ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS equipped_founder_ring TEXT`);
     await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_player_profiles_vanity_slug ON player_profiles (vanity_slug) WHERE vanity_slug IS NOT NULL`);
+    // Captain Sim (Captain's Mode mini-game) server-side run record. Created
+    // here at init so the player-facing endpoints stay DML-only. run_key is a
+    // client-generated per-simulation UUID; the unique constraint makes saves
+    // idempotent against retries/remounts/replayed requests.
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS captain_mode_runs (
+        id SERIAL PRIMARY KEY,
+        account_id BIGINT NOT NULL,
+        run_key TEXT,
+        won BOOLEAN NOT NULL,
+        delta INTEGER NOT NULL DEFAULT 0,
+        rating INTEGER NOT NULL DEFAULT 1000,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+    await p.query(`ALTER TABLE captain_mode_runs ADD COLUMN IF NOT EXISTS run_key TEXT`);
+    await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_captain_mode_runs_key ON captain_mode_runs(account_id, run_key) WHERE run_key IS NOT NULL`);
+    await p.query(`CREATE INDEX IF NOT EXISTS idx_captain_mode_runs_account ON captain_mode_runs(account_id, created_at DESC)`);
     // Released-slug ledger: keeps the previous owner so they can re-take
     // their own slug, and powers the 30-day cooldown that blocks third
     // parties from snatching it the moment it goes free. Most-recent row
@@ -12670,6 +12687,53 @@ async function recordDraftTrainerRun({ accountId, side, picksA, picksB, bans, pr
   return { id: res.rows[0].id, created_at: res.rows[0].created_at };
 }
 
+// ── Captain Sim (Captain's Mode mini-game) run persistence ──────────────────
+// Mirrors draft_trainer_runs: one row per completed simulated match so the
+// game has a server-side record (wins/games/rating) instead of only
+// localStorage. Schema lives in the init/migration block (search
+// captain_mode_runs); these functions are DML-only. Values are clamped to
+// the game's real ranges and run_key makes saves idempotent.
+async function recordCaptainModeRun({ accountId, won, delta, rating, runKey }) {
+  if (!accountId) throw new Error('accountId required');
+  const p = getPool();
+  const clamp = (v, lo, hi, dflt) => {
+    const n = Math.round(Number(v));
+    if (!Number.isFinite(n)) return dflt;
+    return Math.max(lo, Math.min(hi, n));
+  };
+  const key = (typeof runKey === 'string' && runKey.length >= 8 && runKey.length <= 64) ? runKey : null;
+  const res = await p.query(
+    `INSERT INTO captain_mode_runs (account_id, won, delta, rating, run_key)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (account_id, run_key) WHERE run_key IS NOT NULL DO NOTHING
+     RETURNING id, created_at`,
+    [parseInt(accountId), !!won, clamp(delta, -200, 200, 0), clamp(rating, 0, 10000, 1000), key]
+  );
+  if (res.rows.length === 0) return { id: null, duplicate: true };
+  return { id: res.rows[0].id, created_at: res.rows[0].created_at };
+}
+
+async function getCaptainModeStats(accountId) {
+  if (!accountId) throw new Error('accountId required');
+  const p = getPool();
+  const r = await p.query(
+    `SELECT COUNT(*)::int AS games,
+            COUNT(*) FILTER (WHERE won)::int AS wins,
+            COALESCE(MAX(rating), 1000) AS best_rating,
+            (SELECT rating FROM captain_mode_runs WHERE account_id = $1 ORDER BY created_at DESC LIMIT 1) AS current_rating
+       FROM captain_mode_runs WHERE account_id = $1`,
+    [parseInt(accountId)]
+  );
+  const row = r.rows[0] || {};
+  return {
+    games: row.games || 0,
+    wins: row.wins || 0,
+    losses: (row.games || 0) - (row.wins || 0),
+    best_rating: row.best_rating || 1000,
+    current_rating: row.current_rating || 1000,
+  };
+}
+
 async function evaluateUnmatchedDraftRuns({ accountId = null, limit = 100 } = {}) {
   const p = getPool();
   const params = [];
@@ -14661,10 +14725,25 @@ async function getInhouseSessionPlayers(sessionId) {
             COALESCE(r.games_played, 0) AS games_played,
             n.dota_rank_tier AS dota_rank_tier,
             n.dota_leaderboard_rank AS dota_leaderboard_rank,
-            r.discord_id AS discord_id
+            r.discord_id AS discord_id,
+            COALESCE(r.wins, 0) AS wins,
+            COALESCE(r.losses, 0) AS losses,
+            lp.last_played
        FROM inhouse_session_players isp
        LEFT JOIN ratings r ON r.player_id = isp.account_id
        LEFT JOIN nicknames n ON n.account_id = isp.account_id
+       LEFT JOIN (
+         -- One grouped pass restricted to this session's roster (max ~10-20
+         -- players) instead of a correlated per-row scan; this function is on
+         -- the lobby/ticker hot path.
+         SELECT ps.account_id, MAX(m.date) AS last_played
+           FROM player_stats ps
+           JOIN matches m ON m.match_id = ps.match_id
+          WHERE ps.account_id IN (
+            SELECT account_id FROM inhouse_session_players WHERE session_id = $1
+          )
+          GROUP BY ps.account_id
+       ) lp ON lp.account_id = isp.account_id
       WHERE isp.session_id = $1
       ORDER BY isp.registered_at ASC`,
     [sessionId]
@@ -27736,6 +27815,8 @@ module.exports = {
   backfillMatchPatch,
   getHeroPatchDiff,
   recordDraftTrainerRun,
+  recordCaptainModeRun,
+  getCaptainModeStats,
   evaluateUnmatchedDraftRuns,
   getDraftTrainerAccuracy,
 };

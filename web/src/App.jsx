@@ -30,6 +30,7 @@ import usePageTracking from './hooks/usePageTracking';
 const MatchList = lazy(() => import('./pages/MatchList'));
 const MatchDetail = lazy(() => import('./pages/MatchDetail'));
 const Leaderboard = lazy(() => import('./pages/Leaderboard'));
+const WardHeatmapLab = lazy(() => import('./pages/WardHeatmapLab'));
 const PlayerProfile = lazy(() => import('./pages/PlayerProfile'));
 const PlayerGrowth = lazy(() => import('./pages/PlayerGrowth'));
 const Heroes = lazy(() => import('./pages/Heroes'));
@@ -773,7 +774,6 @@ function Nav() {
           <DropdownItem to="/synergy">Synergy</DropdownItem>
           <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>
           <DropdownItem to="/heroes/draft-trainer">Draft Trainer</DropdownItem>
-          <DropdownItem to="/captain-mode">Captain&apos;s Mode</DropdownItem>
           <DropdownItem to="/ward-map">Ward Maps</DropdownItem>
           <DropdownItem to="/multikills">Multi-Kills</DropdownItem>
           <DropdownItem to="/pudge-stats">Pudge Hook Stats</DropdownItem>
@@ -786,6 +786,9 @@ function Nav() {
           <DropdownItem to="/teams">Teams</DropdownItem>
           <DropdownItem to="/schedule">Game Schedule</DropdownItem>
           <DropdownItem to="/games">Daily Mini-Games</DropdownItem>
+          {/* Captain Sim (formerly "Captain's Mode" under Heroes & Draft) —
+              it's a mini-game, so it lives with the other games. */}
+          <DropdownItem to="/captain-mode">Captain Sim</DropdownItem>
           <DropdownItem to="/pickem">Pick&apos;em</DropdownItem>
           <DropdownItem to="/join">Join the League</DropdownItem>
         </DropdownMenu>
@@ -797,17 +800,18 @@ function Nav() {
           <DropdownItem to="/coaches">Coaching Marketplace</DropdownItem>
           <DropdownItem to="/sponsorships">Sponsor a Slot</DropdownItem>
           <DropdownItem to="/social">Player Network</DropdownItem>
-          {/* Task #443 — personal Season Wrapped; signed-in only. */}
-          {accountId && <DropdownItem to="/wrapped/me/latest">Season Wrapped</DropdownItem>}
-          {/* v6.62 / Task #206 — only signed-in players need the cosmetics shop;
-              anonymous viewers can't apply anything yet. The /pro CTA in the
-              nav bar covers their upgrade path. */}
-          {accountId && <DropdownItem to="/shop">Cosmetics Shop</DropdownItem>}
-          {/* Task #664 — coin-purchased lootboxes + collection locker
-              (full edition only; signed-in players only). */}
-          {accountId && <DropdownItem to="/lootbox">Lootboxes</DropdownItem>}
-          {accountId && <DropdownItem to="/collection">My Collection</DropdownItem>}
         </DropdownMenu>
+        {/* Personal/account items moved out of Community into their own
+            "Locker" hub — Wrapped, Shop, Lootboxes, Collection are about YOUR
+            stuff, not the community. Signed-in only (nothing to show anon). */}
+        {accountId && (
+          <DropdownMenu label="Locker">
+            <DropdownItem to="/shop">Cosmetics Shop</DropdownItem>
+            <DropdownItem to="/lootbox">Lootboxes</DropdownItem>
+            <DropdownItem to="/collection">My Collection</DropdownItem>
+            <DropdownItem to="/wrapped/me/latest">Season Wrapped</DropdownItem>
+          </DropdownMenu>
+        )}
         <NavHelpMenu />
       </div>
       <Link
@@ -1397,6 +1401,7 @@ function AppRoutes() {
                 <Route path="/sponsorships" element={<Sponsorships />} />
                 <Route path="/multikills" element={<MultiKills />} />
                 <Route path="/ward-map" element={<WardMap />} />
+                <Route path="/ward-heatmap-lab" element={<WardHeatmapLab />} />
                 <Route path="/records" element={<Records />} />
                 <Route path="/admin" element={<AdminPanel />} />
                 <Route path="/admin/spotlight" element={<AdminSpotlight />} />
