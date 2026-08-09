@@ -448,6 +448,11 @@ function PickAdvisorPanel({ sessionId, onDismiss }) {
 // stream — reveal anyway" confirm is required first. The steam:// "Connect to
 // Server" button stays visible because it launches the client without rendering
 // the password as on-screen text.
+// Dedicated-server surfaces are hidden while the server pipeline is still
+// being stood up (owner request, Aug 2026). Flip to true once matches can
+// reliably be hosted end-to-end.
+const SHOW_SERVER_CONNECT = false;
+
 function ServerConnectPanel({ session, connectLink, streamerLive }) {
   const [revealed, setRevealed] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -1047,7 +1052,7 @@ export default function Inhouse() {
             <span aria-hidden="true">{muted ? '🔕' : '🔔'}</span>
             {muted ? 'Chime muted' : 'Chime on'}
           </button>
-          {serverStatus && (
+          {SHOW_SERVER_CONNECT && serverStatus && (
             <div className="pb-card pb-card-sm pb-server-status-card" style={{ padding: '10px 16px' }}>
               <div className="pb-eyebrow" style={{ marginBottom: 5 }}>Dedicated Server</div>
               <div style={{ fontFamily: 'var(--font-condensed)', fontWeight: 600, fontSize: 13, marginBottom: 5 }}>
@@ -1652,7 +1657,9 @@ export default function Inhouse() {
                   onDismiss={() => setPickAdvisorDismissed(prev => ({ ...prev, [session.id]: true }))}
                 />
               )}
-              {connectLink && session.status === 'in_progress' && isInSession && (
+              {/* Hidden until the dedicated-server pipeline is fully
+                  operational — flip SHOW_SERVER_CONNECT to re-enable. */}
+              {SHOW_SERVER_CONNECT && connectLink && session.status === 'in_progress' && isInSession && (
                 <ServerConnectPanel
                   session={session}
                   connectLink={connectLink}

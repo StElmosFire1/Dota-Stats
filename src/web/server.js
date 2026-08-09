@@ -7693,7 +7693,10 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
-  router.get('/ward-placements', async (req, res) => {
+  // Pro-gated: this is the Ward Map's all-players dataset. The page already
+  // blurs behind the paywall; gate the data itself too so it can't be pulled
+  // directly.
+  router.get('/ward-placements', requirePro('ward_heatmap'), async (req, res) => {
     try {
       const seasonId = req.query.season_id || null;
       const players = await db.getAllPlayersWardPlacements(seasonId);

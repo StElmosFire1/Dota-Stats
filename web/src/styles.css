@@ -2475,20 +2475,32 @@ body.light-theme .oa-ticker-track .oa-ticker-dot { color: rgba(245,239,226,0.5);
   background: var(--bg-card, #141a2a);
   border: 1px solid var(--accent, #c5a975);
   border-radius: 10px;
-  /* v6.83 — extra bottom padding compensates for transform: scale(1.6)
-     on the inner: scaled content extends beyond its layout box, and
-     without breathing room the bottom edge of the scaled preview clips
-     against the popup border. */
-  padding: 24px 32px 56px;
+  /* v7.x — inner now uses `zoom` (real layout), so no oversized bottom
+     padding hack is needed. */
+  padding: 20px 28px 24px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
   z-index: 200;
 }
 .cosmetic-card__zoom-inner {
   display: block;
   width: 200px;
-  transform: scale(1.6);
-  transform-origin: top center;
+  /* v7.x — `zoom` replaces transform:scale(1.6). Unlike transform, zoom
+     participates in layout, so the popup box grows with the enlarged
+     content and tall previews (e.g. founder rings) can no longer spill
+     past the popup border / neighbouring cards. */
+  zoom: 1.6;
   margin: 0 auto;
+}
+/* Firefox has no `zoom` — fall back to the old transform, restoring the
+   compensating bottom padding so the scaled content doesn't clip. */
+@supports not (zoom: 1.6) {
+  .cosmetic-card__zoom {
+    padding-bottom: 96px;
+  }
+  .cosmetic-card__zoom-inner {
+    transform: scale(1.6);
+    transform-origin: top center;
+  }
 }
 /* v6.83 — explicit width is essential. The preview components inside
    (FramePreview, LayoutThemePreview, TitlePreview) use position:absolute

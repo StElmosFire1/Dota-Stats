@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { simulateDraftPick, saveDraftTrainerRun, getDraftTrainerAccuracy } from '../api';
-import { getHeroName, getHeroImageUrl } from '../heroNames';
+import { getHeroName, getHeroImageUrl, ALL_HERO_IDS } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import { useSteamAuth } from '../context/SteamAuthContext';
 
@@ -31,11 +31,9 @@ const SEQUENCE = [
 
 const POS_SLOTS = [1, 2, 3, 4, 5];
 
-const ALL_HEROES = (() => {
-  const ids = [];
-  for (let i = 1; i <= 145; i++) ids.push(i);
-  return ids;
-})();
+// Only real, mapped heroes — enumerating raw 1..145 produced "Hero #115"
+// ghosts for IDs Valve never assigned (and imageless buttons).
+const ALL_HEROES = ALL_HERO_IDS;
 
 export default function DraftTrainer() {
   const { steamUser } = useSteamAuth();
@@ -54,9 +52,12 @@ export default function DraftTrainer() {
   const [saveMsg, setSaveMsg] = useState('');
 
   const phase = SEQUENCE[step];
+  // Bans are stored side-attributed ({ side, heroId }) so the UI can show who
+  // banned what; engine/save calls flatten to plain hero ids.
+  const banIds = useMemo(() => bans.map((b) => b.heroId), [bans]);
   const used = useMemo(
-    () => new Set([...picksA, ...picksB, ...bans]),
-    [picksA, picksB, bans]
+    () => new Set([...picksA, ...picksB, ...banIds]),
+    [picksA, picksB, banIds]
   );
 
   const loadAccuracy = useCallback(() => {
@@ -97,7 +98,7 @@ export default function DraftTrainer() {
 
   function commit(side, action, heroId) {
     if (action === 'ban') {
-      setBans((b) => [...b, heroId]);
+      setBans((b) => [...b, { side, heroId }]);
     } else if (side === 'A') {
       setPicksA((p) => [...p, heroId]);
     } else {
@@ -161,7 +162,7 @@ export default function DraftTrainer() {
           try {
             await saveDraftTrainerRun({
               side: userSide,
-              picksA, picksB, bans,
+              picksA, picksB, bans: banIds,
               predictedAdvantage: adv,
             });
             setSaveMsg('Saved — accuracy will update when a real match with this draft is recorded.');
@@ -226,9 +227,11 @@ export default function DraftTrainer() {
         <SidePanel label={`Side B${userSide === 'B' ? ' (you)' : ' (engine)'}`} picks={picksB} accent="#60a5fa" />
       </div>
 
-      <BansPanel bans={bans} />
+      <BansPanel bans={bans} userSide={userSide} />
 
-      {!done && (
+      {/* `phase` is undefined for one render between the last commit and the
+          completion effect flipping `done` — guard it or the page crashes. */}
+      {!done && phase && (
         <div style={{ marginTop: 16, padding: 12, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}>
           <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>
             Step {step + 1} of {SEQUENCE.length} — {phase.side === userSide ? 'your' : 'engine'} {phase.action}.
@@ -301,17 +304,35 @@ function SidePanel({ label, picks, accent }) {
   );
 }
 
-function BansPanel({ bans }) {
+// Side-attributed bans: two labelled rows (matching the pick panels' colors)
+// so it's always clear who removed which hero.
+function BansPanel({ bans, userSide }) {
   if (bans.length === 0) return null;
+  const sides = [
+    { side: 'A', accent: '#4ade80' },
+    { side: 'B', accent: '#60a5fa' },
+  ];
   return (
-    <div style={{ padding: 8, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 6 }}>
-      <span style={{ fontSize: 12, color: 'var(--text-muted)', marginRight: 8 }}>Bans:</span>
-      {bans.map((h, i) => {
-        const img = getHeroImageUrl(h);
+    <div style={{ padding: 8, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {sides.map(({ side, accent }) => {
+        const list = bans.filter((b) => b.side === side);
+        if (list.length === 0) return null;
         return (
-          <span key={`${h}-${i}`} title={formatHeroName(getHeroName(h))} style={{ display: 'inline-block', marginRight: 4, opacity: 0.55 }}>
-            {img && <img src={img} alt={getHeroName(h)} style={{ width: 36, height: 20, borderRadius: 2, filter: 'grayscale(80%)' }} />}
-          </span>
+          <div key={side} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: accent, marginRight: 6, minWidth: 120 }}>
+              Side {side}{side === userSide ? ' (you)' : ' (engine)'} bans:
+            </span>
+            {list.map((b, i) => {
+              const name = formatHeroName(getHeroName(b.heroId));
+              const img = getHeroImageUrl(b.heroId);
+              return (
+                <span key={`${b.heroId}-${i}`} title={name} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 6, opacity: 0.7 }}>
+                  {img && <img src={img} alt="" style={{ width: 36, height: 20, borderRadius: 2, filter: 'grayscale(80%)' }} />}
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{name}</span>
+                </span>
+              );
+            })}
+          </div>
         );
       })}
     </div>

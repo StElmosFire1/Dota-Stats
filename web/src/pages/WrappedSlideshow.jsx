@@ -140,7 +140,10 @@ export default function WrappedSlideshow({ resolveLatest = false }) {
         }
       } catch (e) {
         if (!alive) return;
-        setErr(e?.message || 'failed');
+        // Map the backend's known "nothing to show" / auth errors to friendly
+        // states instead of the scary generic failure screen.
+        const msg = e?.message || 'failed';
+        setErr(msg === 'no_archived_season' || msg === 'no_season' ? 'no_season' : msg);
         setLoading(false);
       }
     })();
@@ -157,7 +160,13 @@ export default function WrappedSlideshow({ resolveLatest = false }) {
     setErr(null);
     getSeasonWrappedCards(accountId, seasonId || null)
       .then((r) => { if (alive) { setData(r); setIdx(0); setLoading(false); } })
-      .catch((e) => { if (alive) { setErr(e?.message || 'failed'); setLoading(false); } });
+      .catch((e) => {
+        if (alive) {
+          const msg = e?.message || 'failed';
+          setErr(msg === 'no_archived_season' ? 'no_season' : msg);
+          setLoading(false);
+        }
+      });
     return () => { alive = false; };
   }, [resolveLatest, params.accountId, params.seasonId]);
 
@@ -196,6 +205,15 @@ export default function WrappedSlideshow({ resolveLatest = false }) {
         </h1>
         <p>You haven't played enough matches in an archived season to generate a wrapped.</p>
         <p><Link to="/seasons" style={{ color: 'var(--amber)' }}>Browse past seasons →</Link></p>
+      </div>
+    );
+  }
+  if (err === 'sign_in_required') {
+    return (
+      <div style={{ padding: 40, color: 'var(--parchment, #f5efe2)', maxWidth: 640 }}>
+        <h1 style={{ fontFamily: 'var(--font-serif)', color: 'var(--amber)' }}>Sign in to see your wrapped</h1>
+        <p>Your Season Wrapped is personal — sign in with Steam from the top bar and try again.</p>
+        <p><Link to="/" style={{ color: 'var(--amber)' }}>← Back to home</Link></p>
       </div>
     );
   }

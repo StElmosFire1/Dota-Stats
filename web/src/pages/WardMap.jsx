@@ -247,6 +247,10 @@ export default function WardMap() {
   const [wardType, setWardType] = useState('both');
   const viewMode = 'points';
   const [loading, setLoading] = useState(true);
+  // Server now Pro-gates the aggregate dataset (402 paywall). Track it so the
+  // blurred preview shows the map surface instead of a misleading
+  // "no ward data" empty state.
+  const [paywalled, setPaywalled] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const mapImg = useRef(null);
 
@@ -269,7 +273,10 @@ export default function WardMap() {
         setPlayerList(sorted);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((err) => {
+        if (err && err.paywall) setPaywalled(true);
+        setLoading(false);
+      });
   }, [seasonId]);
 
   // Assign stable colours to players sorted alphabetically
@@ -306,7 +313,7 @@ export default function WardMap() {
       <PaywallBlur feature="ward_heatmap" minHeight={620}>
       {loading ? (
         <div style={{ color: '#94a3b8', padding: 40, textAlign: 'center' }}>Loading ward data…</div>
-      ) : totalObs + totalSen === 0 ? (
+      ) : totalObs + totalSen === 0 && !paywalled ? (
         <div style={{
           background: '#1e293b', border: '1px solid #334155', borderRadius: 12,
           padding: 40, textAlign: 'center', color: '#94a3b8',

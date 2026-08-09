@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { resolvePlayerDisplayName } from '../utils/displayName';
 import { getPlayer, getPlayerPositions, getPlayerRatingHistory, getPlayerV3ModifierHistory, getPlayerAchievements, getPlayerAnniversary, getPlayerNemesis, getPlayerPredictionStats, getPlayerHeroCounters, getPlayerStreak, getCaptainAutoPickStats, getPlayerDurationStats, getPlayerCommunityRatings, getPositionAverages, getPlayerAlly, getPlayerWinRateHistory, getImpactScores, getPlayerRanks, getPlayerMatchStatsHistory, getPlayerHeroSuggestions, createGiftProCheckout, createGiftSeasonPassCheckout, getScoutingReport, getLeaderboard, getPlayerTimeOfDay, getPlayerHeroItems, getPlayerSeasonWrapped, getPlayerHallOfFamePlaques, getAllPlayers, getPlayerComparison, getPlayerPresence, getPlayerRivals, getPlayerItemBenchmarks, getDraftTrainerAccuracy, getPlayerBettingStats } from '../api';
@@ -51,7 +51,11 @@ function H2HComparePicker({ thisAccountId, isOwnProfile, viewerAccountId }) {
   React.useEffect(() => {
     let alive = true;
     getAllPlayers()
-      .then(list => { if (alive) setPlayers(Array.isArray(list) ? list : []); })
+      .then(list => {
+        if (!alive) return;
+        // Endpoint returns { players: [...] }; accept a bare array too.
+        setPlayers(Array.isArray(list) ? list : (list?.players || []));
+      })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
@@ -1017,6 +1021,20 @@ export default function PlayerProfile() {
       setSearchParams(next, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+  // Compare drawer roster. GET /api/players returns { players: [...] } — the
+  // old loaders treated it as a bare array, so `.filter` threw and the silent
+  // catch left the dropdown permanently empty. Normalise both shapes, and fall
+  // back to the all-time roster if the season-scoped list comes back empty.
+  const loadCompareList = useCallback(async () => {
+    const normalize = (r) => (Array.isArray(r) ? r : (r?.players || []));
+    try {
+      let rows = normalize(await getAllPlayers(seasonId));
+      if (rows.length === 0 && seasonId) rows = normalize(await getAllPlayers(null));
+      setCompareList(rows.filter(r => Number(r.account_id) !== Number(accountId)));
+    } catch { /* leave empty — the drawer shows no options rather than crashing */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seasonId, accountId]);
+
   // ?compare=<id> preselects the opponent and opens the drawer on mount.
   useEffect(() => {
     const cmp = searchParams.get('compare');
@@ -1025,9 +1043,7 @@ export default function PlayerProfile() {
     setCompareB(String(cmp));
     setCompareOpen(true);
     if (compareList.length === 0) {
-      getAllPlayers(seasonId).then(rows => {
-        setCompareList((rows || []).filter(r => Number(r.account_id) !== Number(accountId)));
-      }).catch(() => {});
+      loadCompareList();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId, searchParams]);
@@ -1331,11 +1347,7 @@ export default function PlayerProfile() {
         type="button"
         onClick={() => {
           setCompareOpen(true);
-          if (compareList.length === 0) {
-            getAllPlayers(seasonId).then(rows => {
-              setCompareList((rows || []).filter(r => Number(r.account_id) !== Number(accountId)));
-            }).catch(() => {});
-          }
+          if (compareList.length === 0) loadCompareList();
         }}
         style={{
           background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-muted)',
@@ -1503,7 +1515,7 @@ export default function PlayerProfile() {
             borderRadius: 8, padding: '6px 14px', cursor: scoutingLoading ? 'wait' : 'pointer',
             fontSize: 13, fontWeight: 600,
           }}
-        >🔍 {scoutingLoading ? 'Generating…' : 'AI Scout'}</button>
+        >🔍 {scoutingLoading ? 'Generating…' : viewerIsPro ? 'AI Scout' : 'AI Scout 🔒 Pro'}</button>
       )}
     </>
   );

@@ -247,30 +247,33 @@ export function mulberry32(seed) {
   };
 }
 
+// Each event carries a plausible time window (minutes) so the log reads like
+// a real Dota match: no Roshan contests at 2:00, no bounty-rune trades at
+// 25:00, laning-phase events stay in the laning phase.
 const EVENT_POOL = {
   good: [
-    'First blood secured {lane}',
-    'Won the lane trade — enemy carry starved',
-    'Pickoff on the enemy mid · tempo swing',
-    'Smoke gank connects · 2 kills',
-    'Roshan secured · Aegis to the carry',
-    'Tier-2 tower melts under the timing push',
-    'Team wipe at the {lane} fight',
-    'Enemy buybacks burned · map control ours',
+    { text: 'First blood secured {lane}', min: 0, max: 8 },
+    { text: 'Won the lane trade — enemy carry starved', min: 2, max: 12 },
+    { text: 'Pickoff on the enemy mid · tempo swing', min: 8, max: 60 },
+    { text: 'Smoke gank connects · 2 kills', min: 8, max: 60 },
+    { text: 'Roshan secured · Aegis to the carry', min: 15, max: 60 },
+    { text: 'Tier-2 tower melts under the timing push', min: 14, max: 45 },
+    { text: 'Team wipe at the {lane} fight', min: 15, max: 60 },
+    { text: 'Enemy buybacks burned · map control ours', min: 25, max: 60 },
   ],
   bad: [
-    'Caught out {lane} · enemy punish',
-    'Failed smoke · walked into wards',
-    'High ground siege stalled · reset',
-    'Enemy snowball core hits its timing',
-    'Roshan contested and lost',
-    'Split-pusher takes two towers unanswered',
+    { text: 'Caught out {lane} · enemy punish', min: 4, max: 60 },
+    { text: 'Failed smoke · walked into wards', min: 10, max: 60 },
+    { text: 'High ground siege stalled · reset', min: 22, max: 60 },
+    { text: 'Enemy snowball core hits its timing', min: 14, max: 40 },
+    { text: 'Roshan contested and lost', min: 15, max: 60 },
+    { text: 'Split-pusher takes two towers unanswered', min: 18, max: 60 },
   ],
   neutral: [
-    'Bounty runes traded 2-2',
-    'Even laning phase · farm split evenly',
-    'Wards traded across the river',
-    'Both teams posture at the outpost',
+    { text: 'Bounty runes traded 2-2', min: 0, max: 12 },
+    { text: 'Even laning phase · farm split evenly', min: 2, max: 12 },
+    { text: 'Wards traded across the river', min: 4, max: 60 },
+    { text: 'Both teams posture at the outpost', min: 10, max: 60 },
   ],
 };
 const LANES = ['top', 'mid', 'bot'];
@@ -307,7 +310,12 @@ export function simulateMatch({ myPicks, enemyPicks, plan, seed }) {
     else if (roll < goodShare * 0.75 + 0.2) { type = 'neutral'; pool = 'neutral'; }
     else { type = rng() < 0.4 ? 'stress' : 'off-script'; pool = 'bad'; }
     const list = EVENT_POOL[pool];
-    const text = list[Math.floor(rng() * list.length)]
+    // Only draw events whose time window contains t; fall back to the full
+    // pool if the window filter empties (shouldn't happen with 60-min caps).
+    const prevText = events[events.length - 1]?.text || '';
+    const eligible = list.filter((ev) => t >= ev.min && t <= ev.max && !prevText.startsWith(ev.text.slice(0, 12)));
+    const chosen = (eligible.length ? eligible : list)[Math.floor(rng() * (eligible.length ? eligible.length : list.length))];
+    const text = chosen.text
       .replace('{lane}', LANES[Math.floor(rng() * LANES.length)]);
     if ((type === 'off-script' || type === 'payoff') && (pivotal === null || rng() < 0.4)) pivotal = t;
     events.push({ time: Math.max(1, t), text, type });
