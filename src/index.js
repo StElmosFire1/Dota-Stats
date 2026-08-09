@@ -404,6 +404,36 @@ async function main() {
       }
     }
 
+    // Task #925 — daily TLS certificate expiry check, 09:00 OCE (daytime, so
+    // the owner sees the DM promptly). Inspects the LIVE certificate served
+    // by the public site and DMs the owner when <14 days remain, when it has
+    // already expired, or when the check itself fails. Runs once at startup
+    // too (after a short delay for the Discord client to log in) so a
+    // near-expiry cert is flagged on the very next deploy, not up to a day
+    // later. Best-effort; owns its own `tls_cert_check` heartbeat.
+    if (startupStatus.database) {
+      try {
+        const cron = require('node-cron');
+        const { runTlsCertCheck } = require('./jobs/tlsCertCheck');
+        setTimeout(() => {
+          runTlsCertCheck()
+            .then(res => { if (!res.skipped) console.log(`[TlsCert] startup check — ${res.host}: ${res.status || res.error} (${res.daysRemaining ?? '?'}d)`); })
+            .catch(err => console.warn('[TlsCert] startup check error:', err.message));
+        }, 60_000);
+        cron.schedule('0 9 * * *', async () => {
+          try {
+            const res = await runTlsCertCheck();
+            if (!res.skipped) console.log(`[TlsCert] daily check — ${res.host}: ${res.status || res.error} (${res.daysRemaining ?? '?'}d remaining)`);
+          } catch (err) {
+            console.warn('[TlsCert] daily cron error:', err.message);
+          }
+        }, { timezone: 'Australia/Sydney' });
+        console.log('[Startup] TLS cert expiry check scheduled (daily 09:00 Australia/Sydney)');
+      } catch (err) {
+        console.warn('[Startup] TLS cert check failed to register:', err.message);
+      }
+    }
+
     // Task #463 — hourly safety-net sweep degrading API keys whose billable
     // rate-limit quota has lapsed. The Stripe webhook is the primary degrade
     // path; this catches missed/late cancel events so a key can never keep
