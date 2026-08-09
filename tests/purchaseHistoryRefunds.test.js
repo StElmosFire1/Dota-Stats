@@ -228,14 +228,27 @@ function makeRevokePool(rows) {
     async query(sqlRaw, params = []) {
       const sql = String(sqlRaw).replace(/\s+/g, ' ').trim();
       calls.push({ sql, params });
-      if (!/UPDATE user_one_off_perks/.test(sql)) {
-        throw new Error('unexpected query: ' + sql.slice(0, 100));
+      if (/UPDATE user_one_off_perks/.test(sql)) {
+        // Apply the UPDATE semantics: match intent, skip already-revoked.
+        const hit = rows.filter(r =>
+          r.stripe_payment_intent === params[0] && r.revoked_at === null);
+        for (const r of hit) r.revoked_at = '2026-05-01T00:00:00Z';
+        return { rows: hit, rowCount: hit.length };
       }
-      // Apply the UPDATE semantics: match intent, skip already-revoked.
-      const hit = rows.filter(r =>
-        r.stripe_payment_intent === params[0] && r.revoked_at === null);
-      for (const r of hit) r.revoked_at = '2026-05-01T00:00:00Z';
-      return { rows: hit, rowCount: hit.length };
+      // Task #913 — post-revocation equip cleanup queries: no other
+      // ownership sources and no profile rows in this fixture.
+      if (/SELECT 1 FROM user_one_off_perks/.test(sql)) {
+        const hit = rows.some(r =>
+          String(r.account_id) === String(params[0]) &&
+          r.perk_key === params[1] && r.revoked_at === null);
+        return { rows: hit ? [{ '?column?': 1 }] : [], rowCount: hit ? 1 : 0 };
+      }
+      if (/FROM coin_owned_cosmetics/.test(sql) ||
+          /FROM pro_subscriptions/.test(sql) ||
+          /FROM player_profiles/.test(sql)) {
+        return { rows: [], rowCount: 0 };
+      }
+      throw new Error('unexpected query: ' + sql.slice(0, 100));
     },
   };
 }
@@ -262,8 +275,9 @@ test('revokeOneOffPerksByPaymentIntent stamps revoked_at, is idempotent, skips e
   assert.deepEqual(revoked.map(r => r.id), [1]);
   assert.ok(rows[0].revoked_at !== null);
   assert.equal(rows[1].revoked_at, null, 'unrelated perk untouched');
-  // SQL carries the guards that make it safe/idempotent.
-  const call = pool.calls[pool.calls.length - 1];
+  // SQL carries the guards that make it safe/idempotent. (The unequip
+  // cleanup may issue further queries after the UPDATE — find it.)
+  const call = pool.calls.find(c => /UPDATE user_one_off_perks/.test(c.sql));
   assert.match(call.sql, /SET revoked_at = NOW\(\)/);
   assert.match(call.sql, /stripe_payment_intent = \$1/);
   assert.match(call.sql, /revoked_at IS NULL/);
@@ -287,6 +301,12 @@ test('refund-revoked perk vanishes from listOneOffPerks (the /me/perks + purchas
         const hit = rows.filter(r => r.stripe_payment_intent === params[0] && r.revoked_at === null);
         for (const r of hit) r.revoked_at = '2026-05-01T00:00:00Z';
         return { rows: hit, rowCount: hit.length };
+      }
+      // Task #913 — post-revocation equip cleanup: nothing owned/equipped here.
+      if (/FROM coin_owned_cosmetics/.test(sql) ||
+          /FROM pro_subscriptions/.test(sql) ||
+          /FROM player_profiles/.test(sql)) {
+        return { rows: [], rowCount: 0 };
       }
       let out = rows.filter(r => String(r.account_id) === String(params[0]));
       if (/revoked_at IS NULL/.test(sql)) out = out.filter(r => r.revoked_at === null);

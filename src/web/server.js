@@ -17078,6 +17078,13 @@ NOTES
       if (await _hasVanityUrlPerk(accountId)) {
         return res.status(409).json({ error: 'You already own the Custom URL add-on.' });
       }
+      // Task #913 — grandfathered holders (active slug, no purchased perk)
+      // must not buy the add-on: a later refund of that redundant purchase
+      // would release a slug they own under the grandfathering policy.
+      const curSlug = await db.getVanitySlugByAccount(accountId).catch(() => null);
+      if (curSlug?.slug && !curSlug?.released_at) {
+        return res.status(409).json({ error: 'You already hold a custom URL — no purchase needed to keep or manage it.' });
+      }
       if (!stripe) return res.status(503).json({ error: 'Payments are not configured.' });
       const overrides = await _getEconOverrides();
       const priceCents = _econInt(overrides, 'vanity_url_cents');

@@ -9,6 +9,7 @@
 
 const { isSuperuserAccountId } = require('../../auth/superusers');
 const { idem, idemBucket } = require('../../payments/stripeIdem');
+const cosm = require('../../profileCosmetics');
 
 function createDb({ getPool }) {
   async function grantOneOffPerk({ accountId, perkKey, source = 'stripe', stripeSessionId = null, stripePaymentIntent = null, amountCents = null, currency = null, expiresAt = null, metadata = null }) {
@@ -148,10 +149,166 @@ function createDb({ getPool }) {
         RETURNING *`,
       [stripePaymentIntent]
     );
+    // Task #913 — same equip-then-refund gap closed for frames/rings (Task
+    // #910): a revoked cosmetic perk must not keep pointing profiles at a
+    // cosmetic the player lost. Ownership-aware (Pro, coin purchase, or a
+    // superuser's owner-perk keeps the value equipped) and best-effort per
+    // row — an unequip failure must never make the refund webhook retry the
+    // revocation.
+    for (const row of r.rows) {
+      try {
+        await _unequipRevokedPerkCosmetic(p, row.account_id, row.perk_key);
+      } catch (e) {
+        console.warn('[magV3] refund perk unequip failed for account', row.account_id, row.perk_key, '—', e?.message || e);
+      }
+    }
     return r.rows;
   }
 
-  return { grantOneOffPerk, hasOneOffPerk, listOneOffPerks, createOneOffPerkPending, revokeOneOffPerksByPaymentIntent };
+  // ---- Task #913 helpers ------------------------------------------------
+
+  async function _isProMember(accountId) {
+    // Mirrors db.isProMember's live-Pro rule (active/lifetime/past_due,
+    // comp rows only while current_period_end is in the future).
+    const p = getPool();
+    const r = await p.query(
+      `SELECT 1 FROM pro_subscriptions
+        WHERE account_id = $1 AND status IN ('active','lifetime','past_due')
+          AND (plan_type IS DISTINCT FROM 'comp'
+               OR (current_period_end IS NOT NULL AND current_period_end > NOW()))
+        LIMIT 1`,
+      [accountId]
+    );
+    return r.rows.length > 0;
+  }
+
+  async function _hasCoinCosmetic(accountId, kind, value) {
+    const p = getPool();
+    const r = await p.query(
+      `SELECT 1 FROM coin_owned_cosmetics WHERE account_id = $1 AND kind = $2 AND value = $3 LIMIT 1`,
+      [accountId, kind, value]
+    );
+    return r.rowCount > 0;
+  }
+
+  // Clears the equipped/selected player_profiles value matching a revoked
+  // perk key, unless the player still owns it via another source.
+  async function _unequipRevokedPerkCosmetic(p, accountId, perkKey) {
+    if (!accountId || !perkKey) return;
+    // Owner perk — superusers own every cosmetic; never unequip.
+    if (isSuperuserAccountId(accountId)) return;
+
+    if (perkKey === 'cosmetic:voice_pack') {
+      // A duplicate active voice-pack entitlement (nothing enforces a single
+      // active row) still grants access — post-revocation check, so the
+      // refunded row no longer counts.
+      if (await hasOneOffPerk(accountId, 'cosmetic:voice_pack')) return;
+      const prof = await p.query(
+        `SELECT selected_voice_pack FROM player_profiles WHERE account_id = $1`,
+        [accountId]
+      );
+      const pack = prof.rows[0]?.selected_voice_pack;
+      if (!pack) return;
+      // Free packs (none today) need no ownership; premium packs stay
+      // equipped when still covered by Pro or a coin purchase.
+      if (!cosm.isPremiumVoicePack(pack)) return;
+      if (await _isProMember(accountId)) return;
+      if (await _hasCoinCosmetic(accountId, 'voice_pack', pack)) return;
+      await p.query(
+        `UPDATE player_profiles SET selected_voice_pack = NULL
+          WHERE account_id = $1 AND selected_voice_pack = $2`,
+        [accountId, pack]
+      );
+      return;
+    }
+
+    if (perkKey === 'cosmetic:theme_pack') {
+      // Duplicate active theme-pack entitlement still grants access.
+      if (await hasOneOffPerk(accountId, 'cosmetic:theme_pack')) return;
+      const prof = await p.query(
+        `SELECT profile_layout_theme FROM player_profiles WHERE account_id = $1`,
+        [accountId]
+      );
+      const theme = prof.rows[0]?.profile_layout_theme;
+      if (!theme) return;
+      // Free themes (court-pitch) are always allowed.
+      if (!cosm.isPremiumLayoutTheme(theme)) return;
+      if (await _isProMember(accountId)) return;
+      if (await _hasCoinCosmetic(accountId, 'layout_theme', theme)) return;
+      await p.query(
+        `UPDATE player_profiles SET profile_layout_theme = NULL
+          WHERE account_id = $1 AND profile_layout_theme = $2`,
+        [accountId, theme]
+      );
+      return;
+    }
+
+    if (perkKey === 'cosmetic:vanity_url') {
+      // Still owned via the coin-purchased add-on, or via another active
+      // vanity perk row (post-revocation check, so the refunded row no
+      // longer counts)?
+      if (await _hasCoinCosmetic(accountId, 'cosmetic', 'vanity_url')) return;
+      if (await hasOneOffPerk(accountId, 'cosmetic:vanity_url')) return;
+      // Release like db.releaseVanitySlug: clear the slug and record the
+      // release so the reclaim cooldown applies to other players. Atomic —
+      // a partial failure must not leave the slug cleared without a release
+      // record (that would make it immediately claimable, bypassing the
+      // cooldown). The slug is read+locked INSIDE the transaction and the
+      // UPDATE is constrained to that exact slug, so a concurrent slug
+      // change can never clear a newer slug while recording a stale one.
+      const client = await p.connect();
+      try {
+        await client.query('BEGIN');
+        const cur = await client.query(
+          `SELECT vanity_slug FROM player_profiles WHERE account_id = $1 FOR UPDATE`,
+          [accountId]
+        );
+        const slug = cur.rows[0]?.vanity_slug;
+        if (!slug) {
+          await client.query('COMMIT');
+          return;
+        }
+        const upd = await client.query(
+          `UPDATE player_profiles
+              SET vanity_slug = NULL,
+                  vanity_slug_released_at = NOW(),
+                  updated_at = NOW()
+            WHERE account_id = $1 AND vanity_slug = $2
+            RETURNING vanity_slug`,
+          [accountId, slug]
+        );
+        if (upd.rowCount > 0) {
+          await client.query(
+            `INSERT INTO vanity_slug_releases (slug, prev_account_id, released_at)
+               VALUES ($1, $2, NOW())`,
+            [String(slug).toLowerCase(), String(accountId)]
+          );
+        }
+        await client.query('COMMIT');
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* already rolled back */ }
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+  }
+
+  // Task #913 — true iff the account currently holds an unreleased vanity
+  // slug. Used to block a redundant vanity add-on purchase by grandfathered
+  // holders (slug from the era it was bundled with Pro): refunding such a
+  // purchase would otherwise release a slug they own independently of it.
+  async function hasActiveVanitySlug(accountId) {
+    if (!accountId) return false;
+    const p = getPool();
+    const r = await p.query(
+      `SELECT 1 FROM player_profiles WHERE account_id = $1 AND vanity_slug IS NOT NULL LIMIT 1`,
+      [accountId]
+    );
+    return r.rows.length > 0;
+  }
+
+  return { grantOneOffPerk, hasOneOffPerk, listOneOffPerks, createOneOffPerkPending, revokeOneOffPerksByPaymentIntent, hasActiveVanitySlug };
 }
 
 // Round-8: aligned to the spec'd one-off cosmetic catalog —
@@ -210,6 +367,13 @@ function mountRoutes({ router, express, deps, requireAuth }) {
       // If user already owns this active perk, refuse.
       if (await magV3.hasOneOffPerk(accountId, perkKey)) {
         return res.status(409).json({ error: 'You already own this perk.' });
+      }
+      // Task #913 — grandfathered vanity holders (active slug, no purchased
+      // perk) must not buy the add-on: a later refund of that redundant
+      // purchase would release a slug they own under the grandfathering
+      // policy.
+      if (perkKey === 'cosmetic:vanity_url' && await magV3.hasActiveVanitySlug(accountId)) {
+        return res.status(409).json({ error: 'You already hold a custom URL — no purchase needed to keep or manage it.' });
       }
       const stripe = getStripe();
       if (!stripe) return res.status(503).json({ error: 'Payments are not configured.' });
