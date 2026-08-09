@@ -5927,6 +5927,120 @@ function CronHeartbeatsPanel({ superuserKey }) {
   );
 }
 
+// Task #927 — TLS certificate health card. Shows the latest result of the
+// daily live-certificate check (src/jobs/tlsCertCheck.js) as a proper
+// green/amber/red card: host, days remaining, expiry date and status —
+// instead of making admins parse the tls_cert_check heartbeat message.
+function TlsCertCard({ superuserKey }) {
+  const [check, setCheck] = React.useState(undefined); // undefined=loading, null=no data
+  const [err, setErr] = React.useState(null);
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(`/api/admin/system/tls-cert`, {
+          credentials: 'include',
+          headers: { 'X-Superuser-Key': superuserKey || '' },
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        if (alive) setCheck(d.check ?? null);
+      } catch (e) {
+        if (alive) { setErr(e.message); setCheck(null); }
+      }
+    })();
+    return () => { alive = false; };
+  }, [superuserKey]);
+
+  // Map check status → traffic-light severity.
+  // green: ok · amber: warn (expiring soon) / skipped (nothing to check)
+  // red: expired / not_yet_valid / check_failed (a failed check hid the last expiry)
+  // A result older than 48h means the daily check itself stopped running —
+  // treat that as amber at minimum (a dead check is the blind spot that hid
+  // the Aug 2026 expiry).
+  const stale = check?.checkedAt
+    ? (Date.now() - new Date(check.checkedAt).getTime()) > 48 * 60 * 60 * 1000
+    : false;
+  const baseSev = !check ? null
+    : check.status === 'ok' ? 'green'
+    : (check.status === 'warn' || check.status === 'skipped') ? 'amber'
+    : 'red';
+  const sev = baseSev === 'green' && stale ? 'amber' : baseSev;
+  const COLORS = {
+    green: 'var(--radiant-color)',
+    amber: '#fbbf24',
+    red: 'var(--dire-color)',
+  };
+  const LABELS = {
+    ok: 'Healthy',
+    warn: 'Expiring soon',
+    expired: 'EXPIRED',
+    not_yet_valid: 'Not yet valid',
+    check_failed: 'Check failed',
+    skipped: 'Skipped',
+  };
+  const fmtDate = (d) => { try { return new Date(d).toLocaleDateString(); } catch (_) { return String(d); } };
+  return (
+    <section className="admin-section" style={{ marginTop: 32 }}>
+      <h2 id="ap-anchor-tls-cert" className="section-title" style={{ marginBottom: 6 }}>
+        🔒 TLS Certificate
+      </h2>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 12 }}>
+        Latest result of the daily live-certificate check against the public site.
+        Amber under {check?.warnDays ?? 14} days remaining; red when expired or the check itself failed.
+      </p>
+      {err && <p style={{ color: 'var(--dire-color)' }}>Error: {err}</p>}
+      {check === undefined ? (
+        <p style={{ color: 'var(--text-muted)' }}>Loading…</p>
+      ) : check === null ? (
+        !err && (
+          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+            No check recorded yet — the TLS check runs shortly after boot and daily at 09:00 Sydney.
+          </p>
+        )
+      ) : (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+          padding: '12px 14px', borderRadius: 8,
+          background: 'var(--bg-card)',
+          border: `1px solid ${COLORS[sev]}`,
+        }}>
+          <span aria-hidden="true" style={{
+            width: 14, height: 14, borderRadius: '50%', flex: '0 0 auto',
+            background: COLORS[sev],
+          }} />
+          <span style={{ fontWeight: 700, color: COLORS[sev] }}>
+            {LABELS[check.status] || check.status}
+          </span>
+          {check.host && <span style={{ fontFamily: 'monospace' }}>{check.host}</span>}
+          {check.daysRemaining != null && (
+            <span style={{ color: check.daysRemaining < 0 ? 'var(--dire-color)' : 'var(--text-primary)' }}>
+              {check.daysRemaining < 0
+                ? `expired ${Math.abs(check.daysRemaining)}d ago`
+                : `${check.daysRemaining} day${check.daysRemaining === 1 ? '' : 's'} remaining`}
+            </span>
+          )}
+          {check.validTo && (
+            <span style={{ color: 'var(--text-muted)' }}>expires {fmtDate(check.validTo)}</span>
+          )}
+          {check.issuer && (
+            <span style={{ color: 'var(--text-muted)' }}>issuer: {check.issuer}</span>
+          )}
+          {check.error && (
+            <span style={{ color: 'var(--dire-color)', fontSize: 13 }}>{check.error}</span>
+          )}
+          {check.checkedAt && (
+            <span style={{ color: stale ? '#fbbf24' : 'var(--text-muted)', fontSize: 12, marginLeft: 'auto' }}>
+              checked {new Date(check.checkedAt).toLocaleString()}
+              {stale && <strong style={{ marginLeft: 6 }}>STALE — daily check overdue</strong>}
+            </span>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // Read-only visual reference of the full IH ladder (V1 + V3 thresholds).
 // Lives in the admin Config tab so admins can confirm at a glance how
 // every rank is named, what its symbol is, and what MMR cutoff it uses
@@ -10023,6 +10137,7 @@ export default function AdminPanel() {
     { label: 'Hero Tier Overrides', tab: 'seasons', anchor: 'ap-anchor-hero-tier', icon: '🏆', kw: 'meta heroes' },
     { label: 'Achievement System', tab: 'seasons', anchor: 'ap-anchor-achievements', icon: '🏅', kw: 'badges unlock' },
     { label: 'Cron Heartbeats', tab: 'config', anchor: 'ap-anchor-cron-heartbeats', icon: '❤️', kw: 'cron job heartbeat health monitor schedule overdue winback' },
+    { label: 'TLS Certificate', tab: 'config', anchor: 'ap-anchor-tls-cert', icon: '🔒', kw: 'tls ssl https certificate cert expiry expire renew certbot security' },
     { label: 'Discord Auto-Join Health', tab: 'config', anchor: 'ap-anchor-discord-autojoin', icon: '🔗', kw: 'discord auto join health invite server guild status' },
     { label: 'Discord Rich Presence', tab: 'config', anchor: 'ap-anchor-discord-rpc', icon: '🎮', kw: 'discord rich presence rpc activity status playing' },
     { label: 'Test Coach Promotion', tab: 'config', anchor: 'ap-anchor-test-coach', icon: '🎓', kw: 'test coach promote skip stripe connect kyc sandbox' },
@@ -10469,6 +10584,9 @@ export default function AdminPanel() {
 
       {activeTab === 'config' && (<>
       <TabHeader id="config" />
+      {/* ── TLS certificate health (Task #927) ───────────────────────── */}
+      <TlsCertCard superuserKey={superuserKey} />
+
       {/* ── Cron heartbeats (Task #361) ──────────────────────────────── */}
       <CronHeartbeatsPanel superuserKey={superuserKey} />
       {/* ── Stripe configuration banner (Task #113) ─────────────────── */}

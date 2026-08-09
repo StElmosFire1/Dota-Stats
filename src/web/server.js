@@ -9237,6 +9237,23 @@ function createApiRouter(startupStatus = {}, _app = null) {
     }
   });
 
+  // Task #927 — latest TLS certificate check result, persisted by
+  // src/jobs/tlsCertCheck.js into site_settings on every run. Lets the
+  // AdminPanel show cert health (host, days remaining, expiry) as a proper
+  // green/amber/red card instead of parsing the heartbeat message.
+  // Read-only, superuser-only.
+  router.get('/admin/system/tls-cert', requireSuperuser, async (req, res) => {
+    try {
+      const raw = await db.getSetting('tls_cert_last_check');
+      if (!raw) return res.json({ check: null });
+      let check = null;
+      try { check = JSON.parse(raw); } catch (_) {}
+      res.json({ check });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // Task #406 — Server-side ops dashboard snapshot. Superuser-only.
   router.get('/admin/ops/state', requireSuperuser, async (req, res) => {
     try {

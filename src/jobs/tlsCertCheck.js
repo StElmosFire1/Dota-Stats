@@ -152,6 +152,13 @@ async function runTlsCertCheck(deps = {}) {
   const recordHeartbeat = deps.recordHeartbeat || (async (h) => {
     try { await require('../db').recordCronHeartbeat(h); } catch (_) {}
   });
+  // Task #927 — persist the latest structured result to site_settings so the
+  // admin health panel can show cert status (host/days/expiry) at a glance
+  // instead of parsing the heartbeat message. Best-effort: a persist failure
+  // never breaks the check itself.
+  const persistResult = deps.persistResult || (async (result) => {
+    try { await require('../db').setSetting('tls_cert_last_check', JSON.stringify(result)); } catch (_) {}
+  });
   const dmOwner = deps.dmOwner || (async (msg) => {
     const { getDiscordBot } = require('../discord/bot');
     const bot = getDiscordBot();
@@ -167,6 +174,11 @@ async function runTlsCertCheck(deps = {}) {
       name: 'tls_cert_check', status: 'skipped',
       message: 'no https host to check — set TLS_CERT_CHECK_HOST or an https PUBLIC_BASE_URL',
     });
+    await persistResult({
+      checkedAt: now.toISOString(), status: 'skipped', host: null,
+      daysRemaining: null, validTo: null, issuer: null, warnDays,
+      error: 'no https host to check — set TLS_CERT_CHECK_HOST or an https PUBLIC_BASE_URL',
+    });
     return { ok: true, skipped: true, alerted: false };
   }
 
@@ -181,6 +193,10 @@ async function runTlsCertCheck(deps = {}) {
     await recordHeartbeat({
       name: 'tls_cert_check', status: 'error',
       message: `${msg}${alerted ? ' (owner DMed)' : ' (owner DM FAILED)'}`.slice(0, 480),
+    });
+    await persistResult({
+      checkedAt: now.toISOString(), status: 'check_failed', host,
+      daysRemaining: null, validTo: null, issuer: null, warnDays, error: msg,
     });
     return { ok: false, host, alerted, error: msg };
   }
@@ -202,6 +218,10 @@ async function runTlsCertCheck(deps = {}) {
       name: 'tls_cert_check', status: 'error',
       message: `${msg}${alerted ? ' (owner DMed)' : ' (owner DM FAILED)'}`.slice(0, 480),
     });
+    await persistResult({
+      checkedAt: now.toISOString(), status: 'check_failed', host,
+      daysRemaining: null, validTo: null, issuer: null, warnDays, error: msg,
+    });
     return { ok: false, host, alerted, error: msg };
   }
 
@@ -222,6 +242,12 @@ async function runTlsCertCheck(deps = {}) {
     status: status === 'ok' ? 'ok' : 'error',
     message: `${host}: ${status}, ${daysRemaining}d remaining (expires ${_fmtDate(cert.validTo)})` +
       (status !== 'ok' ? (alerted ? '; owner DMed' : '; owner DM FAILED') : ''),
+  });
+
+  await persistResult({
+    checkedAt: now.toISOString(), status, host, daysRemaining,
+    validTo: (() => { try { return new Date(cert.validTo).toISOString(); } catch (_) { return String(cert.validTo); } })(),
+    issuer: cert.issuer || null, warnDays, error: null,
   });
 
   return { ok: status === 'ok', host, status, daysRemaining, alerted };

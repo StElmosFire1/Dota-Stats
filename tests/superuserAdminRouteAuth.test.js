@@ -105,6 +105,7 @@ const EXPECTED_SUPERUSER_ROUTES = [
   ["get"    , "/admin/error-log"],
   ["delete" , "/admin/error-log"],
   ["get"    , "/admin/system/heartbeats"],
+  ["get"    , "/admin/system/tls-cert"],
   ["get"    , "/admin/ops/state"],
   ["get"    , "/admin/ops/history"],
   ["get"    , "/admin/feature-health"],
