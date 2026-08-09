@@ -765,6 +765,8 @@ function Nav() {
           <DropdownItem to="/positions">Positions</DropdownItem>
           <DropdownItem to="/records">Records &amp; Hall of Fame</DropdownItem>
           <DropdownItem to="/player-tools">Head-to-Head &amp; Compare</DropdownItem>
+          {/* Combined network + benchmarks page. */}
+          <DropdownItem to="/social">Player Network</DropdownItem>
           <DropdownItem to="/upload">Upload Replay</DropdownItem>
         </DropdownMenu>
         <DropdownMenu label="Heroes &amp; Draft">
@@ -797,9 +799,6 @@ function Nav() {
           <DropdownItem to="/live">Live Streams</DropdownItem>
           <DropdownItem to="/coaches">Coaching Marketplace</DropdownItem>
           <DropdownItem to="/sponsorships">Sponsor a Slot</DropdownItem>
-          {/* Player Network is the combined network + benchmarks page
-              (Benchmarks folded in — no separate Stats entry anymore). */}
-          <DropdownItem to="/social">Player Network</DropdownItem>
           <DropdownItem to="/predictions">Predictions</DropdownItem>
         </DropdownMenu>
         {/* Personal/account items moved out of Community into their own
