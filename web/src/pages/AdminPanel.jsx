@@ -9862,7 +9862,10 @@ function AnalyticsPanel({ superuserKey }) {
           <OverviewCard label="Total plays" value={g.total_plays?.toLocaleString?.() ?? g.total_plays} />
           <OverviewCard label="Unique players" value={g.unique_players} />
           <OverviewCard label="Overall win rate" value={winPct != null ? `${winPct}%` : '—'} sub={g.total_plays ? `${g.wins} wins` : null} />
-          <OverviewCard label="Daily vs endless" value={g.total_plays ? `${Math.round((g.daily_plays / g.total_plays) * 100)}% daily` : '—'} sub={g.total_plays ? `${g.daily_plays} daily / ${g.total_plays - g.daily_plays} endless` : null} />
+          {/* Daily/endless split only applies to game_results-backed games; standalone
+              runs (Draft Trainer / Captain Sim) have no mode, so use mode_plays as the
+              denominator instead of total_plays to avoid misreporting them as endless. */}
+          <OverviewCard label="Daily vs endless" value={g.mode_plays ? `${Math.round((g.daily_plays / g.mode_plays) * 100)}% daily` : '—'} sub={g.mode_plays ? `${g.daily_plays} daily / ${g.mode_plays - g.daily_plays} endless` : null} />
         </div>
         <div className="card" style={{ padding: 20, marginBottom: 18 }}>
           <h3 style={{ margin: '0 0 12px', fontSize: 14 }}>Plays over time</h3>

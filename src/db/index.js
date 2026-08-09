@@ -26564,6 +26564,27 @@ async function getAnalyticsGameStats(days = 30) {
   const p = getPool();
   const d = Math.max(1, Math.min(365, parseInt(days, 10) || 30));
   const range = `created_at > NOW() - ($1::int * INTERVAL '1 day')`;
+  // Task #930: summary cards and the per-day series must include the
+  // standalone games (draft_trainer_runs / captain_mode_runs), not just
+  // game_results. UNION ALL the three sources into one normalized play list
+  // so unique players are deduped ACROSS tables via COUNT(DISTINCT). The
+  // standalone games have no daily/endless mode, so is_daily is false for
+  // them and daily_plays remains a game_results-only figure.
+  // has_mode marks rows that actually have a daily/endless classification
+  // (only game_results does) so the daily-vs-endless split can exclude
+  // standalone runs instead of misreporting them as "endless".
+  const allPlays = `
+    SELECT account_id, won, (mode = 'daily') AS is_daily, true AS has_mode, created_at
+      FROM game_results WHERE ${range}
+    UNION ALL
+    SELECT account_id,
+           (matched_outcome IS NOT NULL
+             AND matched_outcome = (CASE WHEN predicted_advantage >= 0 THEN 1 ELSE 0 END)) AS won,
+           false AS is_daily, false AS has_mode, created_at
+      FROM draft_trainer_runs WHERE ${range}
+    UNION ALL
+    SELECT account_id, won, false AS is_daily, false AS has_mode, created_at
+      FROM captain_mode_runs WHERE ${range}`;
   const [perGame, daily, summary] = await Promise.all([
     p.query(
       `SELECT game,
@@ -26581,10 +26602,9 @@ async function getAnalyticsGameStats(days = 30) {
     p.query(
       `SELECT created_at::date::text AS day,
               COUNT(*)::int AS plays,
-              COUNT(*) FILTER (WHERE mode = 'daily')::int AS daily_plays,
+              COUNT(*) FILTER (WHERE is_daily)::int AS daily_plays,
               COUNT(DISTINCT account_id)::int AS unique_players
-         FROM game_results
-        WHERE ${range}
+         FROM (${allPlays}) ap
         GROUP BY 1 ORDER BY 1`,
       [d]
     ),
@@ -26592,9 +26612,9 @@ async function getAnalyticsGameStats(days = 30) {
       `SELECT COUNT(*)::int AS total_plays,
               COUNT(DISTINCT account_id)::int AS unique_players,
               COUNT(*) FILTER (WHERE won)::int AS wins,
-              COUNT(*) FILTER (WHERE mode = 'daily')::int AS daily_plays
-         FROM game_results
-        WHERE ${range}`,
+              COUNT(*) FILTER (WHERE is_daily)::int AS daily_plays,
+              COUNT(*) FILTER (WHERE has_mode)::int AS mode_plays
+         FROM (${allPlays}) ap`,
       [d]
     ),
   ]);
