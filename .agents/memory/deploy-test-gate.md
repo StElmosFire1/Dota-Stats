@@ -11,3 +11,5 @@ description: node --test needs --test-force-exit; some tests fail only in the Re
 - The two editions intentionally have different health fingerprints on the same host: full normally owns :3001 and returns `{ok,services,...}`; community normally owns :5000 and returns `{status,db,uptime,version}`. The community responder must never be called “stray” or stopped just because the full deploy gate rejects its response shape.
 - **Why:** the community process was once mistaken for a port-5000 squatter and removed, causing a real 502 on `dota.stats.corvidaeinc.com`.
 - **How to apply:** full deploy scans ports but accepts only the `services` fingerprint; community deploy accepts only `status:"ok"`, `db:true`, and `version`. Diagnose/restart by PM2 process name (`oi-bot` vs `inhouse-bot`), never by killing a port owner solely from its health shape.
+
+The missing-community-process recovery path has been operator-confirmed: after updating the checkout, its deploy script can register the community PM2 entrypoint again rather than requiring a separate manual PM2 start.
