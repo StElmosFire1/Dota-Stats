@@ -4,6 +4,7 @@ import { getReplayTimeline, getVodReview, addVodNote, deleteVodNote } from '../a
 import { getHeroName, getItemImageUrl } from '../heroNames';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { trackToolEvent } from '../hooks/usePageTracking';
+import '../components/replay-intelligence/replay-intelligence.css';
 
 // Task #411 — Replay viewer v3.
 // New surfaces layered onto the v1 viewer:
@@ -385,11 +386,11 @@ export default function ReplayViewer() {
     return { radStats, direStats, radNw, direNw, feed };
   }, [data, t]);
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading replay timeline…</div>;
+  if (loading) return <div className="ri-page" style={{ padding: 40, textAlign: 'center' }}>Loading replay timeline…</div>;
   if (error) {
     const proGate = /pro_required/.test(error) || /Pro membership/.test(error);
     return (
-      <div style={{ padding: 40, maxWidth: 600, margin: '0 auto', textAlign: 'center' }}>
+      <div className="ri-page" style={{ padding: 40, maxWidth: 600, margin: '0 auto', textAlign: 'center' }}>
         <h2>Replay viewer unavailable</h2>
         <p style={{ color: 'var(--text-muted)' }}>{error}</p>
         {proGate && <Link to="/pro" style={{ color: 'var(--amber)' }}>→ See Pro tier</Link>}
@@ -438,7 +439,7 @@ export default function ReplayViewer() {
   }
 
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto', padding: 20 }}>
+    <div className="ri-page" style={{ maxWidth: 1280, margin: '0 auto', padding: 20 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 12 }}>
         <h2 style={{ margin: 0 }}>2D Replay · Match {data.matchId}</h2>
         <Link to={`/match/${matchId}`} style={{ color: 'var(--text-muted)', fontSize: 13 }}>← back</Link>
@@ -535,7 +536,7 @@ export default function ReplayViewer() {
                 border: '1px solid var(--amber, #f59e0b)', fontSize: 12,
               }}
             >
-              🔗 Share clip
+              Share clip
             </button>
             {shareMsg && (
               <span role="status" style={{ fontSize: 11, color: 'var(--text-muted, #64748b)' }}>{shareMsg}</span>

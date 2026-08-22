@@ -31,3 +31,4 @@
 - [Stripe payment hardening](stripe-payment-hardening.md) — every money-mutating Stripe call needs an idempotency key; webhook inbox uses token-guarded claim leases; key-mode gate at boot.
 - [Stripe refund ordering](stripe-refund-ordering.md) — charge.refunded can arrive BEFORE fulfillment; record refunded intents durably, check at grant time (outside the pending-row guard), fail closed.
 - [Dota2 GC reconnect](dota2-gc-reconnect.md) — "now playing Dota" popup: dota2-user hooks listeners on the persistent SteamUser socket in its ctor; build the GC client ONCE & gate/debounce the gamesPlayed re-hello.
+- [Workflow callback indexing failure](workflow-callback-indexing.md) — restart may fail before app launch on a false missing secondary-skill path; verify the path and treat it as platform control failure.

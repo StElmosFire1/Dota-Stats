@@ -542,7 +542,7 @@ export default function MatchList() {
                             <span className="mc-score-sep" aria-hidden="true">–</span>
                             <span className={`mc-score pb-num${!match.radiant_win ? ' mc-score--winner' : ''}`}>{dKills}</span>
                           </div>
-                          <KillSparkline timeline={match.game_timeline} duration={match.duration} />
+                          <KillSparkline timeline={match.kill_timeline} duration={match.duration} />
                         </div>
                       ) : (
                         <div className="mc-victory-text">

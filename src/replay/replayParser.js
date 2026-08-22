@@ -518,6 +518,55 @@ class ReplayParser {
     const MAX_CHAT_LINES = 500;          // hard cap; a 60-min ranked rarely exceeds 150
     const MAX_CHAT_TEXT_LEN = 512;       // truncate individual lines (Dota cap is ~100, but be defensive)
 
+    // ── New bounded telemetry (full-edition only) ─────────────────────────
+    // Draft phase timing metadata. draft_start event carries the wall-clock
+    // second when the draft UI opened. Per-pick timing already in draftRaw
+    // (populated from draft_timings events); we add the start reference here
+    // so the UI can show how long each pick took.
+    let draftStartTime = null;   // game-time seconds when draft phase began
+
+    // Pause / system events — bounded list, no free-text chat.
+    // Sources: type='game_paused' (key='pause_duration', value=seconds) and
+    // type='game_state' (key describes phase transitions like 'PRE_GAME',
+    // 'GAME_IN_PROGRESS', 'POST_GAME').  We exclude any event carrying a
+    // user-visible text string to avoid free-text persistence.
+    const pauseEvents = [];            // [{t, duration, pauserSlot}]
+    const systemEvents = [];           // [{t, state}] — game-state transitions only
+    const MAX_PAUSE_EVENTS = 50;       // hard cap; 5v5 ranked games rarely exceed 10
+    const MAX_SYSTEM_EVENTS = 20;
+
+    // TP activation log. Captures DOTA_COMBATLOG_ABILITY events where the
+    // inflictor is item_tpscroll, item_travel_boots, or item_travel_boots_2.
+    // Destination coordinates come from the accompanying unit-order action=1
+    // (DOTA_UNIT_ORDER_CAST_POSITION) within ±1.5 s. Hard cap: 200 entries
+    // (a 60-min game with 5-min rotations every 10 heroes = ~60 TPs max).
+    const tpActivations = [];          // [{t, slot, destX, destY, item}]
+    const tpUnitOrders  = Array.from({ length: 10 }, () => []);
+    const MAX_TP_EVENTS = 200;
+    const MAX_TP_ORDERS_PER_SLOT = 256;
+
+    // Item use / consumable log. Captures DOTA_COMBATLOG_ITEM_USED (and the
+    // blob-mode equivalent 'item_uses'). Hard cap: 500 entries per match.
+    // Consumables (tango, clarity, flask, mango) and common actives (blink,
+    // force staff, etc.) are included. Excluded: passive items whose
+    // DOTA_COMBATLOG_ITEM_USED fires spuriously (e.g. triggered procs).
+    const itemUseLogs = {};            // slot → [{t, item}]
+    const MAX_ITEM_USE_PER_SLOT = 100;
+
+    // Ability cast log. Captures DOTA_COMBATLOG_ABILITY (one event per cast,
+    // the same source used for pudge-hook counting). Hard cap: 300 per slot.
+    // Only hero abilities are included (inflictor starts with hero NPC prefix
+    // or is a known spell name — no summon / tower / creep abilities).
+    const abilityCastLogs = {};        // slot → [{t, ability}]
+    const MAX_ABILITY_CASTS_PER_SLOT = 300;
+
+    // Lane region time. Derived from existing allPositions samples (every
+    // 10 s) using the same coordinate-to-region mapping as _detectPositions.
+    // We accumulate tick-counts (each tick = ~10 s) per slot per region.
+    // Reported as seconds spent in {safelane, mid, offlane, jungle, roshan}
+    // for the first 10 minutes of the game (laning phase).
+    const laneRegionTicks  = {};       // slot → {safelane:0, mid:0, offlane:0, jungle:0, base:0}
+
     for (const e of events) {
       // Task #363 — capture chat / chatwheel before the main switch. These
       // events carry `slot` (Java sourcePlayerId 0–9) and `key` (message text
@@ -659,7 +708,55 @@ class ReplayParser {
           isPick: e.pick === true,
           order: e.draft_order != null ? e.draft_order : draftRaw.length,
           rawTeam: e.draft_active_team,
+          // Draft phase timing metadata (full-edition): wall-clock time of this
+          // pick/ban action relative to draft start, plus extra-time remaining.
+          time: e.time != null ? e.time : null,
+          extraTime: e.draft_extime0 != null || e.draft_extime1 != null
+            ? (e.draft_active_team === 2 ? e.draft_extime0 : e.draft_extime1)
+            : null,
+          totalTimeTaken: null,  // computed in post-processing below
         });
+      }
+
+      // Draft start event — records the game-time when the draft phase opened.
+      if (e.type === 'draft_start') {
+        draftStartTime = e.time != null ? e.time : null;
+      }
+
+      // ── Pause / system events (no free-text) ────────────────────────────
+      // game_paused: key='pause_duration', value=seconds (emitted by Java
+      // processPauses when the game-clock stops). We capture only the duration
+      // and the pauser's player-slot; no user-facing strings.
+      if (e.type === 'game_paused' && e.key === 'pause_duration' && e.value > 0) {
+        if (pauseEvents.length < MAX_PAUSE_EVENTS) {
+          let pauserSlot = e.slot != null ? e.slot : null;
+          if (pauserSlot != null && pauserSlot >= 128 && pauserSlot <= 132) pauserSlot = pauserSlot - 128 + 5;
+          pauseEvents.push({
+            t: e.time || 0,
+            duration: Number(e.value),
+            pauserSlot: (pauserSlot != null && pauserSlot >= 0 && pauserSlot < 10) ? pauserSlot : null,
+          });
+        }
+      }
+      // game_state: tracks phase transitions (PRE_GAME, GAME_IN_PROGRESS, etc.)
+      // without any free-text fields. key holds the state name string.
+      if (e.type === 'game_state' && e.key && systemEvents.length < MAX_SYSTEM_EVENTS) {
+        const stateStr = String(e.key);
+        // Only capture if state is a known enum name (no spaces = safe)
+        if (/^[A-Z_]+$/.test(stateStr)) {
+          systemEvents.push({ t: e.time || 0, state: stateStr });
+        }
+      }
+
+      // ── TP activation coordinates (unit-order, not counted as casts) ────
+      // DOTA_UNIT_ORDER_CAST_POSITION (key='1') fires when a player clicks a
+      // TP destination.  We collect the raw coords here and correlate with
+      // the authoritative cast event below.
+      if (e.type === 'actions' && e.key === '1' && e.slot != null && e.x != null && e.y != null) {
+        const s = e.slot;
+        if (s >= 0 && s < 10 && tpUnitOrders[s].length < MAX_TP_ORDERS_PER_SLOT) {
+          tpUnitOrders[s].push({ t: e.time || 0, x: e.x, y: e.y });
+        }
       }
 
       if (e.type === 'player_slot' && e.slot != null && e.key != null) {
@@ -737,6 +834,32 @@ class ReplayParser {
             posLastSampled[e.slot] = currentTime;
             if (!allPositions[e.slot]) allPositions[e.slot] = [];
             allPositions[e.slot].push({ t: currentTime, x: e.x, y: e.y });
+
+            // ── Lane region time (laning phase only: 0–600 s) ───────────
+            // Map (x,y) in normalised coord space to a region label using the
+            // same thresholds used by _detectPositions().  Each tick represents
+            // ~10 s on the map.  Regions are labelled relative to the map
+            // (not per-team) so the data is unambiguous.
+            // Coord space: ~0..256 in normalised units (128 Dota2 units each).
+            // Approximate boundaries (mid-point of the map = 128,128):
+            //   Mid corridor:   x ≈ 115–141, y ≈ 115–141
+            //   Radiant base:   x < 80, y < 80
+            //   Dire base:      x > 176, y > 176
+            //   Top river:      y > 141, x < 141
+            //   Bot river:      x > 115, y < 115
+            //   Jungle / other: remainder
+            if (currentTime >= 0 && currentTime <= 600) {
+              if (!laneRegionTicks[e.slot]) laneRegionTicks[e.slot] = { safelane: 0, mid: 0, offlane: 0, jungle: 0, base: 0 };
+              const nx = e.x, ny = e.y;
+              let reg;
+              if (nx < 80 && ny < 80) reg = 'base';           // Radiant base
+              else if (nx > 176 && ny > 176) reg = 'base';     // Dire base
+              else if (nx > 115 && nx < 141 && ny > 115 && ny < 141) reg = 'mid';
+              else if (ny > 141 && nx < 115) reg = 'offlane';  // Radiant top / Dire safelane
+              else if (nx > 141 && ny < 115) reg = 'safelane'; // Radiant bot / Dire offlane
+              else reg = 'jungle';
+              laneRegionTicks[e.slot][reg]++;
+            }
           }
         }
 
@@ -1248,6 +1371,90 @@ class ReplayParser {
             abilityLevel: abilityLevel || abilityLevelups[alSlot].length + 1,
             time: e.time || 0,
           });
+        }
+      }
+
+      // ── Ability cast log (DOTA_COMBATLOG_ABILITY) ─────────────────────────
+      // One event per cast — same authoritative source used for pudge-hook
+      // counting. Only hero abilities are captured (caster must resolve to a
+      // player slot). Hard cap MAX_ABILITY_CASTS_PER_SLOT to avoid unbounded
+      // growth. Blob-mode ability_uses events are also captured here.
+      {
+        let acSlot = null, acAbility = null;
+        if (e.type === 'DOTA_COMBATLOG_ABILITY' && e.inflictor) {
+          // Skip ability-level-up events (DOTA_COMBATLOG_ABILITY_LEVEL handled above)
+          const casterName = e.attackername || e.unit || '';
+          acSlot = e.slot != null ? e.slot : npcNameToSlot[casterName];
+          acAbility = e.inflictor;
+        } else if (e.type === 'ability_uses' && e.key) {
+          let s = e.slot; if (s == null && e.unit) s = npcNameToSlot[e.unit];
+          // player_slot → normalised slot for blob-mode
+          if (s == null && e.player_slot != null) s = e.player_slot % (128 - 5);
+          acSlot = s; acAbility = e.key;
+        }
+        if (acSlot != null && acSlot >= 0 && acSlot < 10 && acAbility) {
+          if (!abilityCastLogs[acSlot]) abilityCastLogs[acSlot] = [];
+          if (abilityCastLogs[acSlot].length < MAX_ABILITY_CASTS_PER_SLOT) {
+            abilityCastLogs[acSlot].push({ t: e.time || 0, ability: acAbility });
+          }
+        }
+      }
+
+      // ── TP activation (DOTA_COMBATLOG_ABILITY with TP item inflictors) ────
+      // Captures exact activation time and, when coordinates exist from a
+      // same-second unit-order, the click destination.  Both streaming and
+      // blob forms are handled. Hard cap MAX_TP_EVENTS per match.
+      if (tpActivations.length < MAX_TP_EVENTS) {
+        const inf = e.inflictor || e.key || '';
+        const isTP = inf === 'item_tpscroll' || inf === 'item_travel_boots' || inf === 'item_travel_boots_2' ||
+                     inf === 'tpscroll' || inf === 'travel_boots' || inf === 'travel_boots_2';
+        let tpEvent = false;
+        let tpSlot = null;
+        if (isTP && (e.type === 'DOTA_COMBATLOG_ABILITY' || e.type === 'ability_uses' || e.type === 'item_uses')) {
+          const casterName = e.attackername || e.unit || '';
+          tpSlot = e.slot != null ? e.slot : npcNameToSlot[casterName];
+          if (tpSlot != null && tpSlot >= 128 && tpSlot <= 132) tpSlot = tpSlot - 128 + 5;
+          if (tpSlot != null && tpSlot >= 0 && tpSlot < 10) tpEvent = true;
+        }
+        if (tpEvent) {
+          const castTime = e.time || 0;
+          // Find the nearest unit-order within ±1.5 s for destination coordinates
+          const TP_COORD_WINDOW = 1.5;
+          let bestUO = null, bestDiff = Infinity;
+          for (const uo of tpUnitOrders[tpSlot]) {
+            const diff = Math.abs(uo.t - castTime);
+            if (diff < bestDiff && diff <= TP_COORD_WINDOW) { bestUO = uo; bestDiff = diff; }
+          }
+          tpActivations.push({
+            t: castTime,
+            slot: tpSlot,
+            item: inf.replace(/^item_/, ''),
+            destX: bestUO ? bestUO.x : null,
+            destY: bestUO ? bestUO.y : null,
+          });
+        }
+      }
+
+      // ── Item use / consumable log ──────────────────────────────────────────
+      // DOTA_COMBATLOG_ITEM_USED: item activated by a player (streaming).
+      // Blob-mode: type 'item_uses', key=item name, player resolved via slot/unit.
+      // Hard cap MAX_ITEM_USE_PER_SLOT per slot.
+      {
+        let iuSlot = null, iuItem = null;
+        if (e.type === 'DOTA_COMBATLOG_ITEM_USED' && e.inflictor) {
+          const casterName = e.attackername || e.unit || '';
+          iuSlot = e.slot != null ? e.slot : npcNameToSlot[casterName];
+          iuItem = e.inflictor;
+        } else if (e.type === 'item_uses' && e.key) {
+          let s = e.slot; if (s == null && e.unit) s = npcNameToSlot[e.unit];
+          if (s == null && e.player_slot != null) s = e.player_slot % (128 - 5);
+          iuSlot = s; iuItem = 'item_' + e.key;
+        }
+        if (iuSlot != null && iuSlot >= 0 && iuSlot < 10 && iuItem) {
+          if (!itemUseLogs[iuSlot]) itemUseLogs[iuSlot] = [];
+          if (itemUseLogs[iuSlot].length < MAX_ITEM_USE_PER_SLOT) {
+            itemUseLogs[iuSlot].push({ t: e.time || 0, item: iuItem.replace(/^item_/, '') });
+          }
         }
       }
 
@@ -2646,9 +2853,37 @@ class ReplayParser {
           team = d.rawTeam === 3 ? 1 : 0;
         }
       }
-      return { heroId: d.heroId, isPick: d.isPick, order: d.order, team };
+      // Draft phase timing metadata (derived, labelled as such).
+      // totalTimeTaken: seconds this pick/ban took (relative to previous action
+      // or draftStart). Only available when draft_timings events carry 'time'.
+      let totalTimeTaken = null;
+      if (d.time != null) {
+        if (i === 0) {
+          totalTimeTaken = draftStartTime != null ? Math.max(0, d.time - draftStartTime) : null;
+        } else {
+          const prev = draftDeduped[i - 1];
+          totalTimeTaken = (prev.time != null) ? Math.max(0, d.time - prev.time) : null;
+        }
+      }
+      return {
+        heroId: d.heroId, isPick: d.isPick, order: d.order, team,
+        // Captain's Mode draft stage. Derived from the canonical action order;
+        // null outside the known 24-action CM sequence.
+        phase: i < 9 ? 1 : (i < 18 ? 2 : (i < 24 ? 3 : null)),
+        // draft phase timing — derived/patch-limited; null when unavailable
+        time: d.time != null ? d.time : null,
+        extraTime: d.extraTime != null ? d.extraTime : null,
+        totalTimeTaken,
+      };
     });
     // --- End draft post-processing ---
+
+    // Draft phase metadata summary (null when no draft data captured)
+    const draftMeta = draftDeduped.length > 0 ? {
+      startTime: draftStartTime,
+      // derived: signal only available when draft_start event fires (CM / CM-ranked)
+      _derived: true,
+    } : null;
 
     const laneOutcomes = this._computeStratzLaneOutcomes(detectedPositions, players, laningNwAt10, laningXpAt10, laneCs10min, laningKillsAt10);
 
@@ -2722,6 +2957,35 @@ class ReplayParser {
       }));
     }
 
+    // Lane region time summary: convert tick counts to seconds (each tick ≈ 10 s)
+    // and label as derived/patch-limited (coord thresholds are approximations).
+    const laneRegionTimeSec = {};
+    for (const [slotStr, ticks] of Object.entries(laneRegionTicks)) {
+      laneRegionTimeSec[parseInt(slotStr)] = {
+        safelane: ticks.safelane * 10,
+        mid:      ticks.mid      * 10,
+        offlane:  ticks.offlane  * 10,
+        jungle:   ticks.jungle   * 10,
+        base:     ticks.base     * 10,
+        // Labelled so consumers know this is approximate / coordinate-bounded
+        _derived: true,
+      };
+    }
+
+    const hasNewTelemetry = (
+      pauseEvents.length > 0 || systemEvents.length > 0 ||
+      tpActivations.length > 0 ||
+      Object.keys(itemUseLogs).length > 0 ||
+      Object.keys(abilityCastLogs).length > 0 ||
+      Object.keys(laneRegionTimeSec).length > 0
+    );
+    if (hasNewTelemetry) {
+      console.log(`[Replay] New telemetry: pauses=${pauseEvents.length} system=${systemEvents.length} tp=${tpActivations.length} ` +
+        `itemUse=${Object.values(itemUseLogs).reduce((s,a)=>s+a.length,0)} ` +
+        `abilityCasts=${Object.values(abilityCastLogs).reduce((s,a)=>s+a.length,0)} ` +
+        `laneRegionSlots=${Object.keys(laneRegionTimeSec).length}`);
+    }
+
     return {
       matchId,
       duration,
@@ -2742,6 +3006,21 @@ class ReplayParser {
       chatLog: chatLog.length > 0 ? chatLog.slice().sort((a, b) => a.t - b.t) : null,
       gameTimeline: {
         interval: 30,
+        // ── Bounded telemetry embedded in gameTimeline so they persist via
+        // the existing matches.game_timeline JSONB write. All null-safe.
+        //
+        // pauseEvents: [{t, duration, pauserSlot}] — game_paused events without
+        //   free-text; safe to persist. Hard cap MAX_PAUSE_EVENTS (50).
+        pauseEvents: pauseEvents.length > 0 ? pauseEvents : null,
+        // systemEvents: [{t, state}] — game-state transitions (PRE_GAME etc.)
+        //   No free-text (only ^[A-Z_]+$ state names). Hard cap MAX_SYSTEM_EVENTS (20).
+        systemEvents: systemEvents.length > 0 ? systemEvents : null,
+        // tpActivations: [{t, slot, item, destX, destY}] — TP cast timing with
+        //   optional destination coordinates. Hard cap MAX_TP_EVENTS (200).
+        tpActivations: tpActivations.length > 0 ? tpActivations.slice().sort((a, b) => a.t - b.t) : null,
+        // draftMeta: {startTime, _derived} — draft phase start and metadata.
+        //   Null when no CM draft was detected.
+        draftMeta: draftMeta || null,
         players: playerList.map(p => {
           const slot = p.slot;
           const rawPurchases = itemPurchases[slot] || [];
@@ -2775,6 +3054,10 @@ class ReplayParser {
               abilityLevel: a.abilityLevel,
               time: a.time || 0,
             })),
+            // Ability cast log (bounded; derived from DOTA_COMBATLOG_ABILITY).
+            abilityCastLog: abilityCastLogs[slot] || [],
+            // Item use / consumable log (bounded).
+            itemUseLog: itemUseLogs[slot] || [],
             smokeTimes: smokePerPlayer[slot] || [],
             smokeSuccesses: smokeSuccesses[slot] || 0,
             // Per-buyback dieback flag — true when the player died within 120s
@@ -2789,6 +3072,9 @@ class ReplayParser {
                 dieback: deathTimes.some(d => d > t && d - t <= 120),
               }));
             })(),
+            // Lane region time (seconds in each map region during laning phase).
+            // Derived/patch-limited: coordinate thresholds are approximations.
+            laneRegionTime: laneRegionTimeSec[slot] || null,
           };
         }),
         events: gameEvents.sort((a, b) => a.t - b.t),

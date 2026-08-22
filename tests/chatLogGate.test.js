@@ -1,88 +1,88 @@
 'use strict';
 
-// Task #363 — regression coverage for the chat_log feature-flag gate on the
-// /api/matches and /api/matches/:matchId endpoints. The architect review
-// flagged two fail-open paths; this exercises the fixed behaviour by
-// directly invoking the route handlers with a stub `db` module so we don't
-// need a real Postgres or HTTP server.
-
 const test = require('node:test');
 const assert = require('node:assert');
+const {
+  compactMatchListRow,
+  sanitizeMatchDetail,
+} = require('../src/web/replayPayload');
 
-// Pull the handlers out as standalone closures by re-creating the relevant
-// fragment of the route logic here. This is a focused integration-style
-// test that mirrors the production code shape; if the real handler changes,
-// this test should be updated alongside it.
-function makeMatchDetailHandler({ db, session }) {
-  return async (matchId) => {
-    const match = await db.getMatch(matchId);
-    if (!match) return { status: 404 };
-
-    let flagState = 'off';
-    try {
-      const chatFlag = await db.getFeatureFlag('chat_log_visible');
-      if (chatFlag?.state === 'on' || chatFlag?.state === 'preview' || chatFlag?.state === 'off') {
-        flagState = chatFlag.state;
-      }
-    } catch (_) { flagState = 'off'; }
-    const isStaff = !!(session && (session.isSuperuser || session.isAdmin));
-    const chatVisible = flagState === 'on' || (flagState === 'preview' && isStaff);
-    if (!chatVisible && 'chat_log' in match) delete match.chat_log;
-    if (chatVisible) match.chat_log_state = flagState;
-    return { status: 200, body: match };
-  };
-}
-
-function makeListHandler({ db }) {
-  return async () => {
-    const matches = await db.getMatches();
-    for (const m of matches) { if (m && 'chat_log' in m) delete m.chat_log; }
-    return { status: 200, body: { matches } };
-  };
-}
-
-function stubDb({ flagState, throwOnFlag = false } = {}) {
-  const sample = () => ({ match_id: '1', radiant_win: true, chat_log: [{ t: 30, slot: 0, type: 'chat', text: 'gg' }] });
+function sampleMatch() {
   return {
-    getMatch: async () => sample(),
-    getMatches: async () => [sample(), sample()],
-    getFeatureFlag: async () => {
-      if (throwOnFlag) throw new Error('db down');
-      return { key: 'chat_log_visible', state: flagState };
+    match_id: '1',
+    radiant_win: true,
+    players: [{ account_id: '111' }, { account_id: '222' }],
+    game_timeline: {
+      players: [{ slot: 0, positions: [{ t: 10, x: 1, y: 2 }] }],
+      events: [{ type: 'kill', t: 30, victimSlot: 5 }],
     },
+    chat_log: [
+      { t: 30, slot: 0, type: 'chat', text: 'private free text' },
+      { t: 31, slot: 0, type: 'chatwheel', key: 'well_played' },
+      { t: 32, type: 'system', state: 'pause' },
+    ],
   };
 }
 
-test('detail: flag=off strips chat_log even for superuser', async () => {
-  const h = makeMatchDetailHandler({ db: stubDb({ flagState: 'off' }), session: { isSuperuser: true } });
-  const r = await h('1');
-  assert.strictEqual(r.body.chat_log, undefined);
-  assert.strictEqual(r.body.chat_log_state, undefined);
+test('detail: flag=off strips chat even for staff', () => {
+  const body = sanitizeMatchDetail(sampleMatch(), {
+    accountId: '111',
+    isStaff: true,
+    chatFlagState: 'off',
+  });
+  assert.strictEqual(body.chat_log, undefined);
+  assert.strictEqual(body.chat_log_state, undefined);
 });
 
-test('detail: flag=preview strips for public, exposes for admin', async () => {
-  const pub = await makeMatchDetailHandler({ db: stubDb({ flagState: 'preview' }), session: {} })('1');
-  assert.strictEqual(pub.body.chat_log, undefined);
-  assert.strictEqual(pub.body.chat_log_state, undefined);
-  const adm = await makeMatchDetailHandler({ db: stubDb({ flagState: 'preview' }), session: { isAdmin: true } })('1');
-  assert.ok(Array.isArray(adm.body.chat_log));
-  assert.strictEqual(adm.body.chat_log_state, 'preview');
+test('detail: preview exposes text only to staff', () => {
+  const publicBody = sanitizeMatchDetail(sampleMatch(), {
+    chatFlagState: 'preview',
+  });
+  assert.strictEqual(publicBody.chat_log, undefined);
+
+  const participantBody = sanitizeMatchDetail(sampleMatch(), {
+    accountId: '111',
+    chatFlagState: 'preview',
+  });
+  assert.strictEqual(participantBody.chat_log, undefined);
+
+  const staffBody = sanitizeMatchDetail(sampleMatch(), {
+    accountId: '999',
+    isStaff: true,
+    chatFlagState: 'preview',
+  });
+  assert.strictEqual(staffBody.chat_log.length, 3);
+  assert.strictEqual(staffBody.chat_log_state, 'preview');
 });
 
-test('detail: flag=on exposes chat_log to everyone', async () => {
-  const r = await makeMatchDetailHandler({ db: stubDb({ flagState: 'on' }), session: {} })('1');
-  assert.ok(Array.isArray(r.body.chat_log));
-  assert.strictEqual(r.body.chat_log_state, 'on');
+test('detail: flag=on remains fail-closed for anonymous callers', () => {
+  const body = sanitizeMatchDetail(sampleMatch(), { chatFlagState: 'on' });
+  assert.strictEqual(body.chat_log, undefined);
+  assert.strictEqual(body.chat_log_state, undefined);
 });
 
-test('detail: feature-flag lookup failure → fail-closed (no leak)', async () => {
-  const r = await makeMatchDetailHandler({ db: stubDb({ throwOnFlag: true }), session: { isSuperuser: true } })('1');
-  assert.strictEqual(r.body.chat_log, undefined, 'chat_log must be stripped when flag read fails');
+test('detail: participant sees non-text events only when fully enabled', () => {
+  const body = sanitizeMatchDetail(sampleMatch(), {
+    accountId: '111',
+    chatFlagState: 'on',
+  });
+  assert.deepStrictEqual(body.chat_log.map(event => event.type), ['chatwheel', 'system']);
+  assert.ok(body.chat_log.every(event => event.text == null));
+  assert.strictEqual(body.chat_log_state, 'participant');
 });
 
-test('list: chat_log is unconditionally stripped from /api/matches', async () => {
-  // Even with flag=on, the list endpoint never returns chat_log — the gate
-  // only lives on the detail endpoint.
-  const r = await makeListHandler({ db: stubDb({ flagState: 'on' }) })();
-  for (const m of r.body.matches) assert.strictEqual(m.chat_log, undefined);
+test('detail: invalid or missing flag state fails closed', () => {
+  const body = sanitizeMatchDetail(sampleMatch(), {
+    accountId: '111',
+    isStaff: true,
+    chatFlagState: undefined,
+  });
+  assert.strictEqual(body.chat_log, undefined);
+});
+
+test('list: replay payload is compact and chat-free', () => {
+  const body = compactMatchListRow(sampleMatch());
+  assert.strictEqual(body.chat_log, undefined);
+  assert.strictEqual(body.game_timeline, undefined);
+  assert.deepStrictEqual(body.kill_timeline, [[30, 1]]);
 });

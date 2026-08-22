@@ -22,7 +22,7 @@ class MatchErrorBoundary extends Component {
   }
 }
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs, postMatchToDiscord, getNemesisSpotlight, recapCardUrl, shareRecapCardToDiscord, submitPlayerReplayChunked, getUploadStatus, getSeasonalItemBenchmarks, listLeagues, attachMatchToLeague } from '../api';
+import { getMatch, getReplayIntelligence, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs, postMatchToDiscord, getNemesisSpotlight, recapCardUrl, shareRecapCardToDiscord, submitPlayerReplayChunked, getUploadStatus, getSeasonalItemBenchmarks, listLeagues, attachMatchToLeague } from '../api';
 import { MMR_TIERS } from './Leaderboard';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
@@ -40,6 +40,8 @@ import {
   LineChart, AreaChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ReferenceArea,
 } from 'recharts';
 import '../styles/pressbox-matchdetail.css';
+import '../components/replay-intelligence/replay-intelligence.css';
+import ReplayIntelligenceOverview from '../components/replay-intelligence/ReplayIntelligenceOverview';
 
 const POSITION_NAMES = {
   0: '-',
@@ -453,7 +455,7 @@ function TimelineGraph({ timeline, allPlayers }) {
               color: showItems ? '#6ee7b7' : '#94a3b8',
             }}
           >
-            🛒 Items
+            Items
           </button>
         </div>
       </div>
@@ -484,27 +486,27 @@ function TimelineGraph({ timeline, allPlayers }) {
             <ReferenceLine y={0} stroke="#475569" strokeWidth={1.5} />
             {showMarkers.rosh && roshanEvents.map((e, i) => (
               <ReferenceLine key={`rosh-${i}`} x={e.t} stroke="#a855f7" strokeDasharray="4 2" strokeWidth={2}
-                label={{ value: '🐉', position: 'insideTopRight', fontSize: 13, fill: '#a855f7' }} />
+              label={{ value: 'R', position: 'insideTopRight', fontSize: 11, fill: '#a855f7' }} />
             ))}
             {showMarkers.torm && tormenterEvents.map((e, i) => (
               <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3" strokeWidth={2}
-                label={{ value: '💀', position: 'insideTopRight', fontSize: 13, fill: '#f97316' }} />
+              label={{ value: 'T', position: 'insideTopRight', fontSize: 11, fill: '#f97316' }} />
             ))}
             {showMarkers.tower && towerEvents.map((e, i) => (
               <ReferenceLine key={`tw-${i}`} x={e.t}
                 stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1}
-                label={{ value: '🗼', position: 'insideTopLeft', fontSize: 10 }} />
+              label={{ value: 'TW', position: 'insideTopLeft', fontSize: 9 }} />
             ))}
             {showMarkers.rax && barracksEvents.map((e, i) => (
               <ReferenceLine key={`rax-${i}`} x={e.t}
                 stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1.5}
-                label={{ value: '🏛️', position: 'insideTopLeft', fontSize: 10 }} />
+              label={{ value: 'RX', position: 'insideTopLeft', fontSize: 9 }} />
             ))}
             {showMarkers.courier && courierEvents.map((e, i) => (
               <ReferenceLine key={`cour-${i}`} x={e.t}
                 stroke={e.killedTeam === 'radiant' ? '#f87171' : '#4ade80'}
                 strokeDasharray="2 4" strokeWidth={1.5}
-                label={{ value: '📦', position: 'insideTopRight', fontSize: 10 }} />
+              label={{ value: 'C', position: 'insideTopRight', fontSize: 9 }} />
             ))}
             <Area
               type="monotone" dataKey="goldlead" name="Radiant Gold Lead"
@@ -533,27 +535,27 @@ function TimelineGraph({ timeline, allPlayers }) {
             />
             {showMarkers.rosh && roshanEvents.map((e, i) => (
               <ReferenceLine key={`rosh-${i}`} x={e.t} stroke="#a855f7" strokeDasharray="4 2" strokeWidth={2}
-                label={{ value: '🐉', position: 'insideTopRight', fontSize: 13, fill: '#a855f7' }} />
+              label={{ value: 'R', position: 'insideTopRight', fontSize: 11, fill: '#a855f7' }} />
             ))}
             {showMarkers.torm && tormenterEvents.map((e, i) => (
               <ReferenceLine key={`torm-${i}`} x={e.t} stroke="#f97316" strokeDasharray="3 3" strokeWidth={2}
-                label={{ value: '💀', position: 'insideTopRight', fontSize: 13, fill: '#f97316' }} />
+              label={{ value: 'T', position: 'insideTopRight', fontSize: 11, fill: '#f97316' }} />
             ))}
             {showMarkers.tower && towerEvents.map((e, i) => (
               <ReferenceLine key={`ltw-${i}`} x={e.t}
                 stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1}
-                label={{ value: '🗼', position: 'insideTopLeft', fontSize: 10 }} />
+              label={{ value: 'TW', position: 'insideTopLeft', fontSize: 9 }} />
             ))}
             {showMarkers.rax && barracksEvents.map((e, i) => (
               <ReferenceLine key={`lrax-${i}`} x={e.t}
                 stroke={e.radiantFalls ? '#f87171' : '#4ade80'} strokeDasharray="2 3" strokeWidth={1.5}
-                label={{ value: '🏛️', position: 'insideTopLeft', fontSize: 10 }} />
+              label={{ value: 'RX', position: 'insideTopLeft', fontSize: 9 }} />
             ))}
             {showMarkers.courier && courierEvents.map((e, i) => (
               <ReferenceLine key={`lcour-${i}`} x={e.t}
                 stroke={e.killedTeam === 'radiant' ? '#f87171' : '#4ade80'}
                 strokeDasharray="2 4" strokeWidth={1.5}
-                label={{ value: '📦', position: 'insideTopRight', fontSize: 10 }} />
+              label={{ value: 'C', position: 'insideTopRight', fontSize: 9 }} />
             ))}
             {playerKeys.map(({ key, name, color }) => (
               <Line
@@ -631,7 +633,7 @@ function TimelineGraph({ timeline, allPlayers }) {
               color: on ? '#a855f7' : '#475569',
             }}>
               <div style={{ width: 1, height: 12, background: on ? '#a855f7' : '#475569', borderRadius: 1 }} />
-              🐉 Rosh ({roshanEvents.length})
+              Rosh ({roshanEvents.length})
             </button>
           );
         })()}
@@ -646,7 +648,7 @@ function TimelineGraph({ timeline, allPlayers }) {
               color: on ? '#f97316' : '#475569',
             }}>
               <div style={{ width: 1, height: 12, background: on ? '#f97316' : '#475569', borderRadius: 1 }} />
-              💀 Torm ({tormenterEvents.length})
+              Torm ({tormenterEvents.length})
             </button>
           );
         })()}
@@ -664,7 +666,7 @@ function TimelineGraph({ timeline, allPlayers }) {
                 <div style={{ width: 1, height: 12, background: on ? '#4ade80' : '#475569', borderRadius: 1 }} />
                 <div style={{ width: 1, height: 12, background: on ? '#f87171' : '#475569', borderRadius: 1 }} />
               </div>
-              🗼 Towers ({towerEvents.length})
+              Towers ({towerEvents.length})
             </button>
           );
         })()}
@@ -682,7 +684,7 @@ function TimelineGraph({ timeline, allPlayers }) {
                 <div style={{ width: 1, height: 12, background: on ? '#4ade80' : '#475569', borderRadius: 1 }} />
                 <div style={{ width: 1, height: 12, background: on ? '#f87171' : '#475569', borderRadius: 1 }} />
               </div>
-              🏛️ Barracks ({barracksEvents.length})
+              Barracks ({barracksEvents.length})
             </button>
           );
         })()}
@@ -739,7 +741,7 @@ function TierUpBanner({ match, mmrDeltas, viewerAccountId }) {
         display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap',
       }}
     >
-      <span style={{ fontSize: '1.8rem', lineHeight: 1 }}>{up ? '🏆' : '⬇️'}</span>
+      <span style={{ fontSize: '1.1rem', lineHeight: 1, color: up ? 'var(--pb-brass-bright)' : 'var(--pb-dire)' }}>{up ? 'UP' : 'DOWN'}</span>
       <div style={{ flex: 1, minWidth: 200 }}>
         <div style={{ fontWeight: 800, color: up ? 'var(--gold, #f59e0b)' : '#fca5a5', letterSpacing: 0.4 }}>
           {up ? 'TIER UP!' : 'TIER DROP'}
@@ -772,8 +774,8 @@ function NemesisSpotlightPanel({ matchId, accountId }) {
   if (!loaded || !spot) return null;
   const kindLabel = {
     dominance:      '☠️ Nemesis in this match',
-    loss_streak:    '😬 Active losing streak',
-    streak_broken:  '🎉 Streak broken!',
+    loss_streak:    'Active losing streak',
+    streak_broken:  'Streak broken',
     milestone:      '⚔️ Rivalry milestone',
   }[spot.kind] || 'Nemesis spotlight';
   const accent = spot.kind === 'streak_broken' ? '#4ade80'
@@ -828,7 +830,7 @@ function PerfExplainPanel({ allPlayers, viewerAccountId }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
         <div style={{ flex: 1 }}>
           <div style={{ color: 'var(--brass, #c5a975)', fontWeight: 800, letterSpacing: 0.4 }}>
-            🔍 Your PERF — {perfValue} / 10
+            Your PERF — {perfValue} / 10
           </div>
           <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
             Why you scored what you did this match.
@@ -921,7 +923,7 @@ function RecapCardPanel({ matchId, canShare }) {
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ color: 'var(--brass, #c5a975)', fontWeight: 800, letterSpacing: 0.4 }}>
-            🎬 Recap card
+            Recap card
           </div>
           <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
             Download a shareable card or post it to #highlights.
@@ -1743,7 +1745,7 @@ function PudgeHookStats({ players, matchId }) {
   return (
     <div className="expanded-stats-section">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: '0.75rem' }}>
-        <h3 style={{ margin: 0 }}>🪝 Pudge Hook Stats</h3>
+        <h3 style={{ margin: 0 }}>Pudge Hook Stats</h3>
         <a
           href={`/api/matches/${matchId}/hook-report.txt`}
           download={`hook-report-match-${matchId}.txt`}
@@ -1888,9 +1890,9 @@ function TeamAbilitiesPanel({ teamAbilities, radiantWin }) {
   const TeamRow = ({ label, data, color }) => (
     <div style={{ flex: 1, minWidth: 200 }}>
       <div style={{ color, fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.85rem' }}>{label}</div>
-      <AbilityRow icon="🛡️" label="Glyph" count={data.glyph_count} times={data.glyph_times} effective={data.glyph_effective} effectiveLabel="effective" />
-      <AbilityRow icon="🔍" label="Scan" count={data.scan_count} times={data.scan_times} effective={null} />
-      <AbilityRow icon="💨" label="Smoke" count={data.smoke_count} times={data.smoke_times} effective={data.smoke_effective} effectiveLabel="got a kill" />
+      <AbilityRow icon="GL" label="Glyph" count={data.glyph_count} times={data.glyph_times} effective={data.glyph_effective} effectiveLabel="effective" />
+      <AbilityRow icon="SC" label="Scan" count={data.scan_count} times={data.scan_times} effective={null} />
+      <AbilityRow icon="SM" label="Smoke" count={data.smoke_count} times={data.smoke_times} effective={data.smoke_effective} effectiveLabel="got a kill" />
       {!data.glyph_count && !data.scan_count && !data.smoke_count && (
         <div style={{ color: '#555', fontSize: '0.85rem' }}>No abilities used</div>
       )}
@@ -2691,14 +2693,14 @@ function WardMapPanel({ players, wardDeaths = [] }) {
 const RUNE_TYPES = {
   0: { label: 'Double Damage', icon: '⚔️', color: '#ef4444' },
   1: { label: 'Haste',         icon: '⚡',  color: '#f59e0b' },
-  2: { label: 'Illusion',      icon: '👥',  color: '#a78bfa' },
-  3: { label: 'Invisibility',  icon: '🫥',  color: '#94a3b8' },
-  4: { label: 'Regeneration',  icon: '💗',  color: '#4ade80' },
-  5: { label: 'Bounty',        icon: '🪙',  color: '#facc15' },
-  6: { label: 'Arcane',        icon: '🔮',  color: '#22d3ee' },
-  7: { label: 'Water',         icon: '💧',  color: '#60a5fa' },
-  8: { label: 'Wisdom',        icon: '🦉',  color: '#34d399' },
-  9: { label: 'Shield',        icon: '🛡️',  color: '#fbbf24' },
+  2: { label: 'Illusion',      icon: 'IL',  color: '#a78bfa' },
+  3: { label: 'Invisibility',  icon: 'IN',  color: '#94a3b8' },
+  4: { label: 'Regeneration',  icon: 'RE',  color: '#4ade80' },
+  5: { label: 'Bounty',        icon: 'BO',  color: '#facc15' },
+  6: { label: 'Arcane',        icon: 'AR',  color: '#22d3ee' },
+  7: { label: 'Water',         icon: 'WA',  color: '#60a5fa' },
+  8: { label: 'Wisdom',        icon: 'WI',  color: '#34d399' },
+  9: { label: 'Shield',        icon: 'SH',  color: '#fbbf24' },
 };
 function RuneControlPanel({ timeline, allPlayers }) {
   const runes = timeline?.runePickups || [];
@@ -2906,7 +2908,7 @@ function ReaggregateButton({ matchId, hasReplay }) {
           color: '#fff', border: '1px solid var(--border)', cursor: busy ? 'wait' : 'pointer',
         }}
       >
-        {busy ? 'Re-aggregating…' : '🔁 Re-aggregate from stored replay'}
+        {busy ? 'Re-aggregating…' : 'Re-aggregate from stored replay'}
       </button>
       {msg && <span style={{ marginLeft: 10, color: msg.startsWith('Failed') ? '#f87171' : '#4ade80' }}>{msg}</span>}
     </div>
@@ -3138,7 +3140,7 @@ function FirstBloodChainPanel({ chain, snowball, allPlayers }) {
           background: fbTeam === 'radiant' ? '#14532d' : '#7f1d1d',
           color: fbTeam === 'radiant' ? '#4ade80' : '#f87171',
         }}>
-          {fbTeam === 'radiant' ? '🟢 Radiant FB' : fbTeam === 'dire' ? '🔴 Dire FB' : 'No FB'}
+          {fbTeam === 'radiant' ? 'Radiant FB' : fbTeam === 'dire' ? 'Dire FB' : 'No FB'}
         </div>
         {snowball != null && (
           <div style={{ padding: '4px 12px', borderRadius: 6, fontSize: 13, fontWeight: 700, background: pillBg, color: pillColor }}>
@@ -3507,7 +3509,7 @@ function MatchNotes({ matchId, isAdmin, adminKey }) {
 
   return (
     <div className="expanded-stats-section">
-      <h3>📝 Match Notes</h3>
+      <h3>Match Notes</h3>
       {notes.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
           {notes.map(note => (
@@ -3628,7 +3630,7 @@ function RemoteReplayButton({ match }) {
           opacity: downloading ? 0.7 : 1,
         }}
       >
-        {downloading ? '⏳ Downloading…' : !isPro ? '★ Download Replay (Pro)' : '⬇ Download Replay (Archive)'}
+        {downloading ? 'Downloading…' : !isPro ? 'Download Replay (Pro)' : 'Download Replay (Archive)'}
       </button>
       <Dialog
         open={paywallVisible}
@@ -3695,7 +3697,7 @@ function ReplayViewerLink({ match }) {
         textDecoration: 'none',
       }}
     >
-      {isPro ? '🎬 Replay Viewer' : '★ Replay Viewer (Pro)'}
+      {isPro ? 'Replay Viewer' : 'Replay Viewer (Pro)'}
     </Link>
   );
 }
@@ -3794,8 +3796,8 @@ function SubmitReplayButton({ match, steamUser, onUploaded }) {
 }
 
 // Task #363 — Chat / chat-wheel log panel. Server gates the `chat_log` field
-// based on the `chat_log_visible` feature flag (off → never sent, preview →
-// admin/superuser only, on → public), so we just render whatever the API
+  // based on the `chat_log_visible` feature flag (off → never sent, preview →
+  // staff only, on → staff text or participant non-text events), so we render whatever the API
 // returned. Hidden entirely if the column is missing/empty. Chat-wheel ids
 // are decoded into their text equivalents from a small built-in table; the
 // rest fall through as `#<id>` so we still show something useful.
@@ -3911,7 +3913,7 @@ function LeagueAttachControl({ matchId, currentLeagueId }) {
       const slotMsg = r?.bracketUpdate?.error
         ? ' — bracket: ' + r.bracketUpdate.error
         : (r?.bracketUpdate?.ok ? ' — bracket cell updated' : '');
-      setMsg('✅ Saved' + slotMsg);
+        setMsg('Saved' + slotMsg);
     } catch (e) { setMsg('❌ ' + e.message); }
     finally { setBusy(false); }
   };
@@ -3954,7 +3956,7 @@ function LeagueAttachControl({ matchId, currentLeagueId }) {
         style={{ background: '#2563eb', color: 'white', border: 'none', padding: '0.35rem 0.9rem', borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
         {busy ? 'Saving…' : 'Save'}
       </button>
-      {msg ? <span style={{ fontSize: '0.8rem', color: msg.startsWith('✅') ? '#4ade80' : '#f87171' }}>{msg}</span> : null}
+      {msg ? <span style={{ fontSize: '0.8rem', color: msg.startsWith('Saved') ? '#4ade80' : '#f87171' }}>{msg}</span> : null}
     </div>
   );
 }
@@ -3981,6 +3983,7 @@ function MatchDetailInner() {
   const [postedDiscord, setPostedDiscord] = useState(false);
   const [postDiscordError, setPostDiscordError] = useState(null);
   const [match, setMatch] = useState(null);
+  const [replayIntelligence, setReplayIntelligence] = useState(null);
   // Task #377 — seasonal item benchmarks for the ItemBenchmarkPanel deltas.
   // Re-fetched whenever the match's season changes; null while loading or on
   // failure, which the panel handles by falling back to raw times.
@@ -4018,12 +4021,16 @@ function MatchDetailInner() {
     // Reset benchmarks on match change; the post-load effect refetches them
     // once we know the season.
     setItemBenchmarks(null);
-    getMatch(matchId)
-      .then(m => {
+    Promise.allSettled([getMatch(matchId), getReplayIntelligence(matchId)])
+      .then(([matchResult, intelligenceResult]) => {
+        if (matchResult.status === 'rejected') throw matchResult.reason;
+        const m = matchResult.value;
         setMatch(m);
         setMetaPatch(m.patch || '');
         setMetaSeason(m.season_id ? String(m.season_id) : '');
         setMetaDate(m.date ? new Date(m.date).toISOString().slice(0, 16) : '');
+        if (intelligenceResult.status === 'fulfilled') setReplayIntelligence(intelligenceResult.value);
+        else setReplayIntelligence(null);
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
@@ -4114,7 +4121,7 @@ function MatchDetailInner() {
       if (result.sent === 0) {
         setDmMsg('All players have already rated this match.');
       } else {
-        setDmMsg(`✅ Sent to ${result.sent} player${result.sent !== 1 ? 's' : ''}${result.skipped > 0 ? ` (${result.skipped} already rated, skipped)` : ''}.`);
+        setDmMsg(`Sent to ${result.sent} player${result.sent !== 1 ? 's' : ''}${result.skipped > 0 ? ` (${result.skipped} already rated, skipped)` : ''}.`);
       }
     } catch (err) {
       setDmMsg('❌ ' + err.message);
@@ -4199,7 +4206,7 @@ function MatchDetailInner() {
   })();
 
   return (
-    <div className="pb-match">
+    <div className="pb-match ri-page">
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
         <Link to="/matches" className="back-link">&larr; Back to matches</Link>
         {/* Task #260 — Share button. Mirrors the Player Profile Share popover
@@ -4226,7 +4233,7 @@ function MatchDetailInner() {
             padding: '3px 12px', borderRadius: 4, fontSize: '0.8rem', fontWeight: 600,
             cursor: 'pointer',
           }}
-        >🔗 Share</button>
+                >Share</button>
         {isSuperuser && (
           <Link
             to={`/match/${matchId}/edit`}
@@ -4294,7 +4301,7 @@ function MatchDetailInner() {
                 padding: '0.35rem 0.9rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
               }}
             >
-              {clearingHash ? 'Clearing...' : '🔄 Allow Re-upload'}
+              {clearingHash ? 'Clearing...' : 'Allow Re-upload'}
             </button>
             <button
               onClick={() => handleCorrectWinner(!match.radiant_win)}
@@ -4316,7 +4323,7 @@ function MatchDetailInner() {
                 padding: '0.35rem 0.9rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
               }}
             >
-              {sendingDMs ? 'Sending…' : '📨 Send Missing DMs'}
+              {sendingDMs ? 'Sending…' : 'Send Missing DMs'}
             </button>
             {!showDelete ? (
               <button
@@ -4326,7 +4333,7 @@ function MatchDetailInner() {
                   padding: '0.35rem 0.9rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
                 }}
               >
-                🗑️ Delete Match
+                Delete Match
               </button>
             ) : (
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -4363,7 +4370,7 @@ function MatchDetailInner() {
             )}
           </div>
           {dmMsg && (
-            <div style={{ fontSize: '0.8rem', color: dmMsg.startsWith('✅') ? '#4ade80' : dmMsg.startsWith('❌') ? '#f87171' : '#94a3b8', marginTop: '0.5rem' }}>
+            <div style={{ fontSize: '0.8rem', color: dmMsg.startsWith('Sent') ? '#4ade80' : dmMsg.startsWith('Failed') ? '#f87171' : '#94a3b8', marginTop: '0.5rem' }}>
               {dmMsg}
             </div>
           )}
@@ -4513,6 +4520,12 @@ function MatchDetailInner() {
           <SubmitReplayButton match={match} steamUser={steamUser} onUploaded={() => getMatch(matchId).then(setMatch).catch(() => {})} />
         </div>
       </div>
+
+      <ReplayIntelligenceOverview
+        matchId={matchId}
+        intelligence={replayIntelligence?.intelligence}
+        publicContext={replayIntelligence?.context === 'public'}
+      />
 
       <div className="pb-section-divider" role="presentation">
         <span className="pb-section-divider-rule" />
@@ -4683,7 +4696,6 @@ function MatchDetailInner() {
                   style={btnStyle}
                   onClick={() => setShareOpen(false)}
                 >
-                  <span aria-hidden="true">🐦</span>
                   <span>Share on Twitter / X</span>
                 </a>
                 <button
@@ -4691,8 +4703,7 @@ function MatchDetailInner() {
                   onClick={() => copyText(discordMarkdown, 'discord')}
                   style={btnStyle}
                 >
-                  <span aria-hidden="true">💬</span>
-                  <span>{shareCopied === 'discord' ? '✅ Copied for Discord!' : 'Copy for Discord'}</span>
+                  <span>{shareCopied === 'discord' ? 'Copied for Discord' : 'Copy for Discord'}</span>
                 </button>
                 {/* Task #272 — Post to #highlights. Only shown to signed-in
                     players who actually played in this match AND have a
@@ -4724,10 +4735,9 @@ function MatchDetailInner() {
                       cursor: (postingDiscord || postedDiscord) ? 'default' : 'pointer',
                     }}
                   >
-                    <span aria-hidden="true">📣</span>
                     <span>
                       {postedDiscord
-                        ? '✅ Posted to #highlights!'
+                        ? 'Posted to #highlights'
                         : postingDiscord
                           ? 'Posting…'
                           : 'Post to #highlights'}
@@ -4748,8 +4758,7 @@ function MatchDetailInner() {
                   onClick={() => copyText(shareUrl, 'link')}
                   style={btnStyle}
                 >
-                  <span aria-hidden="true">🔗</span>
-                  <span>{shareCopied === 'link' ? '✅ Link copied!' : 'Copy link'}</span>
+                  <span>{shareCopied === 'link' ? 'Link copied' : 'Copy link'}</span>
                 </button>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>

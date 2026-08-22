@@ -369,7 +369,6 @@ async function init() {
     await p.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS item_first_times JSONB`);
     await p.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
     await p.query(`ALTER TABLE seasons ADD COLUMN IF NOT EXISTS is_legacy BOOLEAN DEFAULT false`);
-
     // Multi-tier seasons (1.6) — each season can have N tiers (default 8 for S10).
     // S10 tier placement is based on inhouse TrueSkill MMR via `min_mmr`. The
     // legacy `rank_floor`/`rank_ceiling` columns are kept for back-compat with any
@@ -471,6 +470,13 @@ async function init() {
         team INTEGER DEFAULT 0
       );
     `);
+    // Draft phase / per-pick timing metadata. These alters deliberately run
+    // after CREATE TABLE so first-time databases initialize successfully.
+    // All columns are nullable so historical rows remain valid without a backfill.
+    await p.query(`ALTER TABLE match_draft ADD COLUMN IF NOT EXISTS draft_phase SMALLINT`);
+    await p.query(`ALTER TABLE match_draft ADD COLUMN IF NOT EXISTS draft_time INTEGER`);
+    await p.query(`ALTER TABLE match_draft ADD COLUMN IF NOT EXISTS extra_time SMALLINT`);
+    await p.query(`ALTER TABLE match_draft ADD COLUMN IF NOT EXISTS time_taken SMALLINT`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_match_draft_match_id ON match_draft(match_id)`);
     await p.query(`CREATE INDEX IF NOT EXISTS idx_match_draft_hero_id ON match_draft(hero_id)`);
     await p.query(`
@@ -1136,6 +1142,17 @@ async function init() {
          ('pro_tier', 'off', 'Pro Tier — paid lifetime unlock. Gates Hero Meta V2, Hero Matchups, Skill Builds, Compare/H2H, Benchmarks, premium profile cosmetics, and CSV match exports when state=on'),
          ('coaching_marketplace', 'on', 'Coaching Marketplace — paid 1:1 coaching via Stripe Connect (Express). 10% platform take rate. Eligibility = top-5 leaderboard or Immortal+ Steam rank. Sessions delivered in Discord; no built-in video.'),
          ('chat_log_visible', 'preview', 'Task #363 — chat + chat-wheel log on /match/:id. preview = admins/superusers only; on = everyone.'),
+          ('replay_telemetry_draft', 'on', 'Replay intelligence: draft order, phase and timing metadata'),
+          ('replay_telemetry_position', 'on', 'Replay intelligence: bounded movement, pathing and map-region telemetry'),
+          ('replay_telemetry_fights', 'on', 'Replay intelligence: structured fights, participants and outcomes'),
+          ('replay_telemetry_economy', 'on', 'Replay intelligence: gold, XP, inventory and buyback telemetry'),
+          ('replay_telemetry_movement', 'on', 'Replay intelligence: rotations, grouping and lane-region summaries'),
+          ('replay_telemetry_vision', 'on', 'Replay intelligence: wards, detection, smokes and scans'),
+          ('replay_telemetry_abilities', 'on', 'Replay intelligence: skill builds, casts and item activations'),
+          ('replay_telemetry_combat', 'on', 'Replay intelligence: damage, healing, disables and clutch events'),
+          ('replay_telemetry_laning', 'on', 'Replay intelligence: lane assignments, matchups and early differentials'),
+          ('replay_telemetry_objectives', 'on', 'Replay intelligence: objectives, contributors and conversion'),
+          ('replay_telemetry_coaching', 'on', 'Replay intelligence: private role-aware derived coaching metrics'),
          ('public_api', 'preview', 'Task #371 — public /v1 API + outbound webhooks. preview = superuser keys only; on = available to all users (free + Pro tiers).'),
          ('pro_replay_browser', 'on', 'Task #378 — searchable browser of recent OpenDota pro matches with draft analyze + replay deep-links. on = public (default), preview = superuser only, off = surface fully hidden + sync paused.'),
          ('discord_rich_presence_enabled', 'off', 'Task #446 — Discord Rich Presence. When off, the per-user opt-in card on /settings/account still works but the pusher worker never actually publishes activities to Discord. Flip to on for a staged rollout.')
@@ -5133,8 +5150,12 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
     }
 
     if (matchStats.draft && matchStats.draft.length > 0) {
-      await client.query(`DELETE FROM match_draft WHERE match_id = $1`, [matchStats.matchId]);
-      // Bulk draft insert.
+      // Bulk draft insert — includes additive timing columns (draft_phase,
+      // draft_time, extra_time, time_taken) populated from draftMeta timing
+      // enrichments added by replayParser.  Null for replays parsed before that
+      // feature shipped.  ON CONFLICT preserves richer existing values for any
+      // column that is currently non-null so a cold re-record can never wipe
+      // timing data that was captured by a newer parser.
       const dPh = [];
       const dParams = [];
       let dBase = 0;
@@ -5143,16 +5164,38 @@ async function recordMatch(matchStats, lobbyName, recordedBy, fileHash, patch, s
         const teamNum = typeof d.team === 'string'
           ? (d.team === 'radiant' ? 0 : 1)
           : (d.team === 2 ? 0 : d.team === 3 ? 1 : (d.team || 0));
-        dPh.push(`($${dBase + 1},$${dBase + 2},$${dBase + 3},$${dBase + 4},$${dBase + 5})`);
-        dParams.push(matchStats.matchId, d.heroId, d.isPick, d.order || 0, teamNum);
-        dBase += 5;
+        const draftPhase = d.phase != null ? d.phase : null;
+        dPh.push(`($${dBase + 1},$${dBase + 2},$${dBase + 3},$${dBase + 4},$${dBase + 5},$${dBase + 6},$${dBase + 7},$${dBase + 8},$${dBase + 9})`);
+        dParams.push(
+          matchStats.matchId, d.heroId, d.isPick, d.order || 0, teamNum,
+          draftPhase,
+          d.time != null ? d.time : null,
+          d.extraTime != null ? d.extraTime : null,
+          d.totalTimeTaken != null ? d.totalTimeTaken : null,
+        );
+        dBase += 9;
       }
       if (dPh.length > 0) {
         await client.query(
-          `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team)
+          `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team, draft_phase, draft_time, extra_time, time_taken)
            VALUES ${dPh.join(',')}
-           ON CONFLICT (match_id, order_num) DO NOTHING`,
+           ON CONFLICT (match_id, order_num) DO UPDATE SET
+             hero_id     = EXCLUDED.hero_id,
+             is_pick     = EXCLUDED.is_pick,
+             team        = EXCLUDED.team,
+             draft_phase = EXCLUDED.draft_phase,
+             draft_time  = COALESCE(EXCLUDED.draft_time,  match_draft.draft_time),
+             extra_time  = COALESCE(EXCLUDED.extra_time,  match_draft.extra_time),
+             time_taken  = COALESCE(EXCLUDED.time_taken,  match_draft.time_taken)`,
           dParams
+        );
+        const retainedOrders = matchStats.draft
+          .filter(d => d.heroId > 0)
+          .map(d => d.order || 0);
+        await client.query(
+          `DELETE FROM match_draft
+           WHERE match_id = $1 AND NOT (order_num = ANY($2::int[]))`,
+          [matchStats.matchId, retainedOrders]
         );
       }
     }
@@ -5552,7 +5595,8 @@ async function getMatch(matchId) {
   }
 
   const draftResult = await p.query(
-    `SELECT hero_id, is_pick, order_num, team FROM match_draft WHERE match_id = $1 ORDER BY order_num ASC`,
+    `SELECT hero_id, is_pick, order_num, team, draft_phase, draft_time, extra_time, time_taken
+       FROM match_draft WHERE match_id = $1 ORDER BY order_num ASC`,
     [matchId]
   );
 
@@ -9763,7 +9807,8 @@ async function getSynergyHeatmap(seasonId = null) {
 async function getMatchDraft(matchId) {
   const p = getPool();
   const result = await p.query(
-    `SELECT hero_id, is_pick, order_num, team FROM match_draft WHERE match_id = $1 ORDER BY order_num ASC`,
+    `SELECT hero_id, is_pick, order_num, team, draft_phase, draft_time, extra_time, time_taken
+     FROM match_draft WHERE match_id = $1 ORDER BY order_num ASC`,
     [matchId]
   );
   return result.rows;
@@ -9774,11 +9819,32 @@ async function updateMatchDraft(matchId, entries) {
   const client = await p.connect();
   try {
     await client.query('BEGIN');
+    const existingRows = await client.query(
+      `SELECT order_num, draft_phase, draft_time, extra_time, time_taken
+       FROM match_draft WHERE match_id = $1`,
+      [matchId]
+    );
+    const existingByOrder = new Map(existingRows.rows.map(row => [Number(row.order_num), row]));
     await client.query(`DELETE FROM match_draft WHERE match_id = $1`, [matchId]);
     for (const entry of entries) {
+      // Include timing columns when the caller supplies them (admin UI may not);
+      // fall back to NULL so historical timing data from the parser is not lost
+      // when an operator makes a manual hero correction.
+      const existing = existingByOrder.get(Number(entry.order_num)) || {};
       await client.query(
-        `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team) VALUES ($1, $2, $3, $4, $5)`,
-        [matchId, parseInt(entry.hero_id) || 0, !!entry.is_pick, parseInt(entry.order_num), parseInt(entry.team)]
+        `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team, draft_phase, draft_time, extra_time, time_taken)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          matchId,
+          parseInt(entry.hero_id) || 0,
+          !!entry.is_pick,
+          parseInt(entry.order_num),
+          parseInt(entry.team),
+          entry.draft_phase != null ? entry.draft_phase : (existing.draft_phase ?? null),
+          entry.draft_time  != null ? entry.draft_time  : (existing.draft_time ?? null),
+          entry.extra_time  != null ? entry.extra_time  : (existing.extra_time ?? null),
+          entry.time_taken  != null ? entry.time_taken  : (existing.time_taken ?? null),
+        ]
       );
     }
     await client.query('COMMIT');
@@ -13972,7 +14038,6 @@ async function reparseMatchFromStats(matchId, matchStats, patch) {
     await client.query(`DELETE FROM player_stats WHERE match_id = $1`, [matchId]);
     await client.query(`DELETE FROM player_items WHERE match_id = $1`, [matchId]);
     await client.query(`DELETE FROM player_abilities WHERE match_id = $1`, [matchId]);
-    await client.query(`DELETE FROM match_draft WHERE match_id = $1`, [matchId]);
 
     // Update match-level fields (keep season_id, lobby_name)
     await client.query(
@@ -14090,13 +14155,37 @@ async function reparseMatchFromStats(matchId, matchStats, patch) {
     if (matchStats.draft && matchStats.draft.length > 0) {
       for (const d of matchStats.draft) {
         if (!d.heroId || d.heroId <= 0) continue;
+        const teamNum = typeof d.team === 'string'
+          ? (d.team === 'radiant' ? 0 : 1)
+          : (d.team === 2 ? 0 : d.team === 3 ? 1 : (d.team || 0));
         await client.query(
-          `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (match_id, order_num) DO UPDATE SET hero_id=EXCLUDED.hero_id, is_pick=EXCLUDED.is_pick, team=EXCLUDED.team`,
-          [matchId, d.heroId, d.isPick, d.order || 0, typeof d.team === 'string' ? (d.team === 'radiant' ? 0 : 1) : (d.team === 2 ? 0 : d.team === 3 ? 1 : (d.team || 0))]
+          `INSERT INTO match_draft (match_id, hero_id, is_pick, order_num, team, draft_phase, draft_time, extra_time, time_taken)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (match_id, order_num) DO UPDATE SET
+             hero_id     = EXCLUDED.hero_id,
+             is_pick     = EXCLUDED.is_pick,
+             team        = EXCLUDED.team,
+             draft_phase = EXCLUDED.draft_phase,
+             draft_time  = COALESCE(EXCLUDED.draft_time,  match_draft.draft_time),
+             extra_time  = COALESCE(EXCLUDED.extra_time,  match_draft.extra_time),
+             time_taken  = COALESCE(EXCLUDED.time_taken,  match_draft.time_taken)`,
+          [
+            matchId, d.heroId, d.isPick, d.order || 0, teamNum,
+            d.phase != null ? d.phase : null,
+            d.time != null ? d.time : null,
+            d.extraTime != null ? d.extraTime : null,
+            d.totalTimeTaken != null ? d.totalTimeTaken : null,
+          ]
         );
       }
+      const retainedOrders = matchStats.draft
+        .filter(d => d.heroId > 0)
+        .map(d => d.order || 0);
+      await client.query(
+        `DELETE FROM match_draft
+         WHERE match_id = $1 AND NOT (order_num = ANY($2::int[]))`,
+        [matchId, retainedOrders]
+      );
     }
 
     await client.query('COMMIT');

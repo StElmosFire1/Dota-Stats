@@ -752,6 +752,10 @@ export async function getMatch(matchId) {
   return fetchJson(`/matches/${matchId}`);
 }
 
+export async function getReplayIntelligence(matchId) {
+  return fetchJson(`/matches/${encodeURIComponent(String(matchId))}/replay-intelligence`);
+}
+
 // Task #588 — unified command-palette search. Single bounded endpoint backing
 // the header ⌘K palette across players, coaches, teams and tournaments. Heroes
 // are matched client-side from the static registry (heroNames.js).
@@ -1438,6 +1442,7 @@ export async function submitPlayerReplayChunked(matchId, file, onProgress) {
 export async function getReplayTimeline(matchId) {
   return fetchJson(`/matches/${encodeURIComponent(String(matchId))}/replay-timeline`);
 }
+
 
 // Task #411 — admin: re-detect team fights for every match with a stored
 // game_timeline that has no match_fights rows yet. Backfill runs in the

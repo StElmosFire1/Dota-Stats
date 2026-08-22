@@ -7,6 +7,7 @@ import { getPlayerPerfGrowth } from '../api';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import HeroIcon from '../components/HeroIcon';
 import CoachRecommendationsTile from '../components/CoachRecommendationsTile';
+import '../components/replay-intelligence/replay-intelligence.css';
 
 const POS_LABELS = {
   1: 'Pos 1 · Carry',
@@ -183,7 +184,7 @@ function DimensionCard({ dim, position }) {
           border: '1px solid var(--border)', borderRadius: 8,
           padding: '8px 10px', marginBottom: 10,
         }}>
-          <span aria-hidden="true" style={{ fontSize: 14, lineHeight: 1.5, flexShrink: 0 }}>💡</span>
+          <span aria-hidden="true" style={{ fontSize: 14, lineHeight: 1.5, flexShrink: 0, color: 'var(--amber)' }}>TIP</span>
           <p style={{ margin: 0, fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>
             <strong style={{ color: 'var(--amber, #f59e0b)' }}>How to improve:</strong>{' '}
             {dim.tip}
@@ -247,13 +248,13 @@ export default function PlayerGrowth() {
   const isOwnProfile = !!(steamUser?.accountId && String(steamUser.accountId) === String(accountId));
 
   if (authLoading || loading) {
-    return <div style={{ padding: 24, color: 'var(--text-muted)' }}>Loading your growth report…</div>;
+    return <div className="ri-page" style={{ padding: 24, color: 'var(--text-muted)' }}>Loading your growth report…</div>;
   }
 
   // Logged-out / not-your-profile states.
   if (status === 401) {
     return (
-      <div style={{ maxWidth: 560, margin: '48px auto', padding: 24, textAlign: 'center' }}>
+      <div className="ri-page" style={{ maxWidth: 560, margin: '48px auto', padding: 24, textAlign: 'center' }}>
         <h1 className="section-title">Growth Coach</h1>
         <p style={{ color: 'var(--text-muted)' }}>
           Sign in with Steam to see your PERF trend and personalised improvement plan.
@@ -263,7 +264,7 @@ export default function PlayerGrowth() {
   }
   if (status === 403) {
     return (
-      <div style={{ maxWidth: 560, margin: '48px auto', padding: 24, textAlign: 'center' }}>
+      <div className="ri-page" style={{ maxWidth: 560, margin: '48px auto', padding: 24, textAlign: 'center' }}>
         <h1 className="section-title">Growth Coach</h1>
         <p style={{ color: 'var(--text-muted)' }}>
           The growth report is personal — you can only view your own.
@@ -274,7 +275,7 @@ export default function PlayerGrowth() {
   }
   if (error) {
     return (
-      <div style={{ maxWidth: 560, margin: '48px auto', padding: 24, textAlign: 'center' }}>
+      <div className="ri-page" style={{ maxWidth: 560, margin: '48px auto', padding: 24, textAlign: 'center' }}>
         <h1 className="section-title">Growth Coach</h1>
         <p style={{ color: 'var(--accent-red, #ef4444)' }}>{error}</p>
       </div>
@@ -284,7 +285,7 @@ export default function PlayerGrowth() {
   // Too-few-games empty state.
   if (data && data.enough === false) {
     return (
-      <div style={{ maxWidth: 640, margin: '0 auto', padding: '16px' }}>
+      <div className="ri-page" style={{ maxWidth: 640, margin: '0 auto', padding: '16px' }}>
         <div style={{ marginBottom: 12 }}>
           <Link to={`/player/${accountId}`} style={{ color: 'var(--text-muted)', fontSize: 13, textDecoration: 'none' }}>← Back to profile</Link>
         </div>
@@ -293,7 +294,7 @@ export default function PlayerGrowth() {
           background: 'var(--bg-card)', border: '1px solid var(--border)',
           borderRadius: 10, padding: 24, textAlign: 'center', marginTop: 12,
         }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }} aria-hidden="true">📈</div>
+          <div style={{ fontSize: 18, marginBottom: 8, letterSpacing: '.18em', color: 'var(--amber)' }} aria-hidden="true">REPORT</div>
           <p style={{ color: 'var(--text)', fontSize: 15, margin: '0 0 6px' }}>
             Play a few more games to unlock your growth report.
           </p>
@@ -310,7 +311,7 @@ export default function PlayerGrowth() {
   const { perf, weakest_dimensions: dims = [], primary_position: position, games } = data;
 
   return (
-    <div style={{ maxWidth: 760, margin: '0 auto', padding: '16px' }}>
+    <div className="ri-page" style={{ maxWidth: 760, margin: '0 auto', padding: '16px' }}>
       <div style={{ marginBottom: 12 }}>
         <Link to={`/player/${accountId}`} style={{ color: 'var(--text-muted)', fontSize: 13, textDecoration: 'none' }}>← Back to profile</Link>
       </div>

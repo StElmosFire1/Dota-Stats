@@ -32,6 +32,17 @@ describe('deriveKillSeries', () => {
     ]);
   });
 
+  it('accepts the compact [time, delta] list returned by match history', () => {
+    const s = deriveKillSeries([[10, -1], [20, 1], [30, 1]], 60);
+    expect(s.points).toEqual([
+      { t: 0, d: 0 },
+      { t: 10, d: -1 },
+      { t: 20, d: 0 },
+      { t: 30, d: 1 },
+      { t: 60, d: 1 },
+    ]);
+  });
+
   it('accumulates a comeback series, skips invalid events, and tracks maxAbs', () => {
     const events = [
       kill(10, 1), kill(20, 2), kill(30, 3),        // Dire ahead by 3

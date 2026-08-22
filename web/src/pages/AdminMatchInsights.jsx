@@ -7,6 +7,7 @@ import {
   matchInsightsWardHeatmapUrl,
 } from '../api';
 import { useSuperuser } from '../context/SuperuserContext';
+import '../components/replay-intelligence/replay-intelligence.css';
 
 const CARD = {
   background: '#1e293b', border: '1px solid #334155', borderRadius: 10,
@@ -137,6 +138,38 @@ function formatCell(v) {
   return String(v);
 }
 
+function TelemetryPanel({ telemetry }) {
+  const [showRaw, setShowRaw] = useState(false);
+  if (!telemetry) return null;
+  const registry = telemetry.registry || telemetry.registry_status || {};
+  const flags = telemetry.feature_flags || telemetry.telemetry_feature_flags || {};
+  const bytes = telemetry.payload_bytes || telemetry.bytes || {};
+  const coverage = telemetry.field_coverage || telemetry.coverage || {};
+  const groups = Object.entries(coverage);
+  const count = (key) => registry[key] ?? registry[`${key}_count`] ?? 0;
+  return (
+    <section style={{ ...CARD, borderColor: 'rgba(213,173,104,.35)' }} aria-label="Replay telemetry validation">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1 }}><div className="ri-kicker">Parser telemetry</div><h2 style={{ margin: '4px 0', fontSize: 18 }}>Coverage validation</h2></div>
+        <button type="button" style={BTN_GHOST} onClick={() => setShowRaw(v => !v)} aria-expanded={showRaw}>{showRaw ? 'Hide normalized preview' : 'Show normalized preview'}</button>
+      </div>
+      <div className="ri-admin-metrics">
+        <div><span>Registered</span><strong>{count('registered') || count('total')}</strong></div>
+        <div><span>Normalized</span><strong>{count('normalized') || count('ready')}</strong></div>
+        <div><span>Missing</span><strong>{count('missing') || count('unavailable')}</strong></div>
+        <div><span>Failed</span><strong>{count('failed') || count('error')}</strong></div>
+        <div><span>Persisted bytes</span><strong>{Number(bytes.persisted ?? telemetry.persisted_bytes ?? 0).toLocaleString()}</strong></div>
+        <div><span>Normalized bytes</span><strong>{Number(bytes.normalized ?? telemetry.normalized_bytes ?? 0).toLocaleString()}</strong></div>
+      </div>
+      <div className="ri-admin-columns">
+        <div><h3>Telemetry families</h3>{Object.entries(flags).map(([key, value]) => <div className="ri-admin-row" key={key}><span>{key}</span><b className={value === 'on' || value === true ? 'on' : ''}>{String(value)}</b></div>)}</div>
+        <div><h3>Field coverage</h3>{groups.length ? groups.map(([key, value]) => <div className="ri-admin-row" key={key}><span>{key}</span><b>{typeof value === 'object' ? Object.entries(value).map(([k,v]) => `${k}: ${v}`).join(' · ') : String(value)}</b></div>) : <span style={{ color: '#64748b' }}>No grouped coverage reported.</span>}</div>
+      </div>
+      {showRaw && <pre className="ri-admin-raw">{JSON.stringify(telemetry.normalized || telemetry.normalized_preview || telemetry.payload || telemetry, null, 2)}</pre>}
+    </section>
+  );
+}
+
 export default function AdminMatchInsights() {
   const { matchId: routeMatchId } = useParams();
   const navigate = useNavigate();
@@ -198,7 +231,7 @@ export default function AdminMatchInsights() {
 
   if (!isSuperuser) {
     return (
-      <div style={{ padding: 24, color: '#e2e8f0' }}>
+      <div className="ri-page" style={{ padding: 24, color: '#e2e8f0' }}>
         <h1>Match Insights v2</h1>
         <p style={{ color: '#94a3b8' }}>Superuser required.</p>
       </div>
@@ -206,8 +239,8 @@ export default function AdminMatchInsights() {
   }
 
   return (
-    <div style={{ padding: '24px 16px', maxWidth: 1100, margin: '0 auto', color: '#e2e8f0' }}>
-      <h1 style={{ fontSize: 26, marginBottom: 4 }}>🔍 Match Insights v2</h1>
+    <div className="ri-page" style={{ padding: '24px 16px', maxWidth: 1100, margin: '0 auto', color: '#e2e8f0' }}>
+      <h1 style={{ fontSize: 26, marginBottom: 4 }}>Match Insights v2</h1>
       <p style={{ color: '#94a3b8', marginBottom: 24 }}>
         Admin preview surface for rich per-match insights. Each card is gated by
         a <code>match_insights_*</code> feature flag — flip flags to <em>on</em>
@@ -274,6 +307,7 @@ export default function AdminMatchInsights() {
             {' · '}{data.match.duration ? `${Math.round(data.match.duration / 60)} min` : 'n/a'}
             {' · '}{data.match.radiant_win ? 'Radiant win' : 'Dire win'}
           </div>
+           <TelemetryPanel telemetry={data.telemetry} />
           {data.insights.map(ins => (
             <InsightCard
               key={ins.key}

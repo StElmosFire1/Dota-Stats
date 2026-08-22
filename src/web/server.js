@@ -6341,13 +6341,12 @@ function createApiRouter(startupStatus = {}, _app = null) {
       // Task #868 — aggregate win/loss + story counts across the FULL
       // filtered set so the client summary isn't limited to the current page.
       const summary = await db.getMatchSummary(seasonId, filterOpts);
-      // Task #363 — getMatches is `SELECT m.*` so the new chat_log JSONB
-      // column would otherwise be returned to every public list caller,
-      // bypassing the per-match `chat_log_visible` gate. Strip it
-      // unconditionally on the list endpoint — chat is only ever surfaced
-      // on the dedicated match detail page, which applies the full gate.
-      for (const m of matches) { if (m && 'chat_log' in m) delete m.chat_log; }
-      res.json({ matches, total, limit, offset, summary });
+      // Match-list cards need only a tiny kill series from the replay payload.
+      // Never send the full timeline, chat, or private replay filesystem paths
+      // on this public endpoint.
+      const { compactMatchListRow } = require('./replayPayload');
+      const compactMatches = matches.map(compactMatchListRow);
+      res.json({ matches: compactMatches, total, limit, offset, summary });
     } catch (err) {
       console.error('[API] Error fetching matches:', err.message);
       res.status(500).json({ error: 'Failed to fetch matches' });
@@ -6387,27 +6386,18 @@ function createApiRouter(startupStatus = {}, _app = null) {
           }
         }
       }
-      // Task #363 — chat_log feature gate. Fail-CLOSED: any error reading
-      // the flag, any unrecognised state, or any non-staff caller in
-      // 'preview' results in the field being stripped. The column itself
-      // is only ever exposed through this single route; the list endpoint
-      // strips it unconditionally above.
-      {
-        let flagState = 'off';
-        try {
-          const chatFlag = await db.getFeatureFlag('chat_log_visible');
-          if (chatFlag?.state === 'on' || chatFlag?.state === 'preview' || chatFlag?.state === 'off') {
-            flagState = chatFlag.state;
-          }
-        } catch (_) { flagState = 'off'; }
-        const isStaff = await isAdminOrHigher(req);
-        const chatVisible = flagState === 'on' || (flagState === 'preview' && isStaff);
-        if (!chatVisible && 'chat_log' in match) delete match.chat_log;
-        // Only expose the state string to callers who can actually see chat
-        // (staff in preview, or everyone when 'on'); otherwise omit so the
-        // panel-render check on the client stays a single-source truth.
-        if (chatVisible) match.chat_log_state = flagState;
-      }
+      // Fail-closed chat state. The final response sanitizer below allows
+      // staff to inspect text and participants to see only non-text system /
+      // chat-wheel events when the flag is fully on. Anonymous callers never
+      // receive chat content, even if an operator accidentally enables it.
+      let replayChatFlagState = 'off';
+      try {
+        const chatFlag = await db.getFeatureFlag('chat_log_visible');
+        if (chatFlag?.state === 'on' || chatFlag?.state === 'preview' || chatFlag?.state === 'off') {
+          replayChatFlagState = chatFlag.state;
+        }
+      } catch (_) { replayChatFlagState = 'off'; }
+      const replayDetailIsStaff = await isAdminOrHigher(req);
       // Indicate whether a locally stored replay file exists for this match.
       const replayRow = await db.getReplayFilePath(req.params.matchId).catch(() => null);
       match.has_replay = !!(replayRow?.replay_file_path && fs.existsSync(replayRow.replay_file_path));
@@ -6454,10 +6444,57 @@ function createApiRouter(startupStatus = {}, _app = null) {
       } catch (peErr) {
         console.error('[API] PERF explain failed:', peErr.message);
       }
-      res.json(match);
+      const { sanitizeMatchDetail } = require('./replayPayload');
+      res.json(sanitizeMatchDetail(match, {
+        accountId: req.session?.accountId || null,
+        isStaff: replayDetailIsStaff,
+        chatFlagState: replayChatFlagState,
+      }));
     } catch (err) {
       console.error('[API] Error fetching match:', err.message);
       res.status(500).json({ error: 'Failed to fetch match' });
+    }
+  });
+
+  // Structured replay intelligence. Public callers receive sanitized
+  // aggregates only; participants, entitled users, and staff receive bounded
+  // detail. Raw chat, replay paths, and private coaching artifacts are never
+  // included by the intelligence builder.
+  router.get('/matches/:matchId/replay-intelligence', async (req, res) => {
+    try {
+      const match = await db.getMatch(req.params.matchId);
+      if (!match || !_visibleInScope(match, _resolveScopeTenantId(req))) {
+        return res.status(404).json({ error: 'Match not found' });
+      }
+
+      const accountId = req.session?.accountId ? String(req.session.accountId) : null;
+      const isStaff = await isAdminOrHigher(req);
+      const { resolveReplayIntelligenceContext } = require('./replayPayload');
+      const context = resolveReplayIntelligenceContext(match, { accountId, isStaff });
+
+      const fights = await db.getMatchFights(req.params.matchId).catch(() => []);
+      const { buildMatchIntelligence, applyTelemetryFamilyFlags } = require('../replay/intelligence/matchIntelligence');
+      const { registrySummary } = require('../replay/intelligence/fieldRegistry');
+      const featureFlags = await db.getResolvedFeatureFlags({ isSuperuser: isStaff }).catch(() => ({}));
+      const intelligence = applyTelemetryFamilyFlags(
+        buildMatchIntelligence(match, { fights, context }),
+        featureFlags,
+        context
+      );
+
+      res.set('Cache-Control', context === 'public' ? 'public, max-age=120' : 'private, no-store');
+      res.json({
+        contractVersion: '2026-08-22.1',
+        context,
+        support: registrySummary(),
+        families: Object.fromEntries(
+          Object.entries(featureFlags).filter(([key]) => key.startsWith('replay_telemetry_'))
+        ),
+        intelligence,
+      });
+    } catch (err) {
+      console.error('[API] replay-intelligence error:', err.message);
+      res.status(500).json({ error: 'Failed to build replay intelligence' });
     }
   });
 
@@ -12419,11 +12456,39 @@ NOTES
         ...ins,
         flag_state: flagMap?.[ins.key] === true ? 'on' : (flagMap?.[ins.key] === false ? 'off' : 'unknown'),
       }));
+      const { buildMatchIntelligence } = require('../replay/intelligence/matchIntelligence');
+      const { getAllFields, registrySummary } = require('../replay/intelligence/fieldRegistry');
+      const replayIntelligence = buildMatchIntelligence(match, { fights, context: 'admin' });
+      const telemetryRegistry = registrySummary();
+      const rawFlags = await db.getAllFeatureFlags().catch(() => []);
+      const telemetryFlags = Object.fromEntries(
+        rawFlags
+          .filter(flag => flag.key.startsWith('replay_telemetry_'))
+          .map(flag => [flag.key, flag.state])
+      );
       res.set('Cache-Control', 'no-store');
       res.json({
         match_id: matchId,
         match: { date: match.date, duration: match.duration, radiant_win: match.radiant_win },
         insights,
+        telemetry: {
+          contract_version: '2026-08-22.1',
+          registry: telemetryRegistry,
+          fields: getAllFields(),
+          field_coverage: {
+            by_status: telemetryRegistry.byStatus,
+            by_category: telemetryRegistry.byCategory,
+            by_retention: telemetryRegistry.byRetention,
+          },
+          feature_flags: telemetryFlags,
+          persisted_timeline_bytes: Buffer.byteLength(JSON.stringify(match.game_timeline || {})),
+          normalized_payload_bytes: Buffer.byteLength(JSON.stringify(replayIntelligence || {})),
+          payload_bytes: {
+            persisted: Buffer.byteLength(JSON.stringify(match.game_timeline || {})),
+            normalized: Buffer.byteLength(JSON.stringify(replayIntelligence || {})),
+          },
+          intelligence: replayIntelligence,
+        },
       });
     } catch (err) {
       console.error('[API] admin/match-insights error:', err.message);

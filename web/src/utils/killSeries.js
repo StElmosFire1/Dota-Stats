@@ -5,13 +5,19 @@
 // cumulative Radiant-minus-Dire kill diff held until the next kill
 // (step-after), starting at (0, 0) and ending with a hold to `endT`.
 export function deriveKillSeries(timeline, duration) {
-  const events = timeline?.events;
-  if (!Array.isArray(events)) return null;
-  const kills = events
-    .filter(e => e && e.type === 'kill' && Number.isFinite(Number(e.t)) &&
-      Number(e.victimSlot) >= 0 && Number(e.victimSlot) < 10)
-    .map(e => ({ t: Math.max(0, Number(e.t)), diff: Number(e.victimSlot) >= 5 ? 1 : -1 }))
-    .sort((a, b) => a.t - b.t);
+  const kills = Array.isArray(timeline)
+    ? timeline
+      .filter(entry => Array.isArray(entry) && Number.isFinite(Number(entry[0])) &&
+        (Number(entry[1]) === 1 || Number(entry[1]) === -1))
+      .map(entry => ({ t: Math.max(0, Number(entry[0])), diff: Number(entry[1]) }))
+      .sort((a, b) => a.t - b.t)
+    : (Array.isArray(timeline?.events)
+      ? timeline.events
+        .filter(e => e && e.type === 'kill' && Number.isFinite(Number(e.t)) &&
+          Number(e.victimSlot) >= 0 && Number(e.victimSlot) < 10)
+        .map(e => ({ t: Math.max(0, Number(e.t)), diff: Number(e.victimSlot) >= 5 ? 1 : -1 }))
+        .sort((a, b) => a.t - b.t)
+      : []);
   if (kills.length === 0) return null;
 
   const endT = Math.max(Number(duration) || 0, kills[kills.length - 1].t, 1);

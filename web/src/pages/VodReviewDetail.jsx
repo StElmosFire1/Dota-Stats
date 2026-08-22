@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import * as api from '../api';
+import '../components/replay-intelligence/replay-intelligence.css';
 
 function fmtTime(s) {
   const m = Math.floor(s / 60), sec = s % 60;
@@ -21,8 +22,8 @@ export default function VodReviewDetail() {
   };
   useEffect(load, [id]);
 
-  if (error) return <div style={{ padding: 24, color: 'var(--dire-color)' }}>{error}</div>;
-  if (!data) return <div style={{ padding: 24 }}>Loading…</div>;
+  if (error) return <div className="ri-page" style={{ padding: 24, color: 'var(--dire-color)' }}>{error}</div>;
+  if (!data) return <div className="ri-page" style={{ padding: 24 }}>Loading…</div>;
   const { review, notes, is_coach, is_student } = data;
 
   const addNote = async (e) => {
@@ -70,7 +71,7 @@ export default function VodReviewDetail() {
   };
 
   return (
-    <div style={{ maxWidth: 900, margin: '24px auto', padding: 16 }}>
+    <div className="ri-page" style={{ maxWidth: 900, margin: '24px auto', padding: 16 }}>
       <p><Link to="/me/coaching/vod" style={{ color: 'var(--accent)' }}>← My VOD reviews</Link></p>
       <h1>VOD review #{review.id}</h1>
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 16 }}>
