@@ -1,0 +1,209 @@
+## Already parsed or available, but not properly saved or surfaced
+
+These are relatively straightforward additions because data is already produced by the parser or current replay pipeline.
+
+### Draft
+
+- Complete pick/ban order
+- Team resolving for each pick/ban
+- Pick/ban phase
+- Hero draft order
+- Draft timing where available
+
+The parser handles the draft, but it is not currently stored as a dedicated match record.
+
+### Chat and communication
+
+- Chat-wheel lines
+- Potentially pause/unpause messages and system messages
+
+This requires care: chat is personal/player content, so it should likely be opt-in, admin-only, or moderated rather than public by default.
+
+### Better position data
+
+- One-second player positions rather than the current sampled positions
+- Position trails
+- Lane routes
+- Rotation paths
+- Jungle pathing
+- Heatmaps
+- Death locations
+- Fight locations
+- Ward coverage maps
+
+### Teamfights
+
+- Structured teamfight blocks
+- Fight start/end time
+- Location
+- Players involved
+- Kills and deaths
+- Damage and healing during the fight
+- Net-worth swing
+- Buybacks used
+- Ultimate usage
+- Winner of each fight
+- “Fight participation” beyond the current aggregate count
+
+### More detailed existing logs
+
+- Full buyback timeline rather than only count/dieback
+- Buyback timing, death-to-buyback delay, likely cost, and outcome
+- Rune type breakdown rather than only total pickup count
+- Exact TP timings instead of only TP count
+- Full ward placement/death timeline
+- Better smoke timeline and affected players
+- Talent choices, talent timing, and final skill build
+- Ability-level progression, not just a generic ability log
+- Item history shown as a timeline rather than a simple purchase list
+
+---
+
+## Additional demo stats we could add with parser extensions
+
+### Combat detail
+
+- Damage dealt by:
+  - Hero
+  - Ability
+  - Item
+  - Physical / magical / pure damage type
+  - Target hero
+  - Target building
+- Damage received by source
+- Healing by hero, ability, item, or ally
+- Shielding / damage prevented where replay events expose it
+- Damage during teamfights
+- Burst damage windows, such as damage in three/five/ten seconds
+- First damage in fights
+- Kill securing versus assist contribution
+- Disable-chain duration
+- Silence, root, stun, hex, slow, and break uptime
+- Debuff application and removal
+- Ultimate hits, misses, and multi-target use
+- Ability accuracy for trackable projectiles/skill shots
+- Mana spent and mana efficiency
+- Cooldown utilisation
+- Time with key abilities available but unused
+
+### Economy and inventory
+
+- Exact gold and XP gain timeline
+- Gold lost on death
+- Gold spent by item category
+- Item purchase time
+- Item sale time
+- Item swaps and inventory transfers
+- Backpack use
+- Item drops and pickups
+- Neutral-item discovery, choice, transfer, and timing
+- Aegis, Cheese, Refresher Shard, Roshan Banner, and other Roshan-item history
+- Consumable use: Smoke, Dust, Clarities, Mangos, Salves, Tangos, Blood Grenades, etc.
+- Courier deliveries and courier deaths with inventory lost
+- Buyback cost and whether it converted into a successful defence/fight
+
+### Laning
+
+- Exact lane assignment by time
+- Lane swaps
+- Lane opponent matchups
+- CS / deny differential by minute
+- Gold / XP differential by minute
+- Harass damage in lane
+- Lane kill involvement
+- Pull and stack success rate
+- Creep-wave manipulation
+- Tower pressure during laning
+- Time spent in each map region
+- Time jungling versus laning
+- Support rotation timing
+- First rotation timing
+- First rune contest timing
+
+### Vision and information
+
+- Ward placement coordinates
+- Ward coverage area
+- Vision uptime
+- Vision overlap / wasted wards
+- Wards dewarded and likely deward source
+- Sentry reveal coverage
+- Gem ownership and duration
+- Smoke breaks
+- Scan locations and whether a scan found enemies
+- Time spent visible to enemies, where inferable
+- High-ground warding patterns
+- Vision provided during teamfights
+
+### Objectives
+
+- Exact timing and contributor list for:
+  - Towers
+  - Barracks
+  - Shrines, where applicable to old demos
+  - Roshan
+  - Tormentors
+  - Lotus pools
+  - Outposts / watchers, depending on patch support
+- Objective damage by player
+- Glyph use relative to tower pressure
+- Roshan-pit fight history
+- Aegis expiration versus consumption
+- Objective conversion: “won fight → took tower/Roshan”
+- Base siege timing and damage
+
+### Movement and map behaviour
+
+- Full movement path
+- Distance travelled
+- Time in each lane, jungle, river, enemy jungle, Roshan pit, and base
+- Rotation efficiency
+- Time grouped with teammates
+- Isolation time
+- Gank detection / escape paths
+- Death position map
+- Teamfight clustering
+- Teleport destinations
+- Blink initiation and escape locations
+- Repeated warding / dewarding routes
+
+### Hero, ability, and item analytics
+
+- Full skill-build timeline
+- Talent choices and timestamps
+- Facet / innate data where exposed by the patch/demo schema
+- Ability casts, targets, hit/miss outcome, and location
+- Item actives used and timing
+- BKB usage quality: duration, fight context, deaths before/after
+- Blink timing and cancellation rate
+- Force/Glimmer/Save-item usage
+- Detection-item use
+- Smoke use contribution
+- Defensive versus offensive item usage
+- Ultimate fight participation
+- Power-spike timing after key items/levels
+
+### Derived coaching metrics
+
+These are calculated from replay data rather than coming as native fields:
+
+- Deaths before key objectives
+- “Died with buyback available”
+- “Used buyback but did not rejoin a meaningful fight”
+- Missed farm while dead
+- Farm efficiency by minute
+- Efficiency of jungle pathing
+- GPM versus available map space
+- Fight attendance rate
+- Objective attendance rate
+- Support action rate: wards, dewards, saves, stacks, pulls
+- Core action rate: CS, tower pressure, damage, objective conversion
+- Net-worth lead conversion rate
+- Throw/comeback detection
+- Win-probability swing approximation
+- Item timing versus bracket/hero benchmarks
+- Player-versus-hero historical performance
+- Hero-pair synergy and counter performance
+- Role-specific benchmark percentiles
+- Clutch metrics: saves, steals, base defences, comeback fights
+
