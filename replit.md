@@ -5,7 +5,7 @@ Node.js Discord bot + React/Express dashboard for an OCE Dota 2 inhouse communit
 
 ## User Preferences
 - **Iterative development.** Core feature first, refine after. Prioritise robust error handling and graceful degradation. Explain complex technical decisions concisely.
-- **Current scope.** Work only in `community-edition/` unless the user explicitly asks to change the full version.
+- **Current scope.** Work in `community-edition/` by default. Include the full edition in analysis or discussion when requested, but make full-version code changes only when explicitly requested.
 - **Patch notes.** After completing a meaningful batch of changes, add a single grouped entry to `src/data/patchNotes.js`, incrementing the version. Group related work into one note rather than one per change — publish only when there's a significant set of work to describe. Do this automatically, never wait to be asked.
 - **GitHub push.** After every batch the post-merge hook (`scripts/post-merge.sh`) auto-pushes to GitHub using `GITHUB_PERSONAL_ACCESS_TOKEN`. If a manual push is needed, the credential one-liner is:
   ```
