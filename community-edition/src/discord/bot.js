@@ -7,6 +7,7 @@ const { getSheetsStore } = require('../sheets/sheetsStore');
 const { getReplayParser } = require('../replay/replayParser');
 const { getOpenDota } = require('../api/opendota');
 const db = require('../db');
+const { resolveLeaderDiscordId, reconcileExclusiveRole } = require('./mmrRoleReconciler');
 
 // Task #362 — read from env so the hardcoded ID is no longer surfaced in
 // SAST scans. Fallback is the historical default so prod doesn't break if
@@ -1893,6 +1894,11 @@ class DiscordBot {
         const streakCallouts = [];
         const milestones = [];
         const guild = channel.guild;
+         if (guild) {
+           await this._syncLeaderMmrRole(guild).catch(err => {
+             console.error('[MMR Roles] Failed to sync leaderboard leader role:', err.message);
+           });
+         }
         for (const p of matchStats.players.filter(q => q.accountId && q.accountId !== 0)) {
           if (guild) {
             const rating = await db.getPlayerRating(p.accountId.toString()).catch(() => null);
@@ -2183,7 +2189,9 @@ class DiscordBot {
   }
 
   async _updateMmrRoles(guild, playerId, mmr) {
-    const tiers = config.discord.mmrRoles.tiers.filter(t => t.roleId);
+    // Position-based roles (Gaben) are reconciled separately. This MMR-only
+    // path must neither assign nor remove them.
+    const tiers = config.discord.mmrRoles.tiers.filter(t => t.roleId && !t.leaderOnly);
     if (tiers.length === 0) return;
 
     const players = await db.getRegisteredPlayers();
@@ -2199,6 +2207,36 @@ class DiscordBot {
     const toRemove = member.roles.cache.filter(r => allRoleIds.includes(r.id));
     if (toRemove.size > 0) await member.roles.remove(toRemove).catch(() => {});
     if (targetTier?.roleId) await member.roles.add(targetTier.roleId).catch(() => {});
+  }
+
+  async _syncLeaderMmrRole(guild) {
+    const leaderTier = config.discord.mmrRoles.tiers.find(t => t.leaderOnly && t.roleId);
+    if (!leaderTier || !guild) return;
+
+    const leaderboard = await db.getComputedLeaderboard();
+    const leaderAccountId = leaderboard?.[0]?.player_id != null
+      ? String(leaderboard[0].player_id)
+      : null;
+    let role = guild.roles?.cache?.get?.(leaderTier.roleId) || null;
+    if (!role && guild.roles?.fetch) {
+      role = await guild.roles.fetch(leaderTier.roleId).catch(() => null);
+    }
+    if (!role) return;
+
+    const players = leaderAccountId ? await db.getRegisteredPlayers() : [];
+    const leaderDiscordId = resolveLeaderDiscordId(leaderAccountId, players);
+    if (!leaderDiscordId) {
+      // The computed #1 has no eligible Discord identity (or the leaderboard
+      // is empty), so nobody should retain the exclusive position-based role.
+      await reconcileExclusiveRole(role, null);
+      return;
+    }
+
+    // A Discord API failure is transient and does not prove the leader is
+    // ineligible. Preserve current state and retry on the next match.
+    const targetMember = await guild.members.fetch(leaderDiscordId).catch(() => null);
+    if (!targetMember) return;
+    await reconcileExclusiveRole(role, targetMember);
   }
 
   async _postWeeklyRecap() {

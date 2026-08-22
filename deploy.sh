@@ -238,11 +238,11 @@ process.stdin.on("end", () => {
 HEALTH_PORT="${PM2_ENV_PORT:-${PORT:-}}"
 if [ -z "${HEALTH_URL:-}" ] && [ -z "${HEALTH_PORT}" ]; then
   # PM2 didn't expose PORT and the shell has none. Do NOT blindly assume a
-  # default port — another process may be squatting there and answer
-  # /api/health with a foreign shape (this burned a deploy: a stranger on
-  # :5000 replied {"status":"ok",...} and the gate polled it for 120s while
-  # the actual bot sat healthy on :3001). Scan candidates and pick the first
-  # port whose /api/health carries OUR bot's fingerprint (a `services` object).
+  # default port — another legitimate app may answer /api/health there. The
+  # community edition normally owns :5000 and returns {"status":"ok",...};
+  # the full bot normally owns :3001 and returns a `services` object. Scan
+  # candidates and select only the full bot's fingerprint. Never stop or
+  # remove a non-matching responder: it may be the other edition.
   for cand in 3001 3000 5000; do
     if curl -fsS --max-time 3 "http://127.0.0.1:${cand}/api/health" 2>/dev/null | node -e '
 let raw = "";
@@ -271,7 +271,7 @@ process.stdin.on("end", () => {
   try {
     const j = JSON.parse(raw);
     if (!j || typeof j.services !== "object" || j.services === null) {
-      console.error("health responder is NOT our bot (no services object) — another process is on this port. Response:", JSON.stringify(j));
+      console.error("health responder is NOT the full bot (no services object) — another app/edition owns this port. Response:", JSON.stringify(j));
       console.error("hint: override with HEALTH_URL=http://127.0.0.1:<bot-port>/api/health bash deploy.sh");
       process.exit(1);
     }

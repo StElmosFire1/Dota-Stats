@@ -24,7 +24,7 @@ class MatchErrorBoundary extends Component {
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getMatch, deleteMatch, updatePlayerPosition, updateMatchMeta, clearMatchFileHash, triggerMissingDMs, getNemesisSpotlight, recapCardUrl } from '../api';
 import { useSteamAuth } from '../context/SteamAuthContext';
-import { MMR_TIERS } from './Leaderboard';
+import { MMR_TIERS, getTier } from '../mmrTiers.mjs';
 import { getHeroName, getHeroImageUrl, getItemImageUrl } from '../heroNames';
 import { formatHeroName } from '../utils/heroes';
 import ImpactBadge from '../components/ImpactBadge';
@@ -701,13 +701,7 @@ function TimelineGraph({ timeline, allPlayers }) {
 // Task #314 — translate an MMR value to its current 8-tier ladder bucket.
 function _tierForMmr(mmr) {
   if (mmr == null || !Number.isFinite(Number(mmr))) return null;
-  const v = Number(mmr);
-  let match = null;
-  for (const t of MMR_TIERS) {
-    if (t.leaderOnly) continue;
-    if (v >= t.min) match = t;
-  }
-  return match;
+  return getTier(Number(mmr));
 }
 
 // Task #314 — Tier-up celebration banner (signed-in viewer only).

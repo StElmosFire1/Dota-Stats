@@ -5,30 +5,10 @@ import { useSeason } from '../context/SeasonContext';
 import ImpactBadge from '../components/ImpactBadge';
 import { decodeRankTier } from '../components/RankBadge';
 import { resolvePlayerDisplayName } from '../utils/displayName';
+import { MMR_TIERS, getTier } from '../mmrTiers.mjs';
 
-export const MMR_TIERS = [
-  { name: 'Gaben',         emoji: '🎩', description: "A personal friend of the man himself.",                                       min: 4100, color: '#FFD700',   bg: 'rgba(255,215,0,0.12)',   border: 'rgba(255,215,0,0.45)'    },
-  { name: 'Prime Pick',    emoji: '🎯', description: "Everyone wants you on their team.",                                           min: 3800, color: '#CE93D8',   bg: 'rgba(156,39,176,0.15)',  border: 'rgba(156,39,176,0.45)'   },
-  { name: 'Apex',          emoji: '⚡', description: "Operating at peak Dota capacity.",                                            min: 3500, color: '#90CAF9',   bg: 'rgba(33,150,243,0.12)',  border: 'rgba(33,150,243,0.4)'    },
-  { name: 'Veteran',       emoji: '🎖️', description: "Seen things. Done things. Knows things.",                                    min: 3200, color: '#80DEEA',   bg: 'rgba(0,188,212,0.12)',   border: 'rgba(0,188,212,0.4)'     },
-  { name: 'Solid',         emoji: '💪', description: "Reliable. People can actually count on you.",                                 min: 2900, color: '#A5D6A7',   bg: 'rgba(76,175,80,0.12)',   border: 'rgba(76,175,80,0.4)'     },
-  { name: 'Average',       emoji: '😐', description: "Not bad. Not good. Just... there.",                                           min: 2600, color: 'var(--text-secondary)', bg: 'var(--bg-hover)', border: 'var(--border)' },
-  { name: 'NPC',           emoji: '🤖', description: "Standing in the trees doing nothing.",                                        min: 2300, color: 'var(--text-muted)',     bg: 'var(--bg-hover)', border: 'var(--border)' },
-  { name: 'Anchor',        emoji: '⚓', description: "Dragging your team straight to the bottom.",                                  min: 2000, color: '#FFCC80',   bg: 'rgba(255,152,0,0.12)',   border: 'rgba(255,152,0,0.4)'     },
-  { name: 'Neutral Creep', emoji: '🐗', description: "You exist. The jungle thanks you for feeding it.",                            min: 1700, color: '#FFAB91',   bg: 'rgba(255,87,34,0.12)',   border: 'rgba(255,87,34,0.35)'    },
-  { name: 'Observer Ward', emoji: '👁️', description: "Placed. Ignored. Immediately dewarded.",                                     min: 1400, color: '#EF9A9A',   bg: 'rgba(244,67,54,0.10)',   border: 'rgba(244,67,54,0.35)'    },
-  { name: 'Position 6',    emoji: '🗺️', description: "The position that doesn't exist — neither do your contributions.",           min: 0,    color: '#EF9A9A',   bg: 'rgba(244,67,54,0.08)',   border: 'rgba(244,67,54,0.3)'     },
-];
-
-function getTier(mmr) {
-  for (const t of MMR_TIERS) {
-    if (mmr >= t.min) return t;
-  }
-  return MMR_TIERS[MMR_TIERS.length - 1];
-}
-
-function TierBadge({ mmr }) {
-  const t = getTier(mmr);
+function TierBadge({ mmr, isLeader = false }) {
+  const t = getTier(mmr, { isLeader });
   if (!t) return null;
   return (
     <span
@@ -424,7 +404,7 @@ export default function Leaderboard() {
                         leaderboardRank={p.dota_leaderboard_rank}
                       />
                     </td>
-                    <td className="col-stat"><TierBadge mmr={p.mmr} /></td>
+                    <td className="col-stat"><TierBadge mmr={p.mmr} isLeader={i === 0} /></td>
                     <td className="col-stat mmr">{p.mmr}</td>
                     <td className="col-stat wins">{p.wins}</td>
                     <td className="col-stat losses">{p.losses}</td>

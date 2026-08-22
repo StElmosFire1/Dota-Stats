@@ -1,5 +1,11 @@
 module.exports = [
   {
+    "version": "2.1",
+    "title": "Correct ranks, safer DMs, and deployment health checks",
+    "published_at": "2026-08-22",
+    "content": "The leaderboard now uses the current 5000-centred MMR scale and reserves Gaben for #1. Match DMs require an exact account identity instead of guessing by nickname. Community deploys now verify the community service and database are healthy after restart."
+  },
+  {
     "version": "0.1",
     "title": "Bot Foundation & Steam Lobby Creation",
     "published_at": "2026-02-17",

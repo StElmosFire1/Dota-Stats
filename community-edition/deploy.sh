@@ -181,6 +181,48 @@ fi
 
 pm2 restart "${PM2_APP}" --update-env
 
+echo "==> [community] Verifying local health..."
+# The community edition normally owns port 5000 and has a deliberately
+# different health response from the full edition: {status,db,uptime,version}.
+# Fingerprint that shape so this gate cannot mistake oi-bot for community.
+PM2_ENV_PORT="$(pm2 jlist 2>/dev/null | node -e '
+let raw = "";
+process.stdin.on("data", c => raw += c);
+process.stdin.on("end", () => {
+  try {
+    const arr = JSON.parse(raw);
+    const p = Array.isArray(arr) && arr.find(x => x && x.name === process.argv[1]);
+    const port = p && p.pm2_env && p.pm2_env.env && p.pm2_env.env.PORT;
+    if (port && /^\d+$/.test(String(port))) console.log(String(port));
+  } catch {}
+});
+' "${PM2_APP}" 2>/dev/null || true)"
+COMMUNITY_HEALTH_PORT="${PM2_ENV_PORT:-${PORT:-5000}}"
+COMMUNITY_HEALTH_URL="${COMMUNITY_HEALTH_URL:-http://127.0.0.1:${COMMUNITY_HEALTH_PORT}/api/health}"
+elapsed=0
+until curl -fsS --max-time 5 "${COMMUNITY_HEALTH_URL}" | node -e '
+let raw = "";
+process.stdin.on("data", c => raw += c);
+process.stdin.on("end", () => {
+  try {
+    const j = JSON.parse(raw);
+    if (j && j.status === "ok" && j.db === true && typeof j.version === "string") process.exit(0);
+    console.error("community health responded but not ready:", JSON.stringify(j));
+  } catch { console.error("community health response was not JSON"); }
+  process.exit(1);
+});
+'; do
+  elapsed=$((elapsed + 5))
+  if [ "${elapsed}" -ge 120 ]; then
+    echo "ERROR: community health check failed: ${COMMUNITY_HEALTH_URL}" >&2
+    pm2 logs "${PM2_APP}" --lines 60 --nostream >&2 || true
+    exit 1
+  fi
+  echo "    ... waiting for ${COMMUNITY_HEALTH_URL} (${elapsed}s/120s)"
+  sleep 5
+done
+echo "    Community health check passed — ${COMMUNITY_HEALTH_URL}"
+
 echo ""
 echo "✓ Community deploy complete."
 pm2 status "${PM2_APP}"

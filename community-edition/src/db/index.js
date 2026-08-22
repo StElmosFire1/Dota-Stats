@@ -3014,13 +3014,10 @@ async function getDiscordIdsForMatch(matchId) {
             COALESCE(
               NULLIF(TRIM(n.discord_id), ''),
               NULLIF(TRIM(r.discord_id), ''),
-              -- Fall back to any account sharing the same nickname (merged accounts)
-              (SELECT NULLIF(TRIM(n2.discord_id), '')
-               FROM nicknames n2
-               WHERE n2.nickname = n.nickname
-                 AND TRIM(COALESCE(n2.discord_id, '')) != ''
-               LIMIT 1),
-              -- Fall back to players table by account_id
+               -- Only exact account identities may receive match DMs.
+               -- Nicknames are display text, not an identity boundary: two
+               -- people can share one, and the old same-nickname fallback
+               -- could DM somebody who was not in this match.
               (SELECT NULLIF(TRIM(pl.discord_id), '')
                FROM players pl
                WHERE pl.account_id_32::bigint = ps.account_id

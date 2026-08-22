@@ -26,6 +26,7 @@ const { getOpenDota } = require('../api/opendota');
 const db = require('../db');
 const { generateWeeklyRecapBlurb, generatePlayerAnalysis, generatePlayerRoast, generateMatchMvpBlurb, generateMatchNarrative } = require('../services/groqService');
 const { generateScoreboardImage, generateLeaderboardImage } = require('../services/scoreboardImage');
+const { resolveLeaderDiscordId, reconcileExclusiveRole } = require('./mmrRoleReconciler');
 
 // Task #362 — read from env so the hardcoded ID is no longer surfaced in
 // SAST scans. Fallback is the historical default so prod doesn't break if
@@ -4030,15 +4031,19 @@ class DiscordBot {
     // `MMR_TIERS` in `web/src/pages/Leaderboard.jsx`. Best-effort; failure
     // never breaks the embed flow.
     ;(async () => {
+      // King is position-based, not an MMR threshold, so it is deliberately
+      // excluded from per-match threshold-crossing announcements.
       const TIERS = [
-        { name: 'Gaben',         emoji: '🎩', min: 4100 },
-        { name: 'Prime Pick',    emoji: '🎯', min: 3800 },
-        { name: 'Apex',          emoji: '⚡', min: 3500 },
-        { name: 'Veteran',       emoji: '🎖️', min: 3200 },
-        { name: 'Established',   emoji: '🥇', min: 2900 },
-        { name: 'Contender',     emoji: '🥈', min: 2600 },
-        { name: 'Challenger',    emoji: '🥉', min: 2300 },
-        { name: 'Rookie',        emoji: '🌱', min: 0    },
+        { name: 'Warlord',       emoji: '🪓', min: 7000 },
+        { name: 'Paladin',       emoji: '✨', min: 6500 },
+        { name: 'Templar',       emoji: '⚔️', min: 6200 },
+        { name: 'Knight',        emoji: '🛡️', min: 5900 },
+        { name: 'Footman',       emoji: '🗡️', min: 5600 },
+        { name: 'Squire',        emoji: '🐎', min: 5300 },
+        { name: 'Apprentice',    emoji: '📜', min: 5000 },
+        { name: 'Outlaw',        emoji: '🏴', min: 4500 },
+        { name: 'Vagabond',      emoji: '🥾', min: 4000 },
+        { name: 'Peasant',       emoji: '🌾', min: 0    },
       ];
       const tierFor = (mmr) => {
         if (mmr == null || !Number.isFinite(Number(mmr))) return null;
@@ -4099,6 +4104,11 @@ class DiscordBot {
         const streakCallouts = [];
         const milestones = [];
         const guild = channel.guild;
+         if (guild) {
+           await this._syncLeaderMmrRole(guild).catch(err => {
+             console.error('[MMR Roles] Failed to sync leaderboard leader role:', err.message);
+           });
+         }
         for (const p of matchStats.players.filter(q => q.accountId && q.accountId !== 0)) {
           if (guild) {
             const rating = await db.getPlayerRating(p.accountId.toString()).catch(() => null);
@@ -4430,7 +4440,9 @@ class DiscordBot {
   }
 
   async _updateMmrRoles(guild, playerId, mmr) {
-    const tiers = config.discord.mmrRoles.tiers.filter(t => t.roleId);
+    // Position-based roles (King) are reconciled separately. This MMR-only
+    // path must neither assign nor remove them.
+    const tiers = config.discord.mmrRoles.tiers.filter(t => t.roleId && !t.leaderOnly);
     if (tiers.length === 0) return;
 
     const players = await db.getRegisteredPlayers();
@@ -4446,6 +4458,36 @@ class DiscordBot {
     const toRemove = member.roles.cache.filter(r => allRoleIds.includes(r.id));
     if (toRemove.size > 0) await member.roles.remove(toRemove).catch(() => {});
     if (targetTier?.roleId) await member.roles.add(targetTier.roleId).catch(() => {});
+  }
+
+  async _syncLeaderMmrRole(guild) {
+    const leaderTier = config.discord.mmrRoles.tiers.find(t => t.leaderOnly && t.roleId);
+    if (!leaderTier || !guild) return;
+
+    const leaderboard = await db.getComputedLeaderboard();
+    const leaderAccountId = leaderboard?.[0]?.player_id != null
+      ? String(leaderboard[0].player_id)
+      : null;
+    let role = guild.roles?.cache?.get?.(leaderTier.roleId) || null;
+    if (!role && guild.roles?.fetch) {
+      role = await guild.roles.fetch(leaderTier.roleId).catch(() => null);
+    }
+    if (!role) return;
+
+    const players = leaderAccountId ? await db.getRegisteredPlayers() : [];
+    const leaderDiscordId = resolveLeaderDiscordId(leaderAccountId, players);
+    if (!leaderDiscordId) {
+      // The computed #1 has no eligible Discord identity (or the leaderboard
+      // is empty), so nobody should retain the exclusive position-based role.
+      await reconcileExclusiveRole(role, null);
+      return;
+    }
+
+    // A Discord API failure is transient and does not prove the leader is
+    // ineligible. Preserve current state and retry on the next match.
+    const targetMember = await guild.members.fetch(leaderDiscordId).catch(() => null);
+    if (!targetMember) return;
+    await reconcileExclusiveRole(role, targetMember);
   }
 
   async _postWeeklyRecap() {

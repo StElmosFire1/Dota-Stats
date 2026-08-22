@@ -1,5 +1,16 @@
 module.exports = [
   {
+    "version": "9.60",
+    "title": "Safer match DMs and corrected inhouse ranks",
+    "published_at": "2026-08-22",
+    "notes": [
+      "**Match DMs now require an exact account match.** The bot no longer guesses a Discord recipient from another account with the same nickname, preventing teammate-rating prompts from going to somebody who was not in the game.",
+      "**Inhouse rank thresholds now match the 5000-centred rating system.** Fresh players no longer jump straight to the highest role, and the full-edition Discord ladder matches the leaderboard's medieval tiers.",
+      "**Community deploys now verify their own service after restart.** The health gate fingerprints the community response on its configured port, keeping the full and community apps distinct when they share a host."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.59",
     "title": "Steam/Dota connection switched off for now",
     "published_at": "2026-06-15",
