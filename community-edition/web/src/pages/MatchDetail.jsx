@@ -1246,7 +1246,6 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
               <th className="col-stat" title="Assists">A</th>
               <th className="col-stat" title="Match Performance Score 1–10: each factor is z-score normalised independently within the match, then combined — kill involvement/assists×0.5 (25%), survival/deaths (15%), hero damage (15%), net worth (10%), vision/dewards (10%), tower damage (10%), stun duration (5%), healing (5%), win bonus (5%). Designed to reward every role.">Perf</th>
               <th className="col-stat" title="TrueSkill V3 performance modifier: scales the player's MMR change by 0.80×–1.20× based on a per-match score that combines K/D/A, GPM/XPM, hero/tower damage, healing, wards, stacks, and a win bonus. Hover each row for the score breakdown.">Mod</th>
-              <th className="col-stat" title="MMR change from this match (before → after).">ΔMMR</th>
               {hasDetailedStats && (
                 <>
                   <th className="col-stat" title="Last Hits">LH</th>
@@ -1323,20 +1322,6 @@ function TeamTable({ players, allPlayers: allPlayersProp, teamName, isWinner, ma
                     return <ImpactBadge score={perfRanks[p.slot] ?? null} title={perfRanks[p.slot] != null ? `Match Performance ${perfRanks[p.slot]}/10 (legacy)` : undefined} />;
                   })()}</td>
                   <td className="col-stat"><ModifierBadge entry={v3Modifiers[String(p.account_id)]} /></td>
-                  <td className="col-stat">{(() => {
-                    const d = mmrDeltas[String(p.account_id)];
-                    if (!d || d.delta == null) {
-                      return <span style={{ color: 'var(--text-secondary)', opacity: 0.5 }}>—</span>;
-                    }
-                    const sign = d.delta > 0 ? '+' : '';
-                    const color = d.delta > 0 ? '#4ade80' : d.delta < 0 ? '#f87171' : 'var(--text-secondary)';
-                    const tip = `${d.before ?? '?'} → ${d.after ?? '?'} MMR${d.first_match ? ' (first ranked match)' : ''}`;
-                    return (
-                      <span title={tip} style={{ color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                        {sign}{d.delta}
-                      </span>
-                    );
-                  })()}</td>
                   {hasDetailedStats && (
                     <>
                       <td className="col-stat">{formatNumber(p.last_hits)}</td>
