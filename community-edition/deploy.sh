@@ -141,9 +141,8 @@ fi
 # `pm_exec_path` (script path) and `pm_cwd` fields. Refuse to restart
 # if PM2 is registered against any entrypoint or cwd other than this
 # checkout's community-edition entrypoint. If the PM2 process doesn't
-# exist yet (first-time deploy), no-op — `pm2 restart` below will
-# create it from whatever the user runs next, and there's nothing to
-# verify.
+    # exist yet (first-time deploy/recovery), no-op here — the start/restart
+    # branch below will register the correct community entrypoint.
 EXPECTED_PM2_SCRIPT="${REPO_ROOT}/community-edition/src/index.js"
 EXPECTED_PM2_CWD="${REPO_ROOT}"
 PM2_INFO="$(pm2 jlist 2>/dev/null | node -e '
@@ -179,7 +178,18 @@ if [ -n "${PM2_INFO}" ]; then
   fi
 fi
 
-pm2 restart "${PM2_APP}" --update-env
+if pm2 describe "${PM2_APP}" >/dev/null 2>&1; then
+  pm2 restart "${PM2_APP}" --update-env
+else
+  echo "    PM2 process '${PM2_APP}' is missing — registering the community entrypoint."
+  # Community nginx normally proxies to :5000. Respect an explicit PORT, but
+  # make recovery deterministic when the previous PM2 env was deleted.
+  PORT="${PORT:-5000}" pm2 start "${EXPECTED_PM2_SCRIPT}" \
+    --name "${PM2_APP}" \
+    --cwd "${EXPECTED_PM2_CWD}" \
+    --update-env
+  pm2 save
+fi
 
 echo "==> [community] Verifying local health..."
 # The community edition normally owns port 5000 and has a deliberately
