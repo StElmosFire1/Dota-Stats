@@ -17,3 +17,13 @@ same-origin requests. Never distribute browser session storage. Wait for primary
 loading indicators with a bounded deadline before calling a screenshot rendered.
 Generate packages only after capture finishes: pruning unused assets during a
 capture can delete newer evidence that has not yet entered the final manifest.
+
+Generated guide files may not accompany a task merge even when asset metadata
+does. Metadata entries alone do not prove the owner can access the downloads.
+
+**Why:** The owner could see older assets in Library but not the merged guide;
+the main workspace had the capture scripts and asset records, not the files.
+
+**How to apply:** Verify files exist in the delivering workspace and present the
+actual ZIPs in the current chat. Never direct the owner to Library based solely
+on asset metadata. A fresh privileged capture requires explicit authorization.
