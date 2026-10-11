@@ -567,3 +567,45 @@ mtime_ms = 1791698798477
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/003569ca-4d22-4a4e-be5c-2180fadf56ec/de67d65d-ab3c-4bff-b0fd-2aaf11290d58"
 storage_version_token = "1791698802403656"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "hhIsu4ZKCmBC-E7hwrg3L"
+uri = "file://generated-artifacts/site-feedback/OCE-Inhouse-guide.html"
+type = "html"
+title = "OCE Inhouse — Shareable annotated guide"
+description = "Standalone HTML with embedded screenshots, navigation and feedback templates. Public/player-facing edition."
+logical_id = "20a8dd0b-d283-4432-90cb-418c3d8402ad"
+content_hash = "sha256:b990a4fb0b9c72a5359a0a699186198c0844e1571bbd3be9bcc8dbbf80ff7f7f"
+size = 49765858
+mtime_ms = 1791709106342
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/20a8dd0b-d283-4432-90cb-418c3d8402ad/d35e786d-b389-4e42-ba1f-7252bd62f9c3"
+storage_version_token = "1791709144670431"
+content_type = "text/html"
+
+[[outputs]]
+id = "xCIIryb-qzBFnSZpgak7P"
+uri = "file://generated-artifacts/site-feedback/OCE-Inhouse-guide.zip"
+type = "unspecified"
+title = "Shareable guide — portable package"
+description = "Extract the ZIP and open index.html. Includes local media and the coverage index."
+logical_id = "0157c9f4-7273-48cc-9435-fb21f8f0cf4f"
+content_hash = "sha256:5d56dbb9c900d2aa1fe5d087eff1d5fd7cd791ea0b643053ac849767043f5a7f"
+size = 14291131
+mtime_ms = 1791709108626
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/0157c9f4-7273-48cc-9435-fb21f8f0cf4f/e1da0962-14b6-4d4e-90b9-d00d106468e6"
+storage_version_token = "1791709145444742"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "5C5W7DtiHrr4KkQnWmJnJ"
+uri = "file://generated-artifacts/site-feedback/PRIVATE-appendix.zip"
+type = "unspecified"
+title = "PRIVATE — Admin review appendix"
+description = "Restricted to the owner and approved staff. Separate HTML appendix with redacted admin screenshots. Extract and open index.html; do not share publicly."
+logical_id = "9327c266-b9c6-4bdc-8dda-9550b9298590"
+content_hash = "sha256:28f77bc16f9472c4016e0dce773533f435d9ec2198c8005533ca211e1ff93a43"
+size = 4711317
+mtime_ms = 1791709112458
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/9327c266-b9c6-4bdc-8dda-9550b9298590/b53346cd-8c3f-49df-83c9-129c9fab3efe"
+storage_version_token = "1791709146055265"
+content_type = "application/octet-stream"
