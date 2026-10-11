@@ -7,9 +7,13 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;'
 for (const e of evidence.entries) {
   e.notes = notes[e.component];
   const labels = { 'sign-in-required':'sign-in-message-visible', 'entitlement-gated':'pro-message-visible', 'empty-or-waiting':'empty-or-waiting-message-visible' };
-  if (labels[e.status]) {
+  if (labels[e.status] && !e.component.startsWith('Overlay')) {
     e.status = labels[e.status];
     e.observation = `Browser observed a ${e.status.replaceAll('-', ' ')}. This message may apply to a control or section rather than the entire page. See the screenshot and source-verified access requirements; no full workflow was executed.`;
+  }
+  if (e.status === 'rendered') {
+    e.status = 'page-loaded-not-workflow-verified';
+    e.observation = 'The page loaded for this URL. HTTP success and no uncaught error do not establish that its content is complete or that the workflow works. The text below describes source-defined functionality; the screenshot demonstrates only the visible state.';
   }
   const current = currentEntries.find(c => c.id === e.id);
   for (const t of current.tabs) if (!e.tabs.some(x => x.id === t.id)) e.tabs.push(t);

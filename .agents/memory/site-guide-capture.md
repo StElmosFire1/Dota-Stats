@@ -27,3 +27,13 @@ the main workspace had the capture scripts and asset records, not the files.
 **How to apply:** Verify files exist in the delivering workspace and present the
 actual ZIPs in the current chat. Never direct the owner to Library based solely
 on asset metadata. A fresh privileged capture requires explicit authorization.
+
+HTTP 200 and no uncaught browser errors are not evidence of a complete page.
+Keep observed screenshot state separate from the source-defined workflow.
+
+**Why:** The owner found misleading “rendered” labels on an idle draft overlay
+and a ticker cropped by the generic guide viewport.
+
+**How to apply:** Capture OBS overlays at their intended broadcast resolution,
+label any added contrast backdrop, and explicitly identify idle/missing-data
+states. Route matching proves provenance, not successful feature operation.
