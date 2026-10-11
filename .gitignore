@@ -160,3 +160,6 @@ tests/smoke/.auth/
 
 # Persisted session signing secret (generated at runtime when SESSION_SECRET env is unset)
 .session-secret
+
+# Generated downloadable handovers and source exports
+/generated-artifacts/

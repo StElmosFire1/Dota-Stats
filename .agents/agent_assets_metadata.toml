@@ -167,309 +167,389 @@ id = "4nBf5s_DOIub3AejPTlsx"
 uri = "file://web/public/voice-packs/cinematic/level-up.mp3"
 type = "audio"
 title = "cinematic level up brass glissando"
+logical_id = "af5438c8-b490-461d-a16d-b234c9fda76f"
 
 [[outputs]]
 id = "ObqketynS13eYY_vjy3bx"
 uri = "file://web/public/voice-packs/cinematic/match-start.mp3"
 type = "audio"
 title = "cinematic match start brass horn"
+logical_id = "98166577-8c4e-44b8-a017-134c62842105"
 
 [[outputs]]
 id = "fo0ltGip2JodX9tWs2yrD"
 uri = "file://web/public/voice-packs/cinematic/achievement-unlock.mp3"
 type = "audio"
 title = "cinematic achievement brass fanfare"
+logical_id = "f3477ce9-3e73-42c0-ba82-25ed838140c5"
 
 [[outputs]]
 id = "OpV-jpJwVBZJuHfR2EdR7"
 uri = "file://web/public/voice-packs/captain/achievement-unlock.mp3"
 type = "audio"
 title = "captain achievement-unlock"
+logical_id = "6b341169-abc4-4042-8316-d68fd3f82f20"
 
 [[outputs]]
 id = "L2-aFFchB7bTw1iRKCE1P"
 uri = "file://web/public/voice-packs/captain/match-start.mp3"
 type = "audio"
 title = "captain match-start"
+logical_id = "9465986c-21d3-4a47-91ab-c6c106510133"
 
 [[outputs]]
 id = "F744q7ib3tQsQsg1budvk"
 uri = "file://web/public/voice-packs/hype/level-up.mp3"
 type = "audio"
 title = "hype level-up"
+logical_id = "e633ffe0-4446-4e4a-a126-426c9c5f8493"
 
 [[outputs]]
 id = "V3WDm1uZQ3nFqcYstFBPR"
 uri = "file://web/public/voice-packs/hype/match-start.mp3"
 type = "audio"
 title = "hype match-start"
+logical_id = "877d33f6-3976-4c57-9332-c830f883c0dd"
 
 [[outputs]]
 id = "6RWGhsWutqKr9UmP2w71i"
 uri = "file://web/public/voice-packs/hype/achievement-unlock.mp3"
 type = "audio"
 title = "hype achievement-unlock"
+logical_id = "14d57c3e-c311-43db-871b-a674300e509b"
 
 [[outputs]]
 id = "Jt3wVkhnfCQWZNV0VNMkO"
 uri = "file://web/public/voice-packs/calm/level-up.mp3"
 type = "audio"
 title = "calm level-up"
+logical_id = "a88398c1-c5d0-4b60-8c29-02bc2a2a605a"
 
 [[outputs]]
 id = "y9kHzIsLrRekap5X_gMKr"
 uri = "file://web/public/voice-packs/calm/match-start.mp3"
 type = "audio"
 title = "calm match-start"
+logical_id = "b752cddd-6db7-4378-8366-f41e04f43db5"
 
 [[outputs]]
 id = "QxbCkHA9uSfaR2fLNjQ3Z"
 uri = "file://web/public/voice-packs/calm/achievement-unlock.mp3"
 type = "audio"
 title = "calm achievement-unlock"
+logical_id = "3dab2378-1217-4d46-8228-da5bc916074e"
 
 [[outputs]]
 id = "gmsu1ZfMTNXV13H4WKznl"
 uri = "file://web/public/voice-packs/roast/match-start.mp3"
 type = "audio"
 title = "roast match-start"
+logical_id = "0f58be12-0532-436f-bde7-373a2f4adaa3"
 
 [[outputs]]
 id = "sNexwdoEBLA-rMFa6KoVi"
 uri = "file://web/public/voice-packs/roast/level-up.mp3"
 type = "audio"
 title = "roast level-up"
+logical_id = "d879cd0f-cdd2-4498-9b7d-e7d63d3cc7db"
 
 [[outputs]]
 id = "IJ78xzXoFfLAevDGCeXz2"
 uri = "file://web/public/voice-packs/roast/achievement-unlock.mp3"
 type = "audio"
 title = "roast achievement-unlock"
+logical_id = "01a6772e-df0b-4cbf-8945-ffa708283979"
 
 [[outputs]]
 id = "axxTkC26RFzpCXUVHtOtR"
 uri = "file://.local/previews/scoreboard_test.png"
 type = "image"
 title = "Community-edition scoreboard image — test render with synthetic 10-player match"
+logical_id = "98bcc1ef-bd8e-48bb-a24b-e7347868436f"
 
 [[outputs]]
 id = "h3mOD2hCxQcV5A_N640Mh"
 uri = "file://src/games/voice-lines/antimage.mp3"
 type = "audio"
 title = "voiceline antimage"
+logical_id = "30303e10-f3b8-43a1-9192-e0e1b0cad7d1"
 
 [[outputs]]
 id = "_TmSajG7_yJH-CCFkMIzN"
 uri = "file://src/games/voice-lines/axe.mp3"
 type = "audio"
 title = "voiceline axe"
+logical_id = "78ae0433-e5c1-45f4-9bd8-2b256e760f1a"
 
 [[outputs]]
 id = "msPw292G6TwKoSd8nVB1P"
 uri = "file://src/games/voice-lines/crystal_maiden.mp3"
 type = "audio"
 title = "voiceline crystal_maiden"
+logical_id = "2a6f8e79-5a75-4728-bed2-29bd8dfebb91"
 
 [[outputs]]
 id = "yS881p_-0-BVg5Wc-r4W4"
 uri = "file://src/games/voice-lines/earthshaker.mp3"
 type = "audio"
 title = "voiceline earthshaker"
+logical_id = "1aa00e3a-ab80-4f08-80f5-c9ba21a0895e"
 
 [[outputs]]
 id = "EcuFuN3H27l2QFq8pBEqg"
 uri = "file://src/games/voice-lines/juggernaut.mp3"
 type = "audio"
 title = "voiceline juggernaut"
+logical_id = "95d67dcd-a93e-44b7-86e6-7b767a5e3ed9"
 
 [[outputs]]
 id = "CQC_xPgd7AIAYmeoNBxkT"
 uri = "file://src/games/voice-lines/pudge.mp3"
 type = "audio"
 title = "voiceline pudge"
+logical_id = "7164be3d-509f-4166-9677-f4cdcdefc865"
 
 [[outputs]]
 id = "HfqhJQrc1yrc8_EDMQb1d"
 uri = "file://src/games/voice-lines/sven.mp3"
 type = "audio"
 title = "voiceline sven"
+logical_id = "b4f363a7-c9e7-48cb-9c7e-fbaeed25860b"
 
 [[outputs]]
 id = "pCpRsB-LpsN5AxcZsd4Ga"
 uri = "file://src/games/voice-lines/zuus.mp3"
 type = "audio"
 title = "voiceline zuus"
+logical_id = "45e499b0-f2cb-4d1d-9553-053edc4dc1a2"
 
 [[outputs]]
 id = "CVs-i76VM_bn-XUsMHaoq"
 uri = "file://src/games/voice-lines/lina.mp3"
 type = "audio"
 title = "voiceline lina"
+logical_id = "bf794b42-b825-4137-8336-47b72b8e1c8b"
 
 [[outputs]]
 id = "CbHOZHFhjLAblyxQivs6y"
 uri = "file://src/games/voice-lines/lion.mp3"
 type = "audio"
 title = "voiceline lion"
+logical_id = "d0a665be-e13f-4ffe-9720-2835589b4b8c"
 
 [[outputs]]
 id = "8A5f49GEN0NBEXEosDGkn"
 uri = "file://src/games/voice-lines/tidehunter.mp3"
 type = "audio"
 title = "voiceline tidehunter"
+logical_id = "ea2cf336-7f41-4dbc-a7ee-ac937f06f2bf"
 
 [[outputs]]
 id = "ZqO3UwDfx26ZY2anPJmVu"
 uri = "file://src/games/voice-lines/witch_doctor.mp3"
 type = "audio"
 title = "voiceline witch_doctor"
+logical_id = "b2721793-ec68-488e-a63c-f979021161d9"
 
 [[outputs]]
 id = "5axsm0YuQngEKkhehNSmN"
 uri = "file://src/games/voice-lines/tinker.mp3"
 type = "audio"
 title = "voiceline tinker"
+logical_id = "90afe4a3-3caa-4a1e-b961-ec86acb6af6e"
 
 [[outputs]]
 id = "yzYfiLVBTr9VfegRmaTpL"
 uri = "file://src/games/voice-lines/sniper.mp3"
 type = "audio"
 title = "voiceline sniper"
+logical_id = "a8022d0c-4cde-41a9-a26d-1bd8aa93ee0b"
 
 [[outputs]]
 id = "rthCyAeLcs4S1BpBi2Xfj"
 uri = "file://src/games/voice-lines/faceless_void.mp3"
 type = "audio"
 title = "voiceline faceless_void"
+logical_id = "a023870c-2ee3-4542-ba8f-fa2dca571d31"
 
 [[outputs]]
 id = "CpscpE9jGjNlnRST789QL"
 uri = "file://src/games/voice-lines/skeleton_king.mp3"
 type = "audio"
 title = "voiceline skeleton_king"
+logical_id = "e8016f06-98cc-4009-8327-e7eabcc9fd3a"
 
 [[outputs]]
 id = "uXlSRPwN58puxSlK5FClZ"
 uri = "file://src/games/voice-lines/phantom_assassin.mp3"
 type = "audio"
 title = "voiceline phantom_assassin"
+logical_id = "e13fe8b6-39bc-4c5c-876e-ace03d5767ce"
 
 [[outputs]]
 id = "iKacNNE6EUWn89voAiAml"
 uri = "file://src/games/voice-lines/life_stealer.mp3"
 type = "audio"
 title = "voiceline life_stealer"
+logical_id = "07d8f27c-2f26-4265-a13c-3394c263d8e4"
 
 [[outputs]]
 id = "5t6Lt7yBieIzAzh2VORYL"
 uri = "file://src/games/voice-lines/doom_bringer.mp3"
 type = "audio"
 title = "voiceline doom_bringer"
+logical_id = "c703fb38-7385-4a9b-8408-3ba6a5e153d0"
 
 [[outputs]]
 id = "_1seqeChSYnWLnZHIwU_n"
 uri = "file://src/games/voice-lines/invoker.mp3"
 type = "audio"
 title = "voiceline invoker"
+logical_id = "37919102-411a-440d-96cf-abf8d0020f89"
 
 [[outputs]]
 id = "qSW1JZbvfCnQaBZtYgxee"
 uri = "file://src/games/voice-lines/meepo.mp3"
 type = "audio"
 title = "voiceline meepo"
+logical_id = "eded1401-483d-4c47-97e0-c6f45f924925"
 
 [[outputs]]
 id = "y3otr-abtkSjRxOe69dHc"
 uri = "file://src/games/voice-lines/slark.mp3"
 type = "audio"
 title = "voiceline slark"
+logical_id = "4ea683c8-9d22-4c73-955a-9edf4e4e7cc5"
 
 [[outputs]]
 id = "BW-wRJ8eOmjmQNqd3lTEN"
 uri = "file://src/games/voice-lines/bristleback.mp3"
 type = "audio"
 title = "voiceline bristleback"
+logical_id = "cda1e6bf-0d4a-42c6-b186-b698eb748f84"
 
 [[outputs]]
 id = "TSluHew0mfYwODcCuajCF"
 uri = "file://src/games/voice-lines/legion_commander.mp3"
 type = "audio"
 title = "voiceline legion_commander"
+logical_id = "3feed795-7b29-47c7-999f-79139f4bde7b"
 
 [[outputs]]
 id = "XL9c2erYx-inK-PisQjQc"
 uri = "file://src/games/voice-lines/techies.mp3"
 type = "audio"
 title = "voiceline techies"
+logical_id = "fd1be801-5876-4b01-9ee7-7a97ba4be9e5"
 
 [[outputs]]
 id = "uXmGPf86od3jGO3CLZ8Ks"
 uri = "file://web/public/games/voiceline-demo.mp3"
 type = "audio"
 title = "voiceline hub demo"
+logical_id = "4b947495-e080-4d35-afff-8984b667953b"
 
 [[outputs]]
 id = "UQ5NAF34GOxcH-FKn5dI2"
 uri = "file://attached_assets/tutorial/music_bed.mp3"
 type = "audio"
 title = "tutorial music bed"
+logical_id = "82d61eb6-9c1e-42f0-b268-7926adce5463"
 
 [[outputs]]
 id = "ayCFnaxfr3GEkI8GQ6KEj"
 uri = "file://attached_assets/tutorial/vo_intro.mp3"
 type = "audio"
 title = "tutorial vo intro"
+logical_id = "2f1cf071-98e2-40f7-9fb3-0945a1fd89be"
 
 [[outputs]]
 id = "IeYsdUqA4bbAL1j0udj-d"
 uri = "file://attached_assets/tutorial/vo_steam.mp3"
 type = "audio"
 title = "tutorial vo steam"
+logical_id = "4ead1b2a-3017-461f-b932-51dd18424876"
 
 [[outputs]]
 id = "StJ1mH5bSGNFjwZauN8tV"
 uri = "file://attached_assets/tutorial/vo_what.mp3"
 type = "audio"
 title = "tutorial vo what"
+logical_id = "7768f746-4879-4923-b07e-e3853e0717e7"
 
 [[outputs]]
 id = "huzMrbvQ11waaLQyS5rBy"
 uri = "file://attached_assets/tutorial/vo_lobby.mp3"
 type = "audio"
 title = "tutorial vo lobby"
+logical_id = "8a71b537-bcd7-45e7-9815-42b821258639"
 
 [[outputs]]
 id = "QBR07QZ4XCvd7-12lK8Li"
 uri = "file://attached_assets/tutorial/vo_coaching.mp3"
 type = "audio"
 title = "tutorial vo coaching"
+logical_id = "62b6288e-5b8b-4bce-bc57-223e53753f7a"
 
 [[outputs]]
 id = "9PpjMsB6vdqSiZrKrFG2m"
 uri = "file://attached_assets/tutorial/vo_outro.mp3"
 type = "audio"
 title = "tutorial vo outro"
+logical_id = "15975b3a-e249-4230-92c3-9aeb0842895d"
 
 [[outputs]]
 id = "FrxC7NsPgbmTPUYdMEkgl"
 uri = "file://trailer-handoff.tar.gz"
 type = "unspecified"
 title = "OCE Inhouse Trailer — Build Handoff Kit (.tar.gz)"
+logical_id = "11fe9892-cc2e-4df7-8940-bd285f0e8373"
 
 [[outputs]]
 id = "SJnYeAukyxLLXJd6EmwZD"
 uri = "file://trailer-handoff/BRIEF.md"
 type = "text"
 title = "Trailer Brief, Storyboard & Brand Kit (readable)"
+logical_id = "b0736c44-d7ba-444a-b8de-0b75f93b93e2"
 
 [[outputs]]
 id = "7qrMNhJwVuczxkoK_u2qM"
 uri = "file://attached_assets/generated_audio/epic_orchestral_score.mp3"
 type = "audio"
 title = "epic orchestral battle score"
+logical_id = "c984fc4a-2893-4218-9496-4efa86fbc9c9"
 
 [[outputs]]
 id = "q2no9E8gSmjr4oCtbCv02"
 uri = "file://attached_assets/oce-inhouse-hype-trailer.mp4"
 type = "video"
 title = "OCE Inhouse Hype Trailer (1920x1080, 30fps)"
+logical_id = "71308e9d-5028-4dd5-b7df-a92b72d2b6c8"
+
+[[outputs]]
+id = "U1-grCGQ4ysHeyDQ4-FXt"
+uri = "file://generated-artifacts/OCE-Inhouse-AI-Handover.md"
+type = "text"
+title = "OCE Inhouse — AI Handover"
+description = "Detailed architecture, stack, integrations, replay pipeline, privacy rules, edition boundaries, status, and future direction."
+logical_id = "f4b299ef-30ed-48d0-aa7d-cef1a8fa9ab5"
+content_hash = "sha256:196dd5ef874f67ecd9de341908c011d9c0ccd1438492a9a440a2f3465e5e8f04"
+size = 19567
+mtime_ms = 1791695334140
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/f4b299ef-30ed-48d0-aa7d-cef1a8fa9ab5/d634b3dd-ab09-4659-9a6d-18a5c441c9c3"
+storage_version_token = "1791695371632607"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "ntz_usFq_5E4_bjfQTliU"
+uri = "file://generated-artifacts/OCE-Inhouse-Source.zip"
+type = "unspecified"
+title = "OCE Inhouse — Source Code"
+description = "675 source and documentation files across both editions and companion projects, plus handover, manifest, and export notes. Excludes secrets, runtime data, dependencies, media and build outputs."
+logical_id = "bd42a248-8dc4-4da9-9fd6-3550adcb86fb"
+content_hash = "sha256:04b1fd9b2157938cbe3425153ed56965b4d3cbbfde3a0ac82b5c0950075e3d5c"
+size = 3754603
+mtime_ms = 1791695364165
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/bd42a248-8dc4-4da9-9fd6-3550adcb86fb/110f4b29-7036-467e-9cad-003ffe671d29"
+storage_version_token = "1791695372394427"
+content_type = "application/octet-stream"
