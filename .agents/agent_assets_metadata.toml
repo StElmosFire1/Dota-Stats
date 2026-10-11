@@ -553,3 +553,17 @@ mtime_ms = 1791695364165
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/bd42a248-8dc4-4da9-9fd6-3550adcb86fb/110f4b29-7036-467e-9cad-003ffe671d29"
 storage_version_token = "1791695372394427"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "c78xz0JUjD1-rN9lieU_T"
+uri = "file://generated-artifacts/OCE-Inhouse-AI-Handover.zip"
+type = "unspecified"
+title = "Download AI Handover (ZIP)"
+description = "Contains the complete Markdown handover document. Extract the ZIP after downloading."
+logical_id = "003569ca-4d22-4a4e-be5c-2180fadf56ec"
+content_hash = "sha256:4322caa534a68c9091db3db2589fae18343531620dbbf300736729e8c14f9fda"
+size = 8338
+mtime_ms = 1791698798477
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/003569ca-4d22-4a4e-be5c-2180fadf56ec/de67d65d-ab3c-4bff-b0fd-2aaf11290d58"
+storage_version_token = "1791698802403656"
+content_type = "application/octet-stream"
