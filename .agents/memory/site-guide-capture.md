@@ -37,3 +37,12 @@ and a ticker cropped by the generic guide viewport.
 **How to apply:** Capture OBS overlays at their intended broadcast resolution,
 label any added contrast backdrop, and explicitly identify idle/missing-data
 states. Route matching proves provenance, not successful feature operation.
+
+The user wants a basic illustrated guide alongside the deep review: a brief
+explanation of each page with screenshot annotations such as “look here for
+this detail,” particularly for the lobby. A text-only synopsis is not a substitute.
+
+**Why:** The user clarified this after receiving the text synopsis.
+
+**How to apply:** Keep the basic edition focused on page purpose, use and visual
+highlights, separate from technical audit/provenance details and private pages.

@@ -637,3 +637,31 @@ mtime_ms = 1791714327936
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/c1c2baf6-dd5b-40c3-b864-3ac3692d3d4d/0bdd21c9-6885-47c9-8cdc-d2ba735a432c"
 storage_version_token = "1791714341040836"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "z4QxidgWD5USnOMmFNcxj"
+uri = "file://generated-artifacts/site-feedback/OCE-Inhouse-Simple-Illustrated-Guide.zip"
+type = "unspecified"
+title = "Simple Illustrated Site Guide"
+description = "A lighter visual guide: each public page has a short explanation, a representative screenshot and numbered where-to-look tips. Includes a step-by-step lobby overview. Extract the ZIP and open index.html."
+logical_id = "060752d4-7259-458d-8265-6f09f9a9e2b0"
+content_hash = "sha256:5ef924249068c79ae4d47f262a898e4a2cc38ae187844ef6ccf5a88601c01e1b"
+size = 4704226
+mtime_ms = 1791714616852
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/060752d4-7259-458d-8265-6f09f9a9e2b0/13d835b2-349f-4bdc-bfbf-9f4e9ae198c1"
+storage_version_token = "1791714622367979"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "92ipyPVpKsSF9uakI7Nv6"
+uri = "file://generated-artifacts/site-feedback/PRIVATE-Simple-Illustrated-Guide.zip"
+type = "unspecified"
+title = "PRIVATE — Simple Illustrated Staff Guide"
+description = "The same simplified picture-guide format for staff, account and coaching pages. Keep private. Extract the ZIP and open index.html."
+logical_id = "9c2260ac-fd5f-4ede-b0cc-e9b34e4a8abc"
+content_hash = "sha256:b2e1696c9be846039f8e3fcbadcc8575e894107f237ac919c2bbca43faeee054"
+size = 1580455
+mtime_ms = 1791714617068
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/9c2260ac-fd5f-4ede-b0cc-e9b34e4a8abc/e969772e-1fe6-49eb-a682-db09e8f61ada"
+storage_version_token = "1791714623116977"
+content_type = "application/octet-stream"
