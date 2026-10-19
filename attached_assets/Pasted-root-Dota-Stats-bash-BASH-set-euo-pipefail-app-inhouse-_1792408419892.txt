@@ -1,0 +1,118 @@
+root@Dota-Stats:~# bash <<'BASH'
+set -euo pipefail
+
+app="inhouse-bot"
+out="/root/.pm2/logs/$app-out.log"
+err="/root/.pm2/logs/$app-error.log"
+
+echo "=== Checking before making changes ==="
+date -Is
+
+app_pid=$(pm2 pid "$app")
+[[ "$app_pid" =~ ^[0-9]+$ && "$app_pid" != 0 ]] || {
+  echo "STOP: community app is not running as expected."
+  exit 1
+}
+
+# Verify the parser JAR exists where this app expects it.
+test -r "/proc/$app_pid/cwd/odota-parser/target/stats-0.1.0.jar" || {
+  echo "STOP: parser JAR not found in the app's working directory."
+  exit 1
+}
+
+pid=$(fuser -n tcp 5600 2>/dev/null | xargs || true)
+[[ "$pid" =~ ^[0-9]+$ ]] || {
+  echo "STOP: expected exactly one parser process on port 5600."
+  exit 1
+}
+
+[[ "$(ps -p "$pid" -o comm= | xargs)" == "java" &&
+   "$(ps -p "$pid" -o ppid= | xargs)" == "1" ]] || {
+  echo "STOP: listener is no longer an orphaned Java process."
+  exit 1
+}
+
+tr '\0' '\n' < "/proc/$pid/cmdline" |
+  grep -Eq '(^|/)stats-0\.1\.0\.jar$' || {
+    echo "STOP: listener does not match the expected parser JAR."
+    exit 1
+  }
+
+ps -p "$pid" -o pid,ppid,lstart,comm
+out_start=$(( $(wc -l < "$out") + 1 ))
+err_start=$(( $(wc -l < "$err") + 1 ))
+
+# Attempt to restore the community app if a later step fails.
+resume=1
+trap 'if [ "$resume" = 1 ]; then
+BASHho "Parser health check FAILED. Do not retry uploads yet.""
+=== Checking before making changes ===
+2026-10-19T11:12:16+00:00
+    PID    PPID                  STARTED COMMAND
+2616247       1 Tue Sep 22 06:53:02 2026 java
+=== Stopping community app ===
+[PM2] Applying action stopProcessId on app [inhouse-bot](ids: [ 1 ])
+[PM2] [inhouse-bot](1) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ inhouse-bot        │ fork     │ 1    │ stopped   │ 0%       │ 0b       │
+│ 0  │ oi-bot             │ fork     │ 4    │ online    │ 0%       │ 317.3mb  │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+=== Gracefully stopping orphaned parser ===
+=== Starting community app and fresh parser ===
+Use --update-env to update environment variables
+[PM2] Applying action restartProcessId on app [inhouse-bot](ids: [ 1 ])
+[PM2] [inhouse-bot](1) ✓
+┌────┬────────────────────┬──────────┬──────┬───────────┬──────────┬──────────┐
+│ id │ name               │ mode     │ ↺    │ status    │ cpu      │ memory   │
+├────┼────────────────────┼──────────┼──────┼───────────┼──────────┼──────────┤
+│ 1  │ inhouse-bot        │ fork     │ 1    │ online    │ 0%       │ 18.8mb   │
+│ 0  │ oi-bot             │ fork     │ 4    │ online    │ 0%       │ 317.8mb  │
+└────┴────────────────────┴──────────┴──────┴───────────┴──────────┴──────────┘
+curl: (7) Failed to connect to 127.0.0.1 port 5600 after 0 ms: Couldn't connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 5600 after 0 ms: Couldn't connect to server
+=== New startup logs only ===
+
+[Shutdown] Graceful shutdown...
+[Discord] Bot shut down.
+[Steam] Shut down.
+[dotenv@17.3.1] injecting env (17) from .env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+=== Dota 2 Inhouse Stats Bot ===
+Starting up...
+
+[Startup] Running COMMUNITY edition from /root/Dota-Stats
+[DB] PostgreSQL connected.
+[DB] Schema migrations applied.
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Clearing port 5600 before spawn...
+[Replay] Starting parser service on port 5600
+[Replay] Parser service is ready.
+[Startup] Lobby/friend monitor: skipped (Steam not connected)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+[Config] Optional env vars not set (some features may be limited):
+[Config]   - WEEKLY_RECAP_CHANNEL_ID
+[Config]   - DISCORD_INVITE
+[Config]   - STEAM_SHARED_SECRET
+[Config]   - TRUSTED_STEAM_IDS
+[Config]   - DEDICATED_SERVER_IP
+[Config]   - DEDICATED_SERVER_PORT
+[Config]   - DEDICATED_SERVER_STEAM_ID
+[Config]   - DEDICATED_SERVER_RCON_PASSWORD
+[nicknames] Cannot create unique index on discord_id — 3 duplicate(s) need admin attention:
+  discord_id=195511302309806082 → accounts=128956172, 1265769771, 1910138544
+  discord_id=379564248067604481 → accounts=1142497072, 1142497079
+  discord_id=381226992466395138 → accounts=1098610465, 1150345876
+[Startup] Patch note seed failed: [DB] patchNotes.js is out of order: v2.1 appears before v0.1. Fix the order in src/data/patchNotes.js before starting the bot.
+[Startup] Steam/Dota intentionally DISABLED (DISABLE_STEAM=true). Skipping Steam login — no Dota GC connection, no "now playing Dota 2" presence. Web dashboard, Discord bot and the replay parser still run. Re-enable by removing DISABLE_STEAM (or setting it to anything other than "true") and restarting.
+=== Current parser listener ===
+State        Recv-Q       Send-Q             Local Address:Port             Peer Address:Port      Process       
+LISTEN       0            50                             *:5600                        *:*          users:(("java",pid=3150600,fd=6))
+Parser health check passed. Ready for one test upload.
+root@Dota-Stats:~# pm2 logs inhouse-bot --lines 0 --timestamp
+2026-10-19-11:12:31 1|inhouse-bot  | [PatchNotes] No new patch notes to announce.
+2026-10-19-11:13:23 1|inhouse-bot  | [Baselines] Startup recompute (rows=0, ageDays=Infinity).
+2026-10-19-11:13:23 1|inhouse-bot  | [Baselines] Starting startup position-baselines recompute...
+2026-10-19-11:13:23 1|inhouse-bot  | [dotenv@17.3.1] injecting env (0) from community-edition/.env -- tip: ⚙️  write to custom object with { processEnv: myObject }
+2026-10-19-11:13:23 1|inhouse-bot  | [baselines] starting (season=all, maxBuckets=120)
+2026-10-19-11:13:23 1|inhouse-bot  | [Baselines] startup recompute failed: db.initSchema is not a function
