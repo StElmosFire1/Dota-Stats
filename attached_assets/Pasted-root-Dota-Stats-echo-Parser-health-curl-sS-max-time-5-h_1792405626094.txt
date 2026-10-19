@@ -1,0 +1,143 @@
+root@Dota-Stats:~# echo "=== Parser health ==="
+curl -sS --max-time 5 http://127.0.0.1:5600/healthz
+echo
+
+echo "=== Process listening on parser port ==="
+ss -ltnp '( sport = :5600 )'
+
+echo "=== Recent parser messages from both apps ==="
+for app in inhouse-bot oi-bot; do
+  for kind in out error; do
+    log="/root/.pm2/logs/${app}-${kind}.log"
+    if [ -f "$log" ]; then
+      echo "--- $app / $kind ---"
+      tail -n 5000 "$log" |
+        grep -Ei -B 2 -A 8 \
+        '\[Parser\]|Parser exited|Adopted existing parser|OutOfMemory|Exception|Caused by:|SIGKILL' |
+        tail -n 100
+    fi
+  done
+done
+
+echo "=== Available memory ==="
+free -h
+
+echo "=== Recent Linux memory kills ==="
+journalctl -k --since "24 hours ago" --no-pager |
+  grep -Ei 'out of memory|oom-kill|killed process' |
+  tail -n 30
+=== Parser health ===
+ok
+=== Process listening on parser port ===
+State        Recv-Q       Send-Q             Local Address:Port             Peer Address:Port      Process       
+LISTEN       0            50                             *:5600                        *:*          users:(("java",pid=2616247,fd=6))
+=== Recent parser messages from both apps ===
+--- inhouse-bot / out ---
+--- inhouse-bot / error ---
+--- oi-bot / out ---
+[ProMatchSync] Header sweep done — 200 rows upserted
+--
+[info] { app: 'dota2-inhouse-bot', pino: false } logger initialised
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Adopted existing parser service on port 5600
+[Startup] Lobby/friend monitor: skipped (Steam not connected)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+[TwitchPoller] Starting (every 60s)
+[ProMatchSync] Starting — header sweep every 6h, details every 5m
+[Startup] Pro match syncer: started (flag=on)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+--
+[Replay] Clearing port 5600 before spawn...
+[Replay] Starting parser service on port 5600
+[Parser] Exception in thread "main"
+[Parser] java.net.BindException: Address already in use
+[Parser] at java.base/sun.nio.ch.Net.bind0(Native Method)
+[Parser] at java.base/sun.nio.ch.Net.bind(Net.java:577)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.netBind(ServerSocketChannelImpl.java:344)
+        at java.base/sun.nio.ch.ServerSocketChannelImpl.bind(ServerSocketChannelImpl.java:301)
+        at java.base/sun.nio.ch.ServerSocketAdaptor.bind(ServerSocketAdaptor.java:89)
+        at jdk.httpserver/sun.net.httpserver.ServerImpl.<init>(ServerImpl.java:146)
+        at jdk.httpserver/sun.net.httpserver.HttpServerImpl.<init>(HttpServerImpl.java:50)
+        at jdk.httpserver/sun.net.httpserver.DefaultHttpServerProvider.createHttpServer(DefaultHttpServerProvider.java:35)
+        at jdk.httpserver/com.sun.net.httpserver.HttpServer.create(HttpServer.java:152)
+        at opendota.Main.main(Main.java:36)
+--
+[ServerHealth] Started — pinging RCON every 60s, alert after 3 failures, SSH auto-restart enabled (unit: dota-server.service).
+[Discord] Registered 2 slash command(s) to guild 1491698695807172658.
+[Replay] Adopted existing parser service on port 5600
+[ProMatchSync] Header sweep done — 200 rows upserted
+[ServerHealth] RCON down 3x — attempting systemctl restart dota-server.service over SSH
+[Smurf] boot recompute done — scanned=31 written=31 in 145ms
+[ProMatchSync] Header sweep done — 200 rows upserted
+[ProMatchSync] Details drain — 13 ok, 0 fail (queue had 13)
+[Steam Auth] /auth/steam redirect — realm: http://www.oceinhouse.gg
+[Steam Auth] /auth/steam redirect — realm: http://www.oceinhouse.gg
+[Games] hourly cron generated 6 daily puzzle(s)
+--
+[info] { app: 'dota2-inhouse-bot', pino: false } logger initialised
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Adopted existing parser service on port 5600
+[Startup] Lobby/friend monitor: skipped (Steam not connected)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+[TwitchPoller] Starting (every 60s)
+[ProMatchSync] Starting — header sweep every 6h, details every 5m
+[Startup] Pro match syncer: started (flag=on)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+--
+[info] { app: 'dota2-inhouse-bot', pino: false } logger initialised
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Adopted existing parser service on port 5600
+[Startup] Lobby/friend monitor: skipped (Steam not connected)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+[TwitchPoller] Starting (every 60s)
+[ProMatchSync] Starting — header sweep every 6h, details every 5m
+[Startup] Pro match syncer: started (flag=on)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+--
+[info] { app: 'dota2-inhouse-bot', pino: false } logger initialised
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Adopted existing parser service on port 5600
+[Startup] Lobby/friend monitor: skipped (Steam not connected)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+[TwitchPoller] Starting (every 60s)
+[ProMatchSync] Starting — header sweep every 6h, details every 5m
+[Startup] Pro match syncer: started (flag=on)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+--
+[info] { app: 'dota2-inhouse-bot', pino: false } logger initialised
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Adopted existing parser service on port 5600
+[Startup] Lobby/friend monitor: skipped (Steam not connected)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+[TwitchPoller] Starting (every 60s)
+[ProMatchSync] Starting — header sweep every 6h, details every 5m
+[Startup] Pro match syncer: started (flag=on)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+--
+[info] { app: 'dota2-inhouse-bot', pino: false } logger initialised
+[Startup] Google Sheets: disabled (config.features.sheets = false)
+[Replay] Adopted existing parser service on port 5600
+[Startup] Lobby/friend monitor: skipped (Steam not connected)
+[Startup] OpenDota match poller: disabled (config.features.matchPoller = false)
+[TwitchPoller] Starting (every 60s)
+[ProMatchSync] Starting — header sweep every 6h, details every 5m
+[Startup] Pro match syncer: started (flag=on)
+
+[Startup] Bot is running! Use !help in Discord.
+[Startup] Active features:
+--- oi-bot / error ---
+=== Available memory ===
+               total        used        free      shared  buff/cache   available
+Mem:           3.8Gi       1.9Gi       451Mi       125Mi       1.9Gi       2.0Gi
+Swap:             0B          0B          0B
+=== Recent Linux memory kills ===
