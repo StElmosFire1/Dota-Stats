@@ -14,6 +14,7 @@ import java.net.URLDecoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,10 +25,6 @@ import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 
@@ -166,129 +163,92 @@ public class Main {
     }
 
     static class BlobHandler implements HttpHandler {
+        private final MyHandler.Decoder decoder;
+        private final Duration fetchTimeout;
+        private final HttpClient client = HttpClient.newHttpClient();
+
+        BlobHandler() {
+            this((input, output, blob) -> new Parse(input, output, blob).epilogue, Duration.ofSeconds(600));
+        }
+
+        BlobHandler(MyHandler.Decoder decoder, Duration fetchTimeout) {
+            this.decoder = decoder;
+            this.fetchTimeout = fetchTimeout;
+        }
+
         @Override
         public void handle(HttpExchange t) throws IOException {
+            String requestId = UUID.randomUUID().toString();
+            int status = 400;
+            String code = "REPLAY_URL_INVALID";
+            String message = "Provide a valid HTTP or HTTPS replay_url.";
             try {
-                Map<String, String> query = splitQuery(t.getRequestURI());
-                URI replayUrl = URI.create(query.get("replay_url"));
-                // Get the replay as a byte[]
-                long tStart = System.currentTimeMillis();
-                ExecutorService executor = Executors.newSingleThreadExecutor();
-                Future<byte[]> future = executor.submit(() -> {
-                    HttpClient client = HttpClient.newHttpClient();
+                byte[] parseOut;
+                try {
+                    Map<String, String> query = splitQuery(t.getRequestURI());
+                    URI replayUrl = URI.create(query.getOrDefault("replay_url", ""));
+                    if (replayUrl.getHost() == null || !("http".equalsIgnoreCase(replayUrl.getScheme())
+                            || "https".equalsIgnoreCase(replayUrl.getScheme()))) {
+                        throw new IllegalArgumentException("replay_url must be an absolute HTTP(S) URL");
+                    }
+                    status = 502;
+                    code = "REPLAY_FETCH_FAILED";
+                    message = "Replay could not be downloaded. Check the replay URL and try again.";
                     HttpRequest request = HttpRequest.newBuilder()
                             .uri(replayUrl)
+                            .timeout(fetchTimeout)
                             .build();
                     HttpResponse<byte[]> response = client.send(request,
                             HttpResponse.BodyHandlers.ofByteArray());
-                    return response.body();
-                });
-                byte[] bzIn = future.get(600, TimeUnit.SECONDS);
-                long tEnd = System.currentTimeMillis();
-                System.err.format("download: %dms\n", tEnd - tStart);
-
-                byte[] bzOut = bzIn;
-                if (replayUrl.toString().endsWith(".bz2")) {
-                    tStart = System.currentTimeMillis();
-                    // Write byte[] to bunzip, get back decompressed byte[]
-                    // The C decompressor is a bit faster than Java, 4.3 vs 4.8s
-                    // BZip2CompressorInputStream bz = new BZip2CompressorInputStream(new ByteArrayInputStream(bzIn));
-                    // bzOut = bz.readAllBytes();
-                    // bz.close();
-
-                    Process bz = new ProcessBuilder(new String[] { "bunzip2" }).start();
-                    // Start separate thread so we can consume output while sending input
-                    new Thread(() -> {
-                        try {
-                            bz.getOutputStream().write(bzIn);
-                            bz.getOutputStream().close();
-                        } catch (IOException ex) {
-                            ex.printStackTrace();
-                        }
-                    }).start();
-
-                    bzOut = bz.getInputStream().readAllBytes();
-                    bz.getInputStream().close();
-                    String bzError = new String(bz.getErrorStream().readAllBytes());
-                    bz.getErrorStream().close();
-                    System.err.println(bzError);
-                    if (bzError.toString().contains("bunzip2: Data integrity error when decompressing") || bzError.contains("bunzip2: Compressed file ends unexpectedly")) {
-                        // Corrupted replay, don't retry
-                        t.sendResponseHeaders(204, 0);
-                        t.getResponseBody().close();
-                        return;
+                    if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                        throw new IOException("Replay upstream returned HTTP " + response.statusCode());
                     }
-                    tEnd = System.currentTimeMillis();
-                    System.err.format("bunzip2: %dms\n", tEnd - tStart);
+                    byte[] replay = response.body();
+                    if (replayUrl.getPath().endsWith(".bz2")) {
+                        status = 422;
+                        code = "REPLAY_DECOMPRESSION_FAILED";
+                        message = "Compressed replay could not be opened. Re-download the replay and try again.";
+                        try (InputStream compressed = new BZip2CompressorInputStream(
+                                new ByteArrayInputStream(replay), true)) {
+                            replay = compressed.readAllBytes();
+                        }
+                    }
+                    status = 422;
+                    code = "REPLAY_DECODE_FAILED";
+                    message = "Replay could not be decoded. Re-download the replay and try again; "
+                            + "if it still fails, ask an admin to update the replay parser.";
+                    ByteArrayOutputStream output = new ByteArrayOutputStream();
+                    // Preserve legacy completeness semantics; strict epilogues remain upload-only.
+                    decoder.parse(new ByteArrayInputStream(replay), output, true);
+                    parseOut = output.toByteArray();
+                } catch (Exception ex) {
+                    if (ex instanceof HttpTimeoutException && status == 502) {
+                        status = 504;
+                        code = "REPLAY_FETCH_TIMEOUT";
+                        message = "Replay download timed out. Try again later or use another replay URL.";
+                    }
+                    if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
+                    System.err.println("[Replay/blob] requestId=" + requestId + " code=" + code);
+                    ex.printStackTrace(System.err);
+                    JsonObject error = new JsonObject();
+                    error.addProperty("code", code);
+                    error.addProperty("message", message);
+                    error.addProperty("requestId", requestId);
+                    JsonObject result = new JsonObject();
+                    result.addProperty("ok", false);
+                    result.add("error", error);
+                    byte[] body = (result.toString() + "\n").getBytes(StandardCharsets.UTF_8);
+                    t.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                    t.sendResponseHeaders(status, body.length);
+                    t.getResponseBody().write(body);
+                    return;
                 }
-
-                // Start parser with input stream created from byte[]
-                tStart = System.currentTimeMillis();
-                ByteArrayOutputStream parseOutStream = new ByteArrayOutputStream();
-                new Parse(new ByteArrayInputStream(bzOut), parseOutStream, true);
-                byte[] parseOut = parseOutStream.toByteArray();
-                tEnd = System.currentTimeMillis();
-                System.err.format("parse: %dms\n", tEnd - tStart);
-
+                // A response-write failure must not attempt to send a second set of headers.
                 t.sendResponseHeaders(200, parseOut.length);
                 t.getResponseBody().write(parseOut);
-                t.getResponseBody().close();
-            } catch (Exception ex) {
-                ex.printStackTrace();
-                t.sendResponseHeaders(500, 0);
-                t.getResponseBody().close();
+            } finally {
+                t.close();
             }
-            // long tStart = System.currentTimeMillis();
-            // String cmd = String.format("""
-            //         curl --max-time 145 --fail -L %s | %s | curl -X POST -T - "localhost:5600?blob"
-            //         """,
-            //         replayUrl.toString(),
-            //         replayUrl.toString().endsWith(".bz2") ? "bunzip2" : "cat");
-            // System.err.println(cmd);
-            // Process proc = new ProcessBuilder(new String[] { "bash", "-c", cmd })
-            //         .start();
-            // byte[] parseOut = proc.getInputStream().readAllBytes();
-            // String error = new String(proc.getErrorStream().readAllBytes());
-            // System.err.println(error);
-            // int exitCode = proc.waitFor();
-            // long tEnd = System.currentTimeMillis();
-            // System.err.format("download/bunzip2/parse: %sms\n", tEnd - tStart);
-            // if (exitCode == 0) {
-            //     t.sendResponseHeaders(200, parseOut.length);
-            //     t.getResponseBody().write(parseOut);
-            //     t.getResponseBody().close();
-            // } else {
-            //     // We can send 204 status here and no response if expected error
-            //     // Maybe we can pass the specific error info in the response headers
-            //     int status = 500;
-            //     if (error.toString().contains("curl: (28) Operation timed out")) {
-            //         // Parse took too long, maybe China replay?
-            //         status = 204;
-            //     }
-            //     if (error.toString().contains("curl: (22) The requested URL returned error: 502")) {
-            //         // Google-Edge-Cache: origin retries exhausted Error: 2010
-            //         // Server error, don't retry
-            //         status = 204;
-            //     }
-            //     if (error.toString().contains("bunzip2: Data integrity error when decompressing")) {
-            //         // Corrupted replay, don't retry
-            //         status = 204;
-            //     }
-            //     if (error.toString().contains("bunzip2: Compressed file ends unexpectedly")) {
-            //         // Corrupted replay, don't retry
-            //         status = 204;
-            //     }
-            //     if (error.toString().contains("bunzip2: (stdin) is not a bzip2 file.")) {
-            //         // Tried to unzip a non-bz2 file
-            //         status = 204;
-            //     }
-            //     if (status == 204) {
-            //         t.sendResponseHeaders(status, 0);
-            //         t.getResponseBody().close();
-            //     } else {
-            //         throw new Exception("Unexpected error in parse pipeline");
-            //     }
-            // }
         }
     }
 

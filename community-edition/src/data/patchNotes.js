@@ -1,5 +1,11 @@
 module.exports = [
   {
+    "version": "2.2",
+    "title": "Clearer replay-link failures",
+    "published_at": "2026-10-19",
+    "content": "The replay-link parser now reports clear errors for invalid URLs, failed or timed-out downloads, corrupt compressed files, and unsupported replays instead of empty responses. Successful replay results are unchanged, and request IDs help admins find the detailed error in parser logs."
+  },
+  {
     "version": "2.1",
     "title": "Correct ranks, safer DMs, and deployment health checks",
     "published_at": "2026-08-22",

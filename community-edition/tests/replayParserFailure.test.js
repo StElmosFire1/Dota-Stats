@@ -106,3 +106,18 @@ test('Java HTTP handler returns structured failures for real malformed replays',
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('Java replay-URL HTTP handler returns safe structured failures and unchanged blobs', { timeout: 60000 }, () => {
+  const root = path.resolve(__dirname, '../..');
+  const jar = path.join(root, 'odota-parser/target/stats-0.1.0.jar');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'parser-blob-java-test-'));
+  try {
+    execFileSync('javac', ['-proc:none', '-cp', jar, '-d', dir,
+      path.join(root, 'odota-parser/src/test/java/opendota/BlobHttpContractTest.java')], { timeout: 30000 });
+    const output = execFileSync('java', ['-cp', `${dir}${path.delimiter}${jar}`, 'opendota.BlobHttpContractTest'],
+      { encoding: 'utf8', timeout: 30000 });
+    assert.match(output, /Blob HTTP contract passed/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
