@@ -1,0 +1,63 @@
+==> /root/.pm2/logs/inhouse-bot-out.log <==
+[API] Upload init: job=44988218a3b0df60, file=9050540263.dem, size=72.2MB, chunks=37, patch=none
+[Upload] Chunk 0 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 1 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 2 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 3 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 4 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 5 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 6 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 7 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 8 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 9 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 10 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 11 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 12 received: 2097152 bytes, job=44988218a3b0df60
+
+==> /root/.pm2/logs/oi-bot-error.log <==
+[ServerHealth] health check failed (6019/3): connect ECONNREFUSED 134.199.166.223:27015
+
+==> /root/.pm2/logs/inhouse-bot-out.log <==
+[Upload] Chunk 13 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 14 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 15 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 16 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 17 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 18 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 19 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 20 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 21 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 22 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 23 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 24 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 25 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 26 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 27 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 28 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 29 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 30 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 31 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 32 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 33 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 34 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 35 received: 2097152 bytes, job=44988218a3b0df60
+[Upload] Chunk 36 received: 242447 bytes, job=44988218a3b0df60
+[API] Chunks assembled: job=44988218a3b0df60, size=72.2MB
+[Replay] Sending 44988218a3b0df60.dem to parser (72.2 MB)...
+
+==> /root/.pm2/logs/inhouse-bot-error.log <==
+curl: (55) Send failure: Connection reset by peer
+[API] Upload job 44988218a3b0df60 error: Error: Parser request failed: Command failed: curl -s -S --max-time 600 --connect-timeout 10 -X POST -H Content-Type: application/octet-stream --data-binary @/tmp/replay-uploads/44988218a3b0df60.dem http://localhost:5600/
+curl: (55) Send failure: Connection reset by peer
+
+    at /root/Dota-Stats/community-edition/src/replay/replayParser.js:311:16
+    at new Promise (<anonymous>)
+    at ReplayParser._sendToParser (/root/Dota-Stats/community-edition/src/replay/replayParser.js:295:12)
+    at ReplayParser.parseReplayFull (/root/Dota-Stats/community-edition/src/replay/replayParser.js:271:32)
+    at processReplayJob (/root/Dota-Stats/community-edition/src/web/server.js:3066:43)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async drainParseQueue (/root/Dota-Stats/community-edition/src/web/server.js:3031:7)
+
+==> /root/.pm2/logs/oi-bot-error.log <==
+[ServerHealth] health check failed (6020/3): connect ECONNREFUSED 134.199.166.223:27015
+^C
