@@ -33,3 +33,4 @@
 - [Dota2 GC reconnect](dota2-gc-reconnect.md) — "now playing Dota" popup: dota2-user hooks listeners on the persistent SteamUser socket in its ctor; build the GC client ONCE & gate/debounce the gamesPlayed re-hello.
 - [Workflow callback indexing failure](workflow-callback-indexing.md) — restart may fail before app launch on a false missing secondary-skill path; verify the path and treat it as platform control failure.
 - [Safe site guide captures](site-guide-capture.md) — automation elevation is not player identity; isolate tab auth failures and finish captures before packaging.
+- [Replay upload failures](replay-upload-failure-contract.md) — community-only integration scope; early upload failures need draining and dropped responses need explicit transport checks.

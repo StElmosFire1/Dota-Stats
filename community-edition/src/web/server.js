@@ -3045,21 +3045,6 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
 
     const existingHashMatch = await db.isFileHashRecorded(fileHash);
     let replaceReason = null;
-    if (existingHashMatch) {
-      console.log(`[API] Duplicate file hash detected for match ${existingHashMatch}, deleting old match and re-recording.`);
-      try {
-        await db.deleteMatch(existingHashMatch, `re-upload:${ip}`, 'Replaced by re-upload of same replay file');
-        replaceReason = 'sameFile';
-      } catch (delErr) {
-        console.error(`[API] Failed to delete old match ${existingHashMatch} for re-upload:`, delErr.message);
-        cleanupFile(filePath);
-        setJobTerminal(jobId, {
-          status: 'error',
-          error: `This replay file has already been uploaded (match ${existingHashMatch}). Failed to auto-replace: ${delErr.message}`,
-        });
-        return;
-      }
-    }
 
     updateJobStep(jobId, 'Parsing replay file...');
 
@@ -3069,6 +3054,13 @@ async function processReplayJob(jobId, filePath, ip, patch = null) {
       cleanupFile(filePath);
       setJobTerminal(jobId, { status: 'error', error: 'Failed to parse replay - no player data found' });
       return;
+    }
+
+    // Never remove the previous match until the replacement has parsed successfully.
+    if (existingHashMatch) {
+      console.log(`[API] Duplicate file hash detected for match ${existingHashMatch}, deleting old match and re-recording.`);
+      await db.deleteMatch(existingHashMatch, `re-upload:${ip}`, 'Replaced by re-upload of same replay file');
+      replaceReason = 'sameFile';
     }
 
     if (!matchStats.gameStartTime) {

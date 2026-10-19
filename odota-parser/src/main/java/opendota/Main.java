@@ -14,11 +14,15 @@ import java.net.URLDecoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -47,21 +51,70 @@ public class Main {
     }
 
     static class MyHandler implements HttpHandler {
+        @FunctionalInterface
+        interface Decoder {
+            boolean parse(InputStream input, OutputStream output, boolean blob) throws Exception;
+        }
+
+        private final Decoder decoder;
+
+        MyHandler() {
+            this((input, output, blob) -> new Parse(input, output, blob).epilogue);
+        }
+
+        // Injectable so the HTTP contract can also be tested after partial output.
+        MyHandler(Decoder decoder) {
+            this.decoder = decoder;
+        }
+
         @Override
         public void handle(HttpExchange t) throws IOException {
-            t.sendResponseHeaders(200, 0);
-            InputStream is = t.getRequestBody();
-            OutputStream os = t.getResponseBody();
-            boolean blob = false;
-            if (t.getRequestURI().getRawQuery() != null && t.getRequestURI().getRawQuery().contains("blob")) {
-                blob = true;
-            }
+            String requestId = UUID.randomUUID().toString();
+            Path staged = null;
             try {
-                new Parse(is, os, blob);
-            } catch (Exception e) {
-                e.printStackTrace();
+                try {
+                    staged = Files.createTempFile("replay-parse-", ".ndjson");
+                    Map<String, String> query = splitQuery(t.getRequestURI());
+                    try (OutputStream output = Files.newOutputStream(staged)) {
+                        boolean complete = decoder.parse(t.getRequestBody(), output, query.containsKey("blob"));
+                        // Community opts in; retain the legacy success format for other callers.
+                        if ("1".equals(query.get("strict")) && !complete) {
+                            throw new IOException("Replay ended without an epilogue");
+                        }
+                    }
+                    // Consume unread upload bytes before replying, including on decoder failure.
+                    // Otherwise curl can see a broken pipe instead of the actual HTTP error.
+                    t.getRequestBody().transferTo(OutputStream.nullOutputStream());
+                } catch (Exception e) {
+                    System.err.println("[Replay] requestId=" + requestId + " parse failed");
+                    e.printStackTrace(System.err);
+                    try {
+                        t.getRequestBody().transferTo(OutputStream.nullOutputStream());
+                    } catch (IOException drainError) {
+                        System.err.println("[Replay] requestId=" + requestId + " upload drain failed: " + drainError);
+                    }
+                    byte[] error = ("{\"ok\":false,\"error\":{\"code\":\"REPLAY_DECODE_FAILED\","
+                            + "\"message\":\"Replay could not be decoded. Re-download the replay and try again; "
+                            + "if it still fails, ask an admin to update the replay parser.\","
+                            + "\"requestId\":\"" + requestId + "\"}}\n").getBytes(StandardCharsets.UTF_8);
+                    t.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                    t.sendResponseHeaders(422, error.length);
+                    t.getResponseBody().write(error);
+                    return;
+                }
+                // No headers or event bytes are sent until parsing has finished successfully.
+                t.getResponseHeaders().set("Content-Type", t.getRequestURI().getRawQuery() != null
+                        && splitQuery(t.getRequestURI()).containsKey("blob")
+                        ? "application/json" : "application/x-ndjson");
+                t.getResponseHeaders().set("X-Replay-Parse-Complete", "1");
+                t.sendResponseHeaders(200, Files.size(staged));
+                Files.copy(staged, t.getResponseBody());
+            } finally {
+                t.close();
+                if (staged != null) {
+                    Files.deleteIfExists(staged);
+                }
             }
-            os.close();
         }
     }
 
@@ -204,10 +257,17 @@ public class Main {
 
     public static Map<String, String> splitQuery(URI uri) throws UnsupportedEncodingException {
         Map<String, String> query_pairs = new LinkedHashMap<String, String>();
-        String query = uri.getQuery();
+        String query = uri.getRawQuery();
+        if (query == null || query.isEmpty()) {
+            return query_pairs;
+        }
         String[] pairs = query.split("&");
         for (String pair : pairs) {
             int idx = pair.indexOf("=");
+            if (idx < 0) {
+                query_pairs.put(URLDecoder.decode(pair, "UTF-8"), "");
+                continue;
+            }
             query_pairs.put(URLDecoder.decode(pair.substring(0, idx), "UTF-8"),
                     URLDecoder.decode(pair.substring(idx + 1), "UTF-8"));
         }

@@ -1566,6 +1566,11 @@ class DiscordBot {
           return;
         } catch (parseErr) {
           console.error('[Replay] Full parse failed:', parseErr.message);
+          if (parseErr.code) {
+            await statusMsg.edit(parseErr.message);
+            replayParser.cleanup(filePath);
+            return;
+          }
           await msg.channel.send(`Full replay parsing failed: ${parseErr.message}. Trying header-only fallback...`);
         }
       }

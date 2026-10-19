@@ -3,6 +3,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
+const { requestReplay, decodeEvents, parserError } = require('./parserResponse');
 
 const PARSER_JAR = path.join(process.cwd(), 'odota-parser', 'target', 'stats-0.1.0.jar');
 const PARSER_PORT = 5600;
@@ -261,7 +262,7 @@ class ReplayParser {
 
   async parseReplayFull(filePath) {
     if (!this.parserReady) {
-      throw new Error('Parser service is not running. Replay parsing unavailable.');
+      throw parserError('PARSER_UNAVAILABLE', 'Parser service is not ready.');
     }
 
     const fileSize = fs.statSync(filePath).size;
@@ -269,48 +270,23 @@ class ReplayParser {
     console.log(`[Replay] Sending ${path.basename(filePath)} to parser (${fileMB} MB)...`);
 
     const rawText = await this._sendToParser(filePath);
-    const lines = rawText.trim().split('\n').filter(Boolean);
-
-    if (lines.length === 0) {
-      throw new Error('Parser returned no data');
-    }
-
-    const events = [];
-    for (const line of lines) {
-      try {
-        events.push(JSON.parse(line));
-      } catch {}
-    }
+    const events = decodeEvents(rawText);
 
     console.log(`[Replay] Parsed ${events.length} events from replay.`);
 
     const fileHash = this.computeFileHash(filePath);
-    const result = this._aggregateStats(events);
+    let result;
+    try {
+      result = this._aggregateStats(events);
+    } catch (error) {
+      throw parserError('PARSER_RESPONSE_INVALID', error);
+    }
     result.fileHash = fileHash;
     return result;
   }
 
   _sendToParser(filePath) {
-    const { execFileSync } = require('child_process');
-    return new Promise((resolve, reject) => {
-      try {
-        const output = execFileSync('curl', [
-          '-s', '-S',
-          '--max-time', '600',
-          '--connect-timeout', '10',
-          '-X', 'POST',
-          '-H', 'Content-Type: application/octet-stream',
-          '--data-binary', `@${filePath}`,
-          `http://localhost:${PARSER_PORT}/`,
-        ], {
-          maxBuffer: 500 * 1024 * 1024,
-          timeout: 660000,
-        });
-        resolve(output.toString());
-      } catch (err) {
-        reject(new Error(`Parser request failed: ${err.message}`));
-      }
-    });
+    return requestReplay(filePath);
   }
 
   _getNestedField(obj, ...variants) {
