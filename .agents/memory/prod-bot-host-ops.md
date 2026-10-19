@@ -5,6 +5,18 @@ description: How to perform ops on the production bot host — the agent has no 
 
 # Prod bot-host ops are user-run (no agent SSH)
 
+**Orphaned production parser:** On 2026-10-19 the shared Java parser was observed
+running since September 22 with parent PID 1 and stderr pointing to a socket,
+while application logs showed adoption of an existing parser.
+
+**Why:** Restarting an app can reuse an old parser process; app logs alone may
+not expose the currently serving parser's exceptions.
+
+**How to apply:** Check the listener's parent, start time and stderr destination
+before assuming an app restart refreshed the parser or that absent Java errors
+prove no parsing exception. Do not kill the shared listener without warning
+that both editions' replay processing may be interrupted.
+
 The Replit workspace has NO SSH key for the bot host (`root@170.64.182.110`, "Dota Stats" droplet). All prod-host operations are done by giving the user a single idempotent copy-paste bash block (via AskQuestion) and verifying from the pasted output.
 
 **Why:** `ssh root@170.64.182.110` from the workspace fails `Permission denied (publickey)`; historically every prod change (RCON rotation, env edits, pm2 restarts) went through user-pasted blocks.
