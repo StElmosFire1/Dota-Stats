@@ -17,6 +17,18 @@ before assuming an app restart refreshed the parser or that absent Java errors
 prove no parsing exception. Do not kill the shared listener without warning
 that both editions' replay processing may be interrupted.
 
+**Parser reset diagnosis:** A fresh parser with working stderr exposed a Clarity
+binary-decoding exception behind an upload's curl “send failure / connection
+reset.” The restart restored diagnostics but did not resolve that replay.
+
+**Why:** A parser can abandon a request while curl is still sending its body;
+the transport error alone does not distinguish an incompatible/corrupt replay
+from a crashed service or memory exhaustion.
+
+**How to apply:** Obtain the Java exception before choosing a fix. Check the
+dependency version embedded in the deployed JAR, not only the source POM, and
+validate a proposed compatibility update with the failing replay.
+
 The Replit workspace has NO SSH key for the bot host (`root@170.64.182.110`, "Dota Stats" droplet). All prod-host operations are done by giving the user a single idempotent copy-paste bash block (via AskQuestion) and verifying from the pasted output.
 
 **Why:** `ssh root@170.64.182.110` from the workspace fails `Permission denied (publickey)`; historically every prod change (RCON rotation, env edits, pm2 restarts) went through user-pasted blocks.

@@ -1,0 +1,96 @@
+root@Dota-Stats:~# pm2 logs inhouse-bot --lines 0 --timestamp
+2026-10-19-11:12:31 1|inhouse-bot  | [PatchNotes] No new patch notes to announce.
+2026-10-19-11:13:23 1|inhouse-bot  | [Baselines] Startup recompute (rows=0, ageDays=Infinity).
+2026-10-19-11:13:23 1|inhouse-bot  | [Baselines] Starting startup position-baselines recompute...
+2026-10-19-11:13:23 1|inhouse-bot  | [dotenv@17.3.1] injecting env (0) from community-edition/.env -- tip: ⚙️  write to custom object with { processEnv: myObject }
+2026-10-19-11:13:23 1|inhouse-bot  | [baselines] starting (season=all, maxBuckets=120)
+2026-10-19-11:13:23 1|inhouse-bot  | [Baselines] startup recompute failed: db.initSchema is not a function
+2026-10-19-11:15:31 1|inhouse-bot  | [API] Upload init: job=3aaa1fca1e86fde4, file=9050540263.dem, size=72.2MB, chunks=37, patch=none
+2026-10-19-11:15:33 1|inhouse-bot  | [Upload] Chunk 0 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:34 1|inhouse-bot  | [Upload] Chunk 1 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:36 1|inhouse-bot  | [Upload] Chunk 2 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:37 1|inhouse-bot  | [Upload] Chunk 3 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:39 1|inhouse-bot  | [Upload] Chunk 4 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:41 1|inhouse-bot  | [Upload] Chunk 5 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:42 1|inhouse-bot  | [Upload] Chunk 6 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:43 1|inhouse-bot  | [Upload] Chunk 7 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:44 1|inhouse-bot  | [Upload] Chunk 8 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:46 1|inhouse-bot  | [Upload] Chunk 9 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:47 1|inhouse-bot  | [Upload] Chunk 10 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:49 1|inhouse-bot  | [Upload] Chunk 11 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:50 1|inhouse-bot  | [Upload] Chunk 12 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:52 1|inhouse-bot  | [Upload] Chunk 13 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:54 1|inhouse-bot  | [Upload] Chunk 14 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:55 1|inhouse-bot  | [Upload] Chunk 15 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:57 1|inhouse-bot  | [Upload] Chunk 16 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:15:59 1|inhouse-bot  | [Upload] Chunk 17 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:00 1|inhouse-bot  | [Upload] Chunk 18 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:01 1|inhouse-bot  | [Upload] Chunk 19 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:03 1|inhouse-bot  | [Upload] Chunk 20 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:05 1|inhouse-bot  | [Upload] Chunk 21 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:07 1|inhouse-bot  | [Upload] Chunk 22 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:09 1|inhouse-bot  | [Upload] Chunk 23 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:10 1|inhouse-bot  | [Upload] Chunk 24 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:12 1|inhouse-bot  | [Upload] Chunk 25 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:13 1|inhouse-bot  | [Upload] Chunk 26 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:15 1|inhouse-bot  | [Upload] Chunk 27 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:16 1|inhouse-bot  | [Upload] Chunk 28 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:17 1|inhouse-bot  | [Upload] Chunk 29 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:18 1|inhouse-bot  | [Upload] Chunk 30 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:20 1|inhouse-bot  | [Upload] Chunk 31 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:21 1|inhouse-bot  | [Upload] Chunk 32 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:22 1|inhouse-bot  | [Upload] Chunk 33 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:23 1|inhouse-bot  | [Upload] Chunk 34 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:25 1|inhouse-bot  | [Upload] Chunk 35 received: 2097152 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:25 1|inhouse-bot  | [Upload] Chunk 36 received: 242447 bytes, job=3aaa1fca1e86fde4
+2026-10-19-11:16:25 1|inhouse-bot  | [API] Chunks assembled: job=3aaa1fca1e86fde4, size=72.2MB
+2026-10-19-11:16:25 1|inhouse-bot  | [Replay] Sending 3aaa1fca1e86fde4.dem to parser (72.2 MB)...
+2026-10-19-11:16:28 1|inhouse-bot  | curl: (55) Send failure: Connection reset by peer
+2026-10-19-11:16:28 1|inhouse-bot  | [API] Upload job 3aaa1fca1e86fde4 error: Error: Parser request failed: Command failed: curl -s -S --max-time 600 --connect-timeout 10 -X POST -H Content-Type: application/octet-stream --data-binary @/tmp/replay-uploads/3aaa1fca1e86fde4.dem http://localhost:5600/
+2026-10-19-11:16:28 1|inhouse-bot  | curl: (55) Send failure: Connection reset by peer
+2026-10-19-11:16:28 1|inhouse-bot  |     at /root/Dota-Stats/community-edition/src/replay/replayParser.js:311:16
+2026-10-19-11:16:28 1|inhouse-bot  |     at new Promise (<anonymous>)
+2026-10-19-11:16:28 1|inhouse-bot  |     at ReplayParser._sendToParser (/root/Dota-Stats/community-edition/src/replay/replayParser.js:295:12)
+2026-10-19-11:16:28 1|inhouse-bot  |     at ReplayParser.parseReplayFull (/root/Dota-Stats/community-edition/src/replay/replayParser.js:271:32)
+2026-10-19-11:16:28 1|inhouse-bot  |     at processReplayJob (/root/Dota-Stats/community-edition/src/web/server.js:3066:43)
+2026-10-19-11:16:28 1|inhouse-bot  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-10-19-11:16:28 1|inhouse-bot  |     at async drainParseQueue (/root/Dota-Stats/community-edition/src/web/server.js:3031:7)
+2026-10-19-11:16:28 1|inhouse-bot  | [Parser] SLF4J: No SLF4J providers were found.
+2026-10-19-11:16:28 1|inhouse-bot  | SLF4J: Defaulting to no-operation (NOP) logger implementation
+2026-10-19-11:16:28 1|inhouse-bot  | SLF4J: See https://www.slf4j.org/codes.html#noProviders for further details.
+2026-10-19-11:16:28 1|inhouse-bot  | [Parser] item handle property: m_hItems (slot idx=0)
+2026-10-19-11:16:28 1|inhouse-bot  | java.lang.ArrayIndexOutOfBoundsException: Array index out of range: 504
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.platform.buffer.UnsafeBuffer$B64.get(UnsafeBuffer.java:73)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.io.bitstream.BitStream64.readUBitInt(BitStream64.java:26)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.io.bitstream.BitStream.readVarU(BitStream.java:124)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.io.bitstream.BitStream.readVarUInt(BitStream.java:147)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.io.decoder.IntVarUnsignedDecoder.decode(IntVarUnsignedDecoder.java:9)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.io.decoder.IntVarUnsignedDecoder.decode(IntVarUnsignedDecoder.java:5)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.io.s2.S2FieldReader.readFields(S2FieldReader.java:76)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.processor.entities.Entities.getBaseline(Entities.java:622)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.processor.entities.Entities.executeEntityCreate(Entities.java:444)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.processor.entities.Entities.lambda$queueEntityCreate$4(Entities.java:440)
+2026-10-19-11:16:28 1|inhouse-bot  |    at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.processor.entities.Entities.processAndRunPacketEntities(Entities.java:321)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.processor.entities.Entities.onPacketEntities(Entities.java:313)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.event.AbstractInvocationPoint.invoke(AbstractInvocationPoint.java:86)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.event.Event.raise(Event.java:41)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.processor.reader.InputSourceProcessor.processEmbedded(InputSourceProcessor.java:245)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.event.AbstractInvocationPoint.invoke(AbstractInvocationPoint.java:86)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.event.Event.raise(Event.java:41)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.processor.reader.InputSourceProcessor.processSource(InputSourceProcessor.java:172)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.event.AbstractInvocationPoint.invoke(AbstractInvocationPoint.java:86)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.event.Event.raise(Event.java:41)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.processor.runner.AbstractFileRunner.initAndRunWith(AbstractFileRunner.java:38)
+2026-10-19-11:16:28 1|inhouse-bot  |    at skadistats.clarity.processor.runner.SimpleRunner.runWith(SimpleRunner.java:33)
+2026-10-19-11:16:28 1|inhouse-bot  |    at opendota.Parse.<init>(Parse.java:135)
+2026-10-19-11:16:28 1|inhouse-bot  |    at opendota.Main$MyHandler.handle(Main.java:60)
+2026-10-19-11:16:28 1|inhouse-bot  |    at jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:98)
+2026-10-19-11:16:28 1|inhouse-bot  |    at jdk.httpserver/sun.net.httpserver.AuthFilter.doFilter(AuthFilter.java:82)
+2026-10-19-11:16:28 1|inhouse-bot  |    at jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:101)
+2026-10-19-11:16:28 1|inhouse-bot  |    at jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange$LinkHandler.handle(ServerImpl.java:932)
+2026-10-19-11:16:28 1|inhouse-bot  |    at jdk.httpserver/com.sun.net.httpserver.Filter$Chain.doFilter(Filter.java:98)
+2026-10-19-11:16:28 1|inhouse-bot  |    at jdk.httpserver/sun.net.httpserver.ServerImpl$Exchange.run(ServerImpl.java:908)
+2026-10-19-11:16:28 1|inhouse-bot  |    at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+2026-10-19-11:16:28 1|inhouse-bot  |    at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+2026-10-19-11:16:28 1|inhouse-bot  |    at java.base/java.lang.Thread.run(Thread.java:1583)
