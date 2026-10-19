@@ -665,3 +665,17 @@ mtime_ms = 1791714617068
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/9c2260ac-fd5f-4ede-b0cc-e9b34e4a8abc/e969772e-1fe6-49eb-a682-db09e8f61ada"
 storage_version_token = "1791714623116977"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "081nPTgQQ_c9a_vMPT19T"
+uri = "file://generated-artifacts/parser-compat/tested-replay-parser-4.0.3.zip"
+type = "unspecified"
+title = "Tested Replay Parser Update — Not Yet Installed"
+description = "Contains the tested parser JAR, SHA-256 checksum and verification report. Successfully parsed your failing replay. No replay files or player data included. Installing on the shared production server requires a separate controlled update."
+logical_id = "570f13f8-3b15-440e-9859-38603d9e8d80"
+content_hash = "sha256:ef9f3639a902b825f5db64bb84e6f9e13cb1af76a537de8bdbc95ef5f885c5ac"
+size = 19346414
+mtime_ms = 1792409683774
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:6ded6629-0a18-4cc2-a90e-29d9e31c91e7/570f13f8-3b15-440e-9859-38603d9e8d80/104f360d-f3ca-482d-8d55-13fbe121f3ae"
+storage_version_token = "1792409712957012"
+content_type = "application/octet-stream"

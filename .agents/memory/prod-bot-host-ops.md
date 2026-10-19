@@ -41,6 +41,18 @@ matched,” despite Clarity classes demonstrably running.
 Distinguish a build-declared version from independently verified binary contents,
 and exclude commented-out dependency examples when reading XML.
 
+**Clarity upgrades need packaged-runtime tests, not compilation alone.**
+Custom events and Clarity both contribute a provider index to the shaded JAR;
+losing either contribution can produce “no provider found” only at runtime.
+
+**Why:** During the compatibility upgrade, the project compiled but the packaged
+parser could not discover its message providers until those indexes were merged.
+
+**How to apply:** Test the final shaded JAR against the failing replay, including
+ward events and both Node aggregators, before proposing production replacement.
+Prefer the smallest compatible major upgrade over an unrelated latest-version
+migration when addressing a decoding incident.
+
 The Replit workspace has NO SSH key for the bot host (`root@170.64.182.110`, "Dota Stats" droplet). All prod-host operations are done by giving the user a single idempotent copy-paste bash block (via AskQuestion) and verifying from the pasted output.
 
 **Why:** `ssh root@170.64.182.110` from the workspace fails `Permission denied (publickey)`; historically every prod change (RCON rotation, env edits, pm2 restarts) went through user-pasted blocks.
