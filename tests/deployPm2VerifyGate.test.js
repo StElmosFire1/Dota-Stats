@@ -13,8 +13,9 @@ function readScript(rel) {
 
 // Extract the Task #307 PM2-verify gate snippet from a deploy script. The
 // gate runs from the `EXPECTED_PM2_SCRIPT=` assignment through the matching
-// closing `fi` of the outer `if [ -n "${PM2_INFO}" ]; then` block, immediately
-// before `pm2 restart`. We slice it textually so the test exercises the
+// closing `fi` of the outer `if [ -n "${PM2_INFO}" ]; then` block.
+// Restart/start branching after that block is not part of the guard.
+// We slice it textually so the test exercises the
 // real shell code rather than a re-implementation.
 function extractGateSnippet(scriptSrc, scriptLabel) {
   const lines = scriptSrc.split('\n');
@@ -23,23 +24,19 @@ function extractGateSnippet(scriptSrc, scriptLabel) {
     startIdx !== -1,
     `${scriptLabel}: expected an EXPECTED_PM2_SCRIPT= assignment to anchor the gate snippet`,
   );
-  // Find the `pm2 restart` line that follows; the gate ends at the line
-  // before it (the closing `fi` of the outer if-block).
-  const restartIdx = lines.findIndex(
-    (l, i) => i > startIdx && /^\s*pm2 restart\b/.test(l),
+  // The guard is top-level; its closing fi is unindented, unlike the
+  // nested mismatch check. Do not depend on the next restart's position.
+  const guardIdx = lines.findIndex(
+    (l, i) => i > startIdx && l === 'if [ -n "${PM2_INFO}" ]; then',
   );
   assert.ok(
-    restartIdx !== -1,
-    `${scriptLabel}: expected a 'pm2 restart' line after the gate snippet`,
+    guardIdx !== -1,
+    `${scriptLabel}: expected the top-level PM2_INFO guard`,
   );
-  // Walk back from restartIdx to the previous non-blank line — that's the
-  // closing `fi` of the outer `if [ -n "${PM2_INFO}" ]; then` block.
-  let endIdx = restartIdx - 1;
-  while (endIdx > startIdx && lines[endIdx].trim() === '') endIdx--;
-  assert.equal(
-    lines[endIdx].trim(),
-    'fi',
-    `${scriptLabel}: expected the line before 'pm2 restart' to be the closing 'fi'`,
+  const endIdx = lines.findIndex((l, i) => i > guardIdx && l === 'fi');
+  assert.ok(
+    endIdx !== -1,
+    `${scriptLabel}: expected the closing fi of the top-level PM2_INFO guard`,
   );
   return lines.slice(startIdx, endIdx + 1).join('\n');
 }
@@ -104,6 +101,35 @@ const COMM_SNIPPET = extractGateSnippet(
   readScript('community-edition/deploy.sh'),
   'community-edition/deploy.sh',
 );
+
+test('PM2 guard extraction excludes restart-or-start branching', () => {
+  const source = [
+    'EXPECTED_PM2_SCRIPT="/expected/index.js"',
+    'if [ -n "${PM2_INFO}" ]; then',
+    '  if [ "${PM2_SCRIPT}" != "${EXPECTED_PM2_SCRIPT}" ]; then',
+    '    exit 1',
+    '  fi',
+    'fi',
+    '',
+    'if pm2 describe "${PM2_APP}" >/dev/null 2>&1; then',
+    '  pm2 restart "${PM2_APP}" --update-env',
+    'else',
+    '  pm2 start "${EXPECTED_PM2_SCRIPT}"',
+    'fi',
+  ].join('\n');
+  const snippet = extractGateSnippet(source, 'fixture');
+  assert.equal(snippet, source.split('\n').slice(0, 6).join('\n'));
+});
+
+test('PM2 guard extraction refuses an unterminated guard', () => {
+  assert.throws(
+    () => extractGateSnippet(
+      'EXPECTED_PM2_SCRIPT="/expected/index.js"\nif [ -n "${PM2_INFO}" ]; then\n',
+      'fixture',
+    ),
+    /closing fi/,
+  );
+});
 
 // ---------- deploy.sh (full edition) ----------
 
