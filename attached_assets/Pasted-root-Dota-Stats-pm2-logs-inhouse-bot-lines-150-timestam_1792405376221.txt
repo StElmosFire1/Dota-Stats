@@ -1,0 +1,305 @@
+root@Dota-Stats:~# pm2 logs inhouse-bot --lines 150 --timestamp
+[TAILING] Tailing last 150 lines for [inhouse-bot] process (change the value with --lines option)
+/root/.pm2/logs/inhouse-bot-out.log last 150 lines:
+1|inhouse- | [PERF] match 9050610747: 10 players scored
+1|inhouse- | [API] Replay archived: /root/Dota-Stats/community-edition/replay-store/9050610747.dem (no expiry)
+1|inhouse- | [API] Upload job 5cddd6afd26371e8 complete: match 9050610747
+1|inhouse- | [Ratings] Match 9050688495: found 10 players, 7 with Discord IDs linked
+1|inhouse- | [Ratings]   null. (account:226471237) discord_id=""
+1|inhouse- | [Ratings]   Skankhunt42 (account:186762212) discord_id="297687931383185410"
+1|inhouse- | [Ratings]   lively crowd (account:166338458) discord_id="239342106932412416"
+1|inhouse- | [Ratings]   Klevin (account:1156848161) discord_id="706339317747810366"
+1|inhouse- | [Ratings]   Clive Palmer (account:171508472) discord_id=""
+1|inhouse- | [Ratings]   King Sting (account:1551800334) discord_id=""
+1|inhouse- | [Ratings]   LT! (account:444842080) discord_id="170642278933594112"
+1|inhouse- | [Ratings]   Lali (account:54674031) discord_id="320521015119839234"
+1|inhouse- | [Ratings]   Lemon Burtle (account:1142497079) discord_id="379564248067604481"
+1|inhouse- | [Ratings]   sanath (account:1002860688) discord_id="435383485826465792"
+1|inhouse- | [API] Upload init: job=817cce890a6e50b9, file=9050540263.dem, size=72.2MB, chunks=37, patch=none
+1|inhouse- | [Ratings] Match 9050610747: found 10 players, 6 with Discord IDs linked
+1|inhouse- | [Ratings]   lively crowd (account:166338458) discord_id="239342106932412416"
+1|inhouse- | [Ratings]   Klevin (account:1156848161) discord_id="706339317747810366"
+1|inhouse- | [Ratings]   null. (account:226471237) discord_id=""
+1|inhouse- | [Ratings]   SPOON ASS (account:130446494) discord_id="297924925849862145"
+1|inhouse- | [Ratings]   Monstah (account:195989005) discord_id="712871227387281408"
+1|inhouse- | [Ratings]   Lemon Burtle (account:1142497079) discord_id="379564248067604481"
+1|inhouse- | [Ratings]   LT! (account:444842080) discord_id="170642278933594112"
+1|inhouse- | [Ratings]   W (account:913023238) discord_id=""
+1|inhouse- | [Ratings]   King Sting (account:1551800334) discord_id=""
+1|inhouse- | [Ratings]   Clive Palmer (account:171508472) discord_id=""
+1|inhouse- | [Upload] Chunk 0 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 1 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 2 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 3 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 4 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 5 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 6 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 7 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 8 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 9 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 10 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 11 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 12 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 13 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 14 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 15 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 16 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 17 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 18 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 19 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 20 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 21 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 22 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 23 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 24 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 25 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 26 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 27 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 28 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 29 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 30 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 31 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 32 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 33 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 34 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 35 received: 2097152 bytes, job=817cce890a6e50b9
+1|inhouse- | [Upload] Chunk 36 received: 242447 bytes, job=817cce890a6e50b9
+1|inhouse- | [API] Chunks assembled: job=817cce890a6e50b9, size=72.2MB
+1|inhouse- | [Replay] Sending 817cce890a6e50b9.dem to parser (72.2 MB)...
+1|inhouse- | [Discord] Posting weekly recap...
+1|inhouse- | [API] Upload init: job=75e8ab5b64f33fa2, file=9050540263.dem, size=72.2MB, chunks=37, patch=none
+1|inhouse- | [Upload] Chunk 0 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 1 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 2 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 3 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 4 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 5 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 6 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 7 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 8 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 9 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 10 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 11 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 12 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 13 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 14 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 15 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 16 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 17 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 18 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 19 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 20 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 21 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 22 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 23 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 24 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 25 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 26 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 27 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 28 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 29 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 30 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 31 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 32 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 33 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 34 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 35 received: 2097152 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [Upload] Chunk 36 received: 242447 bytes, job=75e8ab5b64f33fa2
+1|inhouse- | [API] Chunks assembled: job=75e8ab5b64f33fa2, size=72.2MB
+1|inhouse- | [Replay] Sending 75e8ab5b64f33fa2.dem to parser (72.2 MB)...
+1|inhouse- | [Baselines] Starting weekly position-baselines recompute...
+1|inhouse- | [baselines] starting (season=all, maxBuckets=120)
+1|inhouse- | [DB] Deleted match 9044479193 by web:127.0.0.1
+1|inhouse- | [DB] Ratings and rating_history recalculated from all matches.
+1|inhouse- | [API] Upload init: job=4d55c6e8e200267b, file=9050540263.dem, size=72.2MB, chunks=37, patch=none
+1|inhouse- | [Upload] Chunk 0 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 1 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 2 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 3 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 4 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 5 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 6 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 7 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 8 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 9 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 10 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 11 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 12 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 13 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 14 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 15 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 16 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 17 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 18 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 19 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 20 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 21 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 22 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 23 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 24 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 25 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 26 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 27 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 28 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 29 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 30 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 31 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 32 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 33 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 34 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 35 received: 2097152 bytes, job=4d55c6e8e200267b
+1|inhouse- | [Upload] Chunk 36 received: 242447 bytes, job=4d55c6e8e200267b
+1|inhouse- | [API] Chunks assembled: job=4d55c6e8e200267b, size=72.2MB
+1|inhouse- | [Replay] Sending 4d55c6e8e200267b.dem to parser (72.2 MB)...
+
+/root/.pm2/logs/inhouse-bot-error.log last 150 lines:
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | [API] Bulk replay download error: Cannot find module 'archiver'
+1|inhouse- | Require stack:
+1|inhouse- | - /root/Dota-Stats/community-edition/src/web/server.js
+1|inhouse- | - /root/Dota-Stats/community-edition/src/index.js
+1|inhouse- | [API] Bulk replay download error: Cannot find module 'archiver'
+1|inhouse- | Require stack:
+1|inhouse- | - /root/Dota-Stats/community-edition/src/web/server.js
+1|inhouse- | - /root/Dota-Stats/community-edition/src/index.js
+1|inhouse- | [API] Bulk replay download error: Cannot find module 'archiver'
+1|inhouse- | Require stack:
+1|inhouse- | - /root/Dota-Stats/community-edition/src/web/server.js
+1|inhouse- | - /root/Dota-Stats/community-edition/src/index.js
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | URIError: Failed to decode param '..%C0%AF..%C0%AF..%C0%AF..%C0%AF..%C0%AF..%C0%AF.env'
+1|inhouse- |     at decodeURIComponent (<anonymous>)
+1|inhouse- |     at decodeParam (/root/Dota-Stats/node_modules/router/lib/layer.js:225:12)
+1|inhouse- |     at Array.map (<anonymous>)
+1|inhouse- |     at /root/Dota-Stats/node_modules/path-to-regexp/dist/index.js:243:50
+1|inhouse- |     at Array.match (/root/Dota-Stats/node_modules/path-to-regexp/dist/index.js:256:32)
+1|inhouse- |     at Layer.match (/root/Dota-Stats/node_modules/router/lib/layer.js:192:31)
+1|inhouse- |     at matchLayer (/root/Dota-Stats/node_modules/router/index.js:519:18)
+1|inhouse- |     at next (/root/Dota-Stats/node_modules/router/index.js:237:15)
+1|inhouse- |     at SendStream.error (/root/Dota-Stats/node_modules/serve-static/index.js:120:7)
+1|inhouse- |     at SendStream.emit (node:events:524:28)
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | [API] Upload job d6d4ff351da5a6d5 error: Error: Parser request failed: Command failed: curl -s -S --max-time 600 --connect-timeout 10 -X POST -H Content-Type: application/octet-stream --data-binary @/tmp/replay-uploads/d6d4ff351da5a6d5.dem http://localhost:5600/
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | 
+1|inhouse- |     at /root/Dota-Stats/community-edition/src/replay/replayParser.js:311:16
+1|inhouse- |     at new Promise (<anonymous>)
+1|inhouse- |     at ReplayParser._sendToParser (/root/Dota-Stats/community-edition/src/replay/replayParser.js:295:12)
+1|inhouse- |     at ReplayParser.parseReplayFull (/root/Dota-Stats/community-edition/src/replay/replayParser.js:271:32)
+1|inhouse- |     at processReplayJob (/root/Dota-Stats/community-edition/src/web/server.js:3066:43)
+1|inhouse- |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+1|inhouse- |     at async drainParseQueue (/root/Dota-Stats/community-edition/src/web/server.js:3031:7)
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | [API] Upload job 85d9d5d3b0507d18 error: Error: Parser request failed: Command failed: curl -s -S --max-time 600 --connect-timeout 10 -X POST -H Content-Type: application/octet-stream --data-binary @/tmp/replay-uploads/85d9d5d3b0507d18.dem http://localhost:5600/
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | 
+1|inhouse- |     at /root/Dota-Stats/community-edition/src/replay/replayParser.js:311:16
+1|inhouse- |     at new Promise (<anonymous>)
+1|inhouse- |     at ReplayParser._sendToParser (/root/Dota-Stats/community-edition/src/replay/replayParser.js:295:12)
+1|inhouse- |     at ReplayParser.parseReplayFull (/root/Dota-Stats/community-edition/src/replay/replayParser.js:271:32)
+1|inhouse- |     at processReplayJob (/root/Dota-Stats/community-edition/src/web/server.js:3066:43)
+1|inhouse- |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+1|inhouse- |     at async drainParseQueue (/root/Dota-Stats/community-edition/src/web/server.js:3031:7)
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | [API] Upload job d106cdc47112fb56 error: Error: Parser request failed: Command failed: curl -s -S --max-time 600 --connect-timeout 10 -X POST -H Content-Type: application/octet-stream --data-binary @/tmp/replay-uploads/d106cdc47112fb56.dem http://localhost:5600/
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | 
+1|inhouse- |     at /root/Dota-Stats/community-edition/src/replay/replayParser.js:311:16
+1|inhouse- |     at new Promise (<anonymous>)
+1|inhouse- |     at ReplayParser._sendToParser (/root/Dota-Stats/community-edition/src/replay/replayParser.js:295:12)
+1|inhouse- |     at ReplayParser.parseReplayFull (/root/Dota-Stats/community-edition/src/replay/replayParser.js:271:32)
+1|inhouse- |     at processReplayJob (/root/Dota-Stats/community-edition/src/web/server.js:3066:43)
+1|inhouse- |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+1|inhouse- |     at async drainParseQueue (/root/Dota-Stats/community-edition/src/web/server.js:3031:7)
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | [API] Upload job 9caafbc8a7af14d9 error: Error: Parser request failed: Command failed: curl -s -S --max-time 600 --connect-timeout 10 -X POST -H Content-Type: application/octet-stream --data-binary @/tmp/replay-uploads/9caafbc8a7af14d9.dem http://localhost:5600/
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | 
+1|inhouse- |     at /root/Dota-Stats/community-edition/src/replay/replayParser.js:311:16
+1|inhouse- |     at new Promise (<anonymous>)
+1|inhouse- |     at ReplayParser._sendToParser (/root/Dota-Stats/community-edition/src/replay/replayParser.js:295:12)
+1|inhouse- |     at ReplayParser.parseReplayFull (/root/Dota-Stats/community-edition/src/replay/replayParser.js:271:32)
+1|inhouse- |     at processReplayJob (/root/Dota-Stats/community-edition/src/web/server.js:3066:43)
+1|inhouse- |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+1|inhouse- |     at async drainParseQueue (/root/Dota-Stats/community-edition/src/web/server.js:3031:7)
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | [API] Upload job df022f71a7fa6e69 error: Error: Parser request failed: Command failed: curl -s -S --max-time 600 --connect-timeout 10 -X POST -H Content-Type: application/octet-stream --data-binary @/tmp/replay-uploads/df022f71a7fa6e69.dem http://localhost:5600/
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | 
+1|inhouse- |     at /root/Dota-Stats/community-edition/src/replay/replayParser.js:311:16
+1|inhouse- |     at new Promise (<anonymous>)
+1|inhouse- |     at ReplayParser._sendToParser (/root/Dota-Stats/community-edition/src/replay/replayParser.js:295:12)
+1|inhouse- |     at ReplayParser.parseReplayFull (/root/Dota-Stats/community-edition/src/replay/replayParser.js:271:32)
+1|inhouse- |     at processReplayJob (/root/Dota-Stats/community-edition/src/web/server.js:3066:43)
+1|inhouse- |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+1|inhouse- |     at async drainParseQueue (/root/Dota-Stats/community-edition/src/web/server.js:3031:7)
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | [API] Upload job 90ff124937125eab error: Error: Parser request failed: Command failed: curl -s -S --max-time 600 --connect-timeout 10 -X POST -H Content-Type: application/octet-stream --data-binary @/tmp/replay-uploads/90ff124937125eab.dem http://localhost:5600/
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | 
+1|inhouse- |     at /root/Dota-Stats/community-edition/src/replay/replayParser.js:311:16
+1|inhouse- |     at new Promise (<anonymous>)
+1|inhouse- |     at ReplayParser._sendToParser (/root/Dota-Stats/community-edition/src/replay/replayParser.js:295:12)
+1|inhouse- |     at ReplayParser.parseReplayFull (/root/Dota-Stats/community-edition/src/replay/replayParser.js:271:32)
+1|inhouse- |     at processReplayJob (/root/Dota-Stats/community-edition/src/web/server.js:3066:43)
+1|inhouse- |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+1|inhouse- |     at async drainParseQueue (/root/Dota-Stats/community-edition/src/web/server.js:3031:7)
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | [Replay] WARN: matchOutcome not found or is 0 (UNKNOWN). matchOutcomeVal=null. Will attempt fallback.
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | [API] Upload job 817cce890a6e50b9 error: Error: Parser request failed: Command failed: curl -s -S --max-time 600 --connect-timeout 10 -X POST -H Content-Type: application/octet-stream --data-binary @/tmp/replay-uploads/817cce890a6e50b9.dem http://localhost:5600/
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | 
+1|inhouse- |     at /root/Dota-Stats/community-edition/src/replay/replayParser.js:311:16
+1|inhouse- |     at new Promise (<anonymous>)
+1|inhouse- |     at ReplayParser._sendToParser (/root/Dota-Stats/community-edition/src/replay/replayParser.js:295:12)
+1|inhouse- |     at ReplayParser.parseReplayFull (/root/Dota-Stats/community-edition/src/replay/replayParser.js:271:32)
+1|inhouse- |     at processReplayJob (/root/Dota-Stats/community-edition/src/web/server.js:3066:43)
+1|inhouse- |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+1|inhouse- |     at async drainParseQueue (/root/Dota-Stats/community-edition/src/web/server.js:3031:7)
+1|inhouse- | URIError: Failed to decode param '%C0'
+1|inhouse- |     at decodeURIComponent (<anonymous>)
+1|inhouse- |     at decodeParam (/root/Dota-Stats/node_modules/router/lib/layer.js:225:12)
+1|inhouse- |     at Array.map (<anonymous>)
+1|inhouse- |     at /root/Dota-Stats/node_modules/path-to-regexp/dist/index.js:243:50
+1|inhouse- |     at Array.match (/root/Dota-Stats/node_modules/path-to-regexp/dist/index.js:256:32)
+1|inhouse- |     at Layer.match (/root/Dota-Stats/node_modules/router/lib/layer.js:192:31)
+1|inhouse- |     at matchLayer (/root/Dota-Stats/node_modules/router/index.js:519:18)
+1|inhouse- |     at next (/root/Dota-Stats/node_modules/router/index.js:237:15)
+1|inhouse- |     at SendStream.error (/root/Dota-Stats/node_modules/serve-static/index.js:120:7)
+1|inhouse- |     at SendStream.emit (node:events:524:28)
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | [API] Upload job 75e8ab5b64f33fa2 error: Error: Parser request failed: Command failed: curl -s -S --max-time 600 --connect-timeout 10 -X POST -H Content-Type: application/octet-stream --data-binary @/tmp/replay-uploads/75e8ab5b64f33fa2.dem http://localhost:5600/
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | 
+1|inhouse- |     at /root/Dota-Stats/community-edition/src/replay/replayParser.js:311:16
+1|inhouse- |     at new Promise (<anonymous>)
+1|inhouse- |     at ReplayParser._sendToParser (/root/Dota-Stats/community-edition/src/replay/replayParser.js:295:12)
+1|inhouse- |     at ReplayParser.parseReplayFull (/root/Dota-Stats/community-edition/src/replay/replayParser.js:271:32)
+1|inhouse- |     at processReplayJob (/root/Dota-Stats/community-edition/src/web/server.js:3066:43)
+1|inhouse- |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+1|inhouse- |     at async drainParseQueue (/root/Dota-Stats/community-edition/src/web/server.js:3031:7)
+1|inhouse- | [Baselines] weekly recompute failed: db.initSchema is not a function
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | [API] Upload job 4d55c6e8e200267b error: Error: Parser request failed: Command failed: curl -s -S --max-time 600 --connect-timeout 10 -X POST -H Content-Type: application/octet-stream --data-binary @/tmp/replay-uploads/4d55c6e8e200267b.dem http://localhost:5600/
+1|inhouse- | curl: (55) Send failure: Connection reset by peer
+1|inhouse- | 
+1|inhouse- |     at /root/Dota-Stats/community-edition/src/replay/replayParser.js:311:16
+1|inhouse- |     at new Promise (<anonymous>)
+1|inhouse- |     at ReplayParser._sendToParser (/root/Dota-Stats/community-edition/src/replay/replayParser.js:295:12)
+1|inhouse- |     at ReplayParser.parseReplayFull (/root/Dota-Stats/community-edition/src/replay/replayParser.js:271:32)
+1|inhouse- |     at processReplayJob (/root/Dota-Stats/community-edition/src/web/server.js:3066:43)
+1|inhouse- |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+1|inhouse- |     at async drainParseQueue (/root/Dota-Stats/community-edition/src/web/server.js:3031:7)
