@@ -29,6 +29,18 @@ from a crashed service or memory exhaustion.
 dependency version embedded in the deployed JAR, not only the source POM, and
 validate a proposed compatibility update with the failing replay.
 
+**Packaging caveat:** Clarity's own Maven pom.properties is absent from the
+bundled parser JAR, including the production build inspected by the owner.
+The parser's embedded com.opendota/stats/pom.xml is available in the workspace
+build and records its declared Clarity dependency.
+
+**Why:** Requesting the dependency's pom.properties returned “filename not
+matched,” despite Clarity classes demonstrably running.
+
+**How to apply:** Inspect the archive inventory or embedded parser POM instead.
+Distinguish a build-declared version from independently verified binary contents,
+and exclude commented-out dependency examples when reading XML.
+
 The Replit workspace has NO SSH key for the bot host (`root@170.64.182.110`, "Dota Stats" droplet). All prod-host operations are done by giving the user a single idempotent copy-paste bash block (via AskQuestion) and verifying from the pasted output.
 
 **Why:** `ssh root@170.64.182.110` from the workspace fails `Permission denied (publickey)`; historically every prod change (RCON rotation, env edits, pm2 restarts) went through user-pasted blocks.
