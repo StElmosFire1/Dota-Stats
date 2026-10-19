@@ -17,6 +17,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -33,16 +34,42 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import com.google.gson.JsonObject;
 
 public class Main {
+    private static final long STARTED_AT = System.currentTimeMillis();
+    private static final String BUILD_SHA256 = buildSha256();
+
+    private static String buildSha256() {
+        try {
+            Path jar = Path.of(Main.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+            if (!Files.isRegularFile(jar)) return "development-classes";
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (InputStream input = Files.newInputStream(jar)) {
+                byte[] buffer = new byte[65536];
+                int count;
+                while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count);
+            }
+            StringBuilder result = new StringBuilder();
+            for (byte value : digest.digest()) result.append(String.format("%02x", value & 0xff));
+            return result.toString();
+        } catch (Exception error) {
+            throw new IllegalStateException("Cannot identify parser build", error);
+        }
+    }
 
     public static void main(String[] args) throws Exception {
-        HttpServer server = HttpServer.create(new InetSocketAddress(Integer.valueOf("5600")), 0);
+        // Loopback only: the parser accepts untrusted replay bytes, not public traffic.
+        // A bind conflict fails startup; never evict another listener.
+        int port = Integer.parseInt(System.getProperty("parser.port", "5600"));
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
         server.createContext("/", new MyHandler());
         server.createContext("/healthz", new HealthHandler());
         server.createContext("/blob", new BlobHandler());
         server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool());
         server.start();
+        System.err.println("[Parser] service=oi-replay-parser protocol=1 build=" + BUILD_SHA256
+                + " pid=" + ProcessHandle.current().pid() + " address=" + server.getAddress());
 
         // Re-register ourselves
         Timer timer = new Timer();
@@ -121,10 +148,20 @@ public class Main {
     static class HealthHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange t) throws IOException {
-            t.sendResponseHeaders(200, 2);
-            OutputStream os = t.getResponseBody();
-            os.write("ok".getBytes());
-            os.close();
+            JsonObject health = new JsonObject();
+            health.addProperty("service", "oi-replay-parser");
+            health.addProperty("status", "ok");
+            health.addProperty("protocolVersion", 1);
+            health.addProperty("buildSha256", BUILD_SHA256);
+            health.addProperty("pid", ProcessHandle.current().pid());
+            health.addProperty("startedAt", STARTED_AT);
+            byte[] body = health.toString().getBytes(StandardCharsets.UTF_8);
+            t.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            t.getResponseHeaders().set("Cache-Control", "no-store");
+            t.sendResponseHeaders(200, body.length);
+            try (OutputStream os = t.getResponseBody()) {
+                os.write(body);
+            }
         }
     }
 

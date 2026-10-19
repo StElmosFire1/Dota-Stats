@@ -1,12 +1,10 @@
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
 const { requestReplay, decodeEvents, parserError } = require('./parserResponse');
 
-const PARSER_JAR = path.join(process.cwd(), 'odota-parser', 'target', 'stats-0.1.0.jar');
-const PARSER_PORT = 5600;
+const { ParserServiceClient } = require('../../../src/replay/parserServiceClient');
 
 const HERO_ID_TO_NPC = {
   1:'npc_dota_hero_antimage',2:'npc_dota_hero_axe',3:'npc_dota_hero_bane',4:'npc_dota_hero_bloodseeker',
@@ -143,104 +141,13 @@ function normaliseItemName(raw) {
 }
 
 
-class ReplayParser {
+class ReplayParser extends ParserServiceClient {
   constructor() {
+    super();
     this.replayDir = path.join(process.cwd(), 'replays');
     if (!fs.existsSync(this.replayDir)) {
       fs.mkdirSync(this.replayDir, { recursive: true });
     }
-    this.parserProcess = null;
-    this.parserReady = false;
-    this._shutdownRequested = false;
-  }
-
-  async startParserService() {
-    if (this.parserReady) return true;
-
-    if (!fs.existsSync(PARSER_JAR)) {
-      console.warn('[Replay] Parser JAR not found. Full replay parsing disabled.');
-      console.warn('[Replay] Run: cd odota-parser && mvn install -DskipTests');
-      return false;
-    }
-
-    return new Promise((resolve) => {
-      this._launchParser(resolve);
-    });
-  }
-
-  async _launchParser(resolveInitial) {
-    if (this._shutdownRequested) return;
-
-    // Step 1: try to adopt an already-running healthy parser (e.g. orphan from previous crash)
-    try {
-      const res = await fetch(`http://localhost:${PARSER_PORT}/healthz`, { timeout: 2000 });
-      if (res.ok) {
-        console.log('[Replay] Adopted existing parser service on port', PARSER_PORT);
-        this.parserProcess = null;
-        this.parserReady = true;
-        if (resolveInitial) { resolveInitial(true); resolveInitial = null; }
-        return;
-      }
-    } catch {}
-
-    // Step 2: port is not responding — evict whatever is squatting there, then spawn fresh
-    console.log(`[Replay] Clearing port ${PARSER_PORT} before spawn...`);
-    await new Promise((resolve) => {
-      const kill = spawn('fuser', ['-k', `${PARSER_PORT}/tcp`], { stdio: 'ignore' });
-      kill.on('close', resolve);
-      kill.on('error', resolve);
-    });
-    await new Promise((r) => setTimeout(r, 500)); // give the OS time to release the port
-
-    console.log('[Replay] Starting parser service on port', PARSER_PORT);
-    this.parserProcess = spawn('java', ['-jar', PARSER_JAR], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: false,
-    });
-
-    this.parserProcess.stderr.on('data', (data) => {
-      const msg = data.toString().trim();
-      if (msg) console.log('[Parser]', msg);
-    });
-
-    this.parserProcess.stdout.on('data', () => {});
-
-    this.parserProcess.on('error', (err) => {
-      console.error('[Replay] Parser failed to start:', err.message);
-      this.parserReady = false;
-      this.parserProcess = null;
-      if (resolveInitial) { resolveInitial(false); resolveInitial = null; }
-    });
-
-    this.parserProcess.on('exit', (code, signal) => {
-      console.warn(`[Replay] Parser exited (code=${code}, signal=${signal}) — restarting in 5s...`);
-      this.parserReady = false;
-      this.parserProcess = null;
-      if (resolveInitial) { resolveInitial(false); resolveInitial = null; }
-      setTimeout(() => {
-        if (!this._shutdownRequested) this._launchParser(null);
-      }, 5000);
-    });
-
-    const checkHealth = async (retries = 20) => {
-      for (let i = 0; i < retries; i++) {
-        if (this._shutdownRequested) return;
-        try {
-          const res = await fetch(`http://localhost:${PARSER_PORT}/healthz`, { timeout: 2000 });
-          if (res.ok) {
-            console.log('[Replay] Parser service is ready.');
-            this.parserReady = true;
-            if (resolveInitial) { resolveInitial(true); resolveInitial = null; }
-            return;
-          }
-        } catch {}
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-      console.error('[Replay] Parser service failed to become ready.');
-      if (resolveInitial) { resolveInitial(false); resolveInitial = null; }
-    };
-
-    checkHealth();
   }
 
   async downloadReplay(url, filename) {
@@ -261,7 +168,7 @@ class ReplayParser {
   }
 
   async parseReplayFull(filePath) {
-    if (!this.parserReady) {
+    if (!(await this.startParserService())) {
       throw parserError('PARSER_UNAVAILABLE', 'Parser service is not ready.');
     }
 
@@ -2583,15 +2490,6 @@ class ReplayParser {
     }
   }
 
-  shutdown() {
-    this._shutdownRequested = true;
-    if (this.parserProcess) {
-      this.parserProcess.kill();
-      this.parserProcess = null;
-      this.parserReady = false;
-      console.log('[Replay] Parser service stopped.');
-    }
-  }
 }
 
 let instance = null;

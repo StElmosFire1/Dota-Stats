@@ -10,6 +10,8 @@ const { processReplayInternal } = require('../src/web/server');
 const { getDiscordBot } = require('../src/discord/bot');
 
 test('web upload reports malformed replay without deleting an existing match or changing stats/ratings', async t => {
+  // This exercises upload failure handling, not availability of a real parser.
+  t.mock.method(getReplayParser(), 'startParserService', async () => true);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bad-replay-upload-'));
   const file = path.join(dir, 'bad.dem');
   fs.writeFileSync(file, 'not a replay');

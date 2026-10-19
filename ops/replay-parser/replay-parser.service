@@ -1,0 +1,26 @@
+[Unit]
+Description=Shared OCE replay parser (sole lifecycle owner)
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+DynamicUser=yes
+WorkingDirectory=/opt/oi-replay-parser
+ExecStart=/usr/bin/java -jar /opt/oi-replay-parser/current.jar
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=30
+LogsDirectory=oi-replay-parser
+LogsDirectoryMode=0750
+StandardOutput=append:/var/log/oi-replay-parser/stdout.log
+StandardError=append:/var/log/oi-replay-parser/stderr.log
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

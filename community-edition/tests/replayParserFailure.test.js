@@ -74,10 +74,12 @@ test('partial data cannot reach aggregation, hashing, or match recording', async
   const parser = getReplayParser();
   const originals = {
     parserReady: parser.parserReady, _sendToParser: parser._sendToParser,
+    startParserService: parser.startParserService,
     _aggregateStats: parser._aggregateStats, computeFileHash: parser.computeFileHash,
   };
   t.after(() => Object.assign(parser, originals));
   parser.parserReady = true;
+  parser.startParserService = async () => true; // transport/decoder test, not a health test
   parser.computeFileHash = () => assert.fail('must not hash rejected response');
   parser._aggregateStats = () => assert.fail('must not aggregate rejected response');
   for (const partial of ['{"type":"interval"}\n', complete + '{broken', '{"ok":false}']) {

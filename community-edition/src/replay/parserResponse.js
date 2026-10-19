@@ -16,7 +16,7 @@ function parserError(code, diagnostics) {
   return error;
 }
 
-async function requestReplay(filePath, url = 'http://localhost:5600/?strict=1') {
+async function requestReplay(filePath, url = 'http://127.0.0.1:5600/?strict=1') {
   const upload = fs.createReadStream(filePath);
   try {
     const response = await new Promise((resolve, reject) => {

@@ -43,7 +43,7 @@ pm2 save
 ```
 
 ### Java replay parser
-`odota-parser/target/stats-0.1.0.jar` is rebuilt automatically on deploy/start by `scripts/build-parser.sh` (invoked from `npm prestart`, the Replit `[deployment].run` command, and the post-merge hook). Only re-runs `mvn install -DskipTests` when stale. Force a rebuild: `npm run build:parser`.
+`odota-parser/target/stats-0.1.0.jar` is rebuilt automatically on deploy/start by `scripts/build-parser.sh` (invoked from `npm prestart`, the Replit `[deployment].run` command, and the post-merge hook). Only re-runs `mvn install -DskipTests` when stale. Force a rebuild: `npm run build:parser`. Building does NOT replace the running shared service. Both editions are client-only; `replay-parser.service` is the sole production lifecycle owner. See `docs/replay-parser-service.md` for the approval-gated migration, health/version checks, logs, upgrades and rollback. For local replay work, run `java -jar odota-parser/target/stats-0.1.0.jar` separately; neither app starts Java.
 
 ## Branding
 **OCE Inhouse** under the OA logo (`web/public/oa-logo.png` + `favicon.png`). Palette: **Hybrid · Court & Pitch** — ink-navy `#0d1424`, brass `#c5a975`, amber `#f59e0b`, parchment `#f5efe2`. CSS tokens in `web/src/styles.css`: `--bg-primary`, `--accent`, `--gold`, `--brass`, `--amber`, `--parchment`, `--ink-navy`. Fonts: Inter (`--font`, body), Oswald (`--font-condensed`, eyebrows), **Playfair Display (`--font-serif`, headlines/editorial text)**, **Newsreader (`--font-num`, numeric stats — apply via the `.pb-num` helper for tabular lining figures)**. Type rule of thumb: text → Playfair, numbers → Newsreader.
@@ -55,7 +55,7 @@ pm2 save
 - **Inhouse lobby system** (`/inhouse`, full edition only): FACEIT-style flow — sign-in → position registration → timed accept → captain draft → auto-provisioned dedicated server on 10th pick (via `src/inhouse/serverProvisioner.js`, single-flight Set + recovery sweep in `autoStartTicker.js`). Failed provision → `server_failed` state with captain-visible Retry + admin Discord ping.
 - **Hero meta / draft assistant:** position-specific win rates + live counter-pick scoring.
 - **Notifications:** preference-driven web push + post-match DMs + MVP/hot-streak alerts.
-- **Modularity:** Discord, Steam, Lobby, API, Stats, Sheets, Replay each in their own module. Graceful degradation — non-critical components can be missing without breaking the core. Java parser runs as a child process.
+- **Modularity:** Discord, Steam, Lobby, API, Stats, Sheets, Replay each in their own module. Graceful degradation — non-critical components can be missing without breaking the core. Java parser is an independently managed shared service, not an app child process.
 
 ## Frontend accessibility house rule
 Every clickable thing in `web/src/` and `community-edition/web/src/` must be keyboard-reachable, screen-reader-labelled, and operable without a mouse. The a11y gate (`npm run check:a11y`) enforces all six rules:

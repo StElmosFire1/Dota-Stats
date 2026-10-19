@@ -28,7 +28,6 @@ const { computeTimelinePerf } = require('../src/perf/perfTimeline');
 const PARSER_JAR = path.join(__dirname, '..', 'odota-parser', 'target', 'stats-0.1.0.jar');
 const REPLAY_URL = 'https://odota.github.io/testfiles/1781962623_1.dem';
 const REPLAY_CACHE = '/tmp/odota-test-1781962623.dem';
-const PARSER_PORT = 5601; // distinct from production 5600 to avoid clashes
 const REPLAY_DOWNLOAD_TIMEOUT_MS = 60_000;
 const PARSER_BOOT_TIMEOUT_MS = 30_000;
 const PARSER_PARSE_TIMEOUT_MS = 240_000;
@@ -60,14 +59,21 @@ function _download(url, dest, timeoutMs) {
   });
 }
 
-async function _waitHealthy(port, timeoutMs) {
+async function _waitHealthy(port, timeoutMs, pid) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const ok = await new Promise(res => {
       const req = http.get(`http://127.0.0.1:${port}/healthz`, r => {
         let buf = '';
         r.on('data', c => buf += c);
-        r.on('end', () => res(r.statusCode === 200 && buf.trim() === 'ok'));
+        r.on('error', () => res(false));
+        r.on('end', () => {
+          try {
+            const health = JSON.parse(buf);
+            res(r.statusCode === 200 && health.service === 'oi-replay-parser' &&
+              health.protocolVersion === 1 && health.pid === pid);
+          } catch { res(false); }
+        });
       });
       req.on('error', () => res(false));
       req.setTimeout(1000, () => { req.destroy(); res(false); });
@@ -114,10 +120,13 @@ test('integration: live parser jar emits cumulative fields and timeline_v1 consu
   const replayBytes = fs.statSync(REPLAY_CACHE).size;
   assert.ok(replayBytes > 1_000_000, `cached replay looks corrupt (${replayBytes} bytes)`);
 
-  // Spawn the parser on its own port so we don't collide with the production
-  // service. The jar reads PORT from env when available.
-  const proc = spawn('java', ['-jar', PARSER_JAR], {
-    env: { ...process.env, PORT: String(PARSER_PORT) },
+  // Use the Java property, not PORT (which this JAR never read). Never fall
+  // back to the shared listener: that would test another owner's build.
+  const reservation = http.createServer();
+  await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
+  const livePort = reservation.address().port;
+  await new Promise(resolve => reservation.close(resolve));
+  const proc = spawn('java', [`-Dparser.port=${livePort}`, '-jar', PARSER_JAR], {
     stdio: ['ignore', 'ignore', 'ignore'],
     detached: false,
   });
@@ -125,17 +134,8 @@ test('integration: live parser jar emits cumulative fields and timeline_v1 consu
   const cleanup = () => { if (!killed) { killed = true; try { proc.kill('SIGKILL'); } catch {} } };
   t.after(cleanup);
 
-  // The jar default port is 5600 — try that too if our PORT env isn't honoured.
-  let livePort = PARSER_PORT;
-  let healthy = await _waitHealthy(PARSER_PORT, PARSER_BOOT_TIMEOUT_MS);
-  if (!healthy) {
-    healthy = await _waitHealthy(5600, 5000);
-    if (healthy) livePort = 5600;
-  }
-  if (!healthy) {
-    cleanup();
-    return t.skip('parser jar failed to become healthy within boot timeout');
-  }
+  assert.equal(await _waitHealthy(livePort, PARSER_BOOT_TIMEOUT_MS, proc.pid), true,
+    'owned parser JAR must become healthy on its isolated test port');
 
   const ndjson = await _post(livePort, REPLAY_CACHE, PARSER_PARSE_TIMEOUT_MS);
   cleanup();
