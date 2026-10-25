@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useSuperuser } from '../context/SuperuserContext';
+import { useAdmin } from '../context/AdminContext';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { WhyIsThisSafeLink } from '../components/SteamTrustModal';
 import { resolveDisplayName, resolvePlayerDisplayName } from '../utils/displayName';
-import { useInhouseAlerts } from '../hooks/useInhouseAlerts';
+import LobbyAutomationControl from '../components/LobbyAutomationControl';
 import { superuserFetch, getCaptainAutoPickStats } from '../api';
 import LiveQueueWidget from '../components/LiveQueueWidget';
 import MoodFormWidget from '../components/MoodFormWidget';
@@ -564,6 +565,7 @@ function ServerConnectPanel({ session, connectLink, streamerLive }) {
 
 export default function Inhouse() {
   const { superuserKey } = useSuperuser();
+  const { isAdmin: hasAdminRole } = useAdmin();
   const { steamUser, refreshMe } = useSteamAuth();
   // Task #136 — tri-state gate. The "Sign In to Inhouse" / "Join Session"
   // buttons must stay disabled until the player is signed in, has Discord
@@ -580,6 +582,7 @@ export default function Inhouse() {
   // that TDZ crash blanked the whole /inhouse page for every visitor.
   const myAccountId = steamUser?.accountId ? Number(steamUser.accountId) : null;
   const [session, setSession] = useState(null);
+  const [dotaAutomation, setDotaAutomation] = useState(null);
   const [players, setPlayers] = useState([]);
   const [pastSessions, setPastSessions] = useState([]);
   const [pastSortField, setPastSortField] = useState('id');
@@ -646,7 +649,7 @@ export default function Inhouse() {
 
   // v5.92 — sound + browser-notification alerts on every event that needs
   // a human input. Mute toggle in the lobby header persists in localStorage.
-  const { muted, toggleMute } = useInhouseAlerts({ session, players, myAccountId, draftStatus });
+  // Lobby attention alerts are mounted globally so leaving this route does not mute them.
 
   // Task #190 — fetch each captain's auto-pick rate when the session has
   // captains assigned. Cached per-accountId so re-polls don't refetch.
@@ -1040,6 +1043,7 @@ export default function Inhouse() {
       {/* Task #316 — live queue widget: shows in-progress sessions + queued
           players, falls back to recent matches when the queue is empty. */}
       <LiveQueueWidget emptyMode="recent" />
+      <LobbyAutomationControl editable={isAdmin || hasAdminRole} onChange={setDotaAutomation} />
       <div className="pb-inhouse-header">
         <div>
           <div className="pb-eyebrow" style={{ marginBottom: 6 }}>Live Lobby</div>
@@ -1051,30 +1055,12 @@ export default function Inhouse() {
               'linear-gradient(to right, var(--pb-line), var(--pb-line)) bottom/100% 1px no-repeat',
           }} />
           <p className="pb-inhouse-subtitle">
-            A private 5v5 Dota 2 match for OCE community members. Sign in, pick your preferred roles, wait for 10 players, then get drafted onto a team and connect to a dedicated server.
+            A private 5v5 Dota 2 match for OCE community members. Sign in, pick your preferred roles, wait for 10 players, then get drafted onto a team. In website-only mode, arrange the Dota lobby manually.
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {/* v5.92 — mute toggle for inhouse sound alerts. */}
-          <button
-            onClick={toggleMute}
-            title={muted
-              ? 'Chime is muted — click to re-enable. Browser notifications still fire either way.'
-              : 'Chime is on — click to mute. Browser notifications still fire either way.'}
-            aria-pressed={!muted}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '6px 10px', fontSize: 12, fontWeight: 600, letterSpacing: 0.4,
-              background: muted ? 'var(--bg-card)' : 'color-mix(in srgb, var(--brass) 14%, transparent)',
-              color: muted ? 'var(--text-muted)' : 'var(--brass)',
-              border: `1px solid ${muted ? 'var(--border)' : 'color-mix(in srgb, var(--brass) 45%, transparent)'}`,
-              borderRadius: 4, cursor: 'pointer',
-              fontFamily: 'var(--font-condensed, var(--font))', textTransform: 'uppercase',
-            }}
-          >
-            <span aria-hidden="true">{muted ? '🔕' : '🔔'}</span>
-            {muted ? 'Chime muted' : 'Chime on'}
-          </button>
+          <a className="btn" href="#lobby-reminders">Lobby reminder settings</a>
           {SHOW_SERVER_CONNECT && serverStatus && (
             <div className="pb-card pb-card-sm pb-server-status-card" style={{ padding: '10px 16px' }}>
               <div className="pb-eyebrow" style={{ marginBottom: 5 }}>Dedicated Server</div>
@@ -1331,7 +1317,7 @@ export default function Inhouse() {
                   {session.status === 'accepting' && acceptedCount >= 2 && (
                     <button onClick={selectCaptains} style={{ padding: '6px 12px', background: '#2196f3', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Select Captains ({acceptedCount} ready)</button>
                   )}
-                  {(session.status === 'drafting' && undrafted.length === 0) || session.status === 'server_failed' ? (
+                  {dotaAutomation === true && ((session.status === 'drafting' && undrafted.length === 0) || session.status === 'server_failed') ? (
                     <button onClick={provisionServer} style={{ padding: '6px 12px', background: session.status === 'server_failed' ? '#f44336' : '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>
                       {session.status === 'server_failed' ? '🔄 Retry Provisioning' : 'Provision Server'}
                     </button>
@@ -1351,6 +1337,9 @@ export default function Inhouse() {
                       <button onClick={fetchReplayNow} style={{ padding: '6px 12px', background: '#2196f3', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>Fetch Replay</button>
                       <button onClick={completeSession} style={{ padding: '6px 12px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>Mark Complete</button>
                     </>
+                  )}
+                  {dotaAutomation === false && ['drafting', 'server_failed'].includes(session.status) && undrafted.length === 0 && (
+                    <button className="btn" onClick={completeSession}>Mark manual match complete</button>
                   )}
                   <button onClick={cancelSession} style={{ padding: '6px 12px', background: 'transparent', color: '#f44336', border: '1px solid #f44336', borderRadius: 4, cursor: 'pointer' }}>Cancel</button>
 
@@ -1641,13 +1630,19 @@ export default function Inhouse() {
                   pill so players don't think the lobby is stuck. On
                   server_failed show a red banner with a captain-visible
                   Retry button (admins also see it). */}
-              {session.status === 'drafting' && undrafted.length === 0 && isInSession && (
+              {dotaAutomation === true && session.status === 'drafting' && undrafted.length === 0 && isInSession && (
                 <div style={{ marginTop: 8, padding: '10px 14px', background: 'rgba(33,150,243,0.12)', border: '1px solid rgba(33,150,243,0.4)', borderRadius: 6, fontSize: 13, color: '#66c0f4', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#66c0f4', animation: 'pulse 1.4s ease-in-out infinite' }} />
                   Provisioning server…
                 </div>
               )}
-              {session.status === 'server_failed' && (isInSession || isAdmin) && (
+              {dotaAutomation === false && ['drafting', 'server_failed'].includes(session.status) && undrafted.length === 0 && (
+                <div role="status" className="card" style={{ padding: 16, marginTop: 12 }}>
+                  <strong>Teams are ready — website-only mode</strong>
+                  <p>Create the Dota lobby manually and invite the players shown below. No automatic invites or game-server setup will run. An admin can mark the manual match complete afterwards.</p>
+                </div>
+              )}
+              {dotaAutomation === true && session.status === 'server_failed' && (isInSession || isAdmin) && (
                 <div role="alert" style={{ marginTop: 8, padding: 14, background: 'rgba(244,67,54,0.1)', border: '1px solid rgba(244,67,54,0.4)', borderRadius: 6 }}>
                   <div style={{ fontWeight: 700, marginBottom: 6, color: '#f44336' }}>⚠ Server provisioning failed</div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>
@@ -1717,7 +1712,7 @@ export default function Inhouse() {
           )}
 
           {/* Players / teams */}
-          {session.status === 'drafting' || session.status === 'in_progress' || session.status === 'completed' ? (() => {
+          {session.status === 'drafting' || session.status === 'server_failed' || session.status === 'in_progress' || session.status === 'completed' ? (() => {
             // v5.92 — Captain-draft layout brought up to the Hybrid · Court &
             // Pitch sandbox composition: a timer / turn-indicator strip
             // anchored at the top, then a three-column board with vertical

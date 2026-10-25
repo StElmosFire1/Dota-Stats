@@ -28,6 +28,7 @@ function loadHelperWithStubs(stubs) {
   const cfgPath    = require.resolve('../src/config');
   const rconPath   = require.resolve('../src/services/rconClient');
   const botPath    = require.resolve('../src/discord/bot');
+  delete require.cache[require.resolve('../src/inhouse/automationPolicy')];
 
   // Wipe related cache so our fresh stubs win.
   delete require.cache[helperPath];
@@ -61,6 +62,7 @@ function makeDb({ initialSession, players = [] }) {
   return {
     state,
     updates,
+    async getSetting() { return null; },
     async getInhouseSession() { return state.session ? { ...state.session } : null; },
     async updateInhouseSession(_id, fields) {
       updates.push({ ...fields });
@@ -87,6 +89,24 @@ test('success path: drafting → in_progress with RCON configured + Discord ping
   assert.ok(r.session.match_password);
   assert.equal(r.rcon.ok, true);
   assert.ok(bot.calls.some(c => /server provisioned/i.test(String(c))));
+});
+
+test('website-only mode completes no RCON, Discord, credential or status mutations', async () => {
+  const db = makeDb({ initialSession: { id: 99, status: 'drafting' } });
+  db.getSetting = async () => 'false';
+  const bot = makeBot();
+  let rconCalls = 0;
+  const helper = loadHelperWithStubs({
+    db, bot,
+    setMatchPassword: async () => { rconCalls++; },
+    config: { dota: { dedicatedServer: { ip: '10.0.0.1', port: 27015, rconPassword: 'test' } } },
+  });
+  const result = await helper.provisionInhouseServer(99);
+  assert.equal(result.skipped, 'automation_disabled');
+  assert.equal(result.session.status, 'drafting');
+  assert.equal(db.updates.length, 0);
+  assert.equal(rconCalls, 0);
+  assert.equal(bot.calls.length, 0);
 });
 
 test('failure path: RCON throws → status=server_failed, reason in notes, Discord pinged, no in_progress', async () => {

@@ -3,6 +3,7 @@ const { config } = require('../config');
 const { SERVER_REGION, GAME_MODE } = require('../steam/dota2GC');
 const EventEmitter = require('events');
 const db = require('../db');
+const automationPolicy = require('../inhouse/automationPolicy');
 
 const LobbyState = {
   IDLE: 'IDLE',
@@ -358,6 +359,7 @@ class LobbyManager extends EventEmitter {
     });
 
     client.gcClient.on('lobbyInviteReceived', async (invite) => {
+      if (!automationPolicy.isEnabled()) return;
       // If the spectator watch loop is active (bot left its own lobby to re-join mid-game),
       // cancel it gracefully so this invite can be processed.
       if (this._spectatorWatchActive) {
@@ -396,6 +398,7 @@ class LobbyManager extends EventEmitter {
     });
 
     client.gcClient.on('partyInviteReceived', async (invite) => {
+      if (!automationPolicy.isEnabled()) return;
       const trusted = config.steam.trustedSteamIds || [];
       console.log(`[Lobby] Party invite from ${invite.senderName} (${invite.senderId}), partyId=${invite.partyId}, trusted=${trusted.includes(invite.senderId)}`);
       if (!trusted.includes(invite.senderId)) {
@@ -414,6 +417,8 @@ class LobbyManager extends EventEmitter {
   }
 
   async createLobby(name, password, requestedBy, opts = {}) {
+    await automationPolicy.refresh();
+    automationPolicy.assertEnabled();
     const client = getSteamClient();
     if (!client.isGCReady || !client.gcClient) {
       throw new Error('Steam/Dota 2 GC is not connected. Check !steam_status.');
@@ -476,6 +481,7 @@ class LobbyManager extends EventEmitter {
   }
 
   launchLobby() {
+    automationPolicy.assertEnabled();
     const client = getSteamClient();
     if (!client.gcClient || !client.gcClient.isReady) throw new Error('GC not connected.');
     if (this.state !== LobbyState.WAITING) throw new Error('No active lobby in waiting state.');
@@ -815,6 +821,8 @@ class LobbyManager extends EventEmitter {
   }
 
   async joinLobby(lobbyId, password, requestedBy) {
+    await automationPolicy.refresh();
+    automationPolicy.assertEnabled();
     const client = getSteamClient();
     if (!client.isGCReady || !client.gcClient) {
       throw new Error('Steam/Dota 2 GC is not connected. Check !steam_status.');
@@ -855,6 +863,7 @@ class LobbyManager extends EventEmitter {
   }
 
   invitePlayer(steamId64) {
+    automationPolicy.assertEnabled();
     const client = getSteamClient();
     if (!client.gcClient || !client.gcClient.isReady) {
       throw new Error('GC not connected.');

@@ -52,6 +52,10 @@ async function provisionInhouseServer(sessionId, opts = {}) {
     _opsReport({ inFlight: Array.from(_inFlight) });
   };
   try {
+    const automation = require('./automationPolicy');
+    if (!await automation.refresh()) {
+      return { ok: true, skipped: 'automation_disabled', session: await db.getInhouseSession(id), rcon: null };
+    }
     const cfg = require('../config').config;
     const cur = await db.getInhouseSession(id);
     if (!cur) return { ok: false, error: 'Session not found' };

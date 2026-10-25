@@ -218,82 +218,111 @@ echo "==> Post-restart health check (Task #856)..."
 # 120). On failure we dump recent PM2 logs and exit non-zero so a broken
 # build is never silently left live.
 #
-# Port resolution: the deploy shell often does NOT have the bot's PORT
-# exported (PM2 carries it), so we read PORT from the PM2 process's own env —
-# the authoritative source of what the bot actually binds. Fallbacks: the
-# deploy shell's $PORT, then the app default 5000. Explicit override:
+# Port metadata can be stale, including after --update-env. PM2's effective
+# top-level env takes precedence over its nested snapshot; the checkout's
+# .env supplies PORT when the app starts without one. All are only candidates:
+# even a populated PORT must pass the full-edition identity check. Explicit override:
 #   HEALTH_URL=http://127.0.0.1:3000/api/health bash deploy.sh
-PM2_ENV_PORT="$(pm2 jlist 2>/dev/null | node -e '
+HEALTH_PORTS=""
+if [ -z "${HEALTH_URL:-}" ]; then
+  HEALTH_PORTS="$(pm2 jlist 2>/dev/null | node -e '
+const fs = require("node:fs");
 let raw = "";
 process.stdin.on("data", c => raw += c);
 process.stdin.on("end", () => {
+  let env = {};
   try {
     const arr = JSON.parse(raw);
     const p = Array.isArray(arr) && arr.find(x => x && x.name === process.argv[1]);
-    const port = p && p.pm2_env && p.pm2_env.env && p.pm2_env.env.PORT;
-    if (port && /^\d+$/.test(String(port))) console.log(String(port));
+    env = (p && p.pm2_env) || {};
   } catch {}
-});
-' "${PM2_APP}" 2>/dev/null || true)"
-HEALTH_PORT="${PM2_ENV_PORT:-${PORT:-}}"
-if [ -z "${HEALTH_URL:-}" ] && [ -z "${HEALTH_PORT}" ]; then
-  # PM2 didn't expose PORT and the shell has none. Do NOT blindly assume a
-  # default port — another legitimate app may answer /api/health there. The
-  # community edition normally owns :5000 and returns {"status":"ok",...};
-  # the full bot normally owns :3001 and returns a `services` object. Scan
-  # candidates and select only the full bot's fingerprint. Never stop or
-  # remove a non-matching responder: it may be the other edition.
-  for cand in 3001 3000 5000; do
-    if curl -fsS --max-time 3 "http://127.0.0.1:${cand}/api/health" 2>/dev/null | node -e '
-let raw = "";
-process.stdin.on("data", c => raw += c);
-process.stdin.on("end", () => {
+  let filePort;
   try {
-    const j = JSON.parse(raw);
-    process.exit(j && typeof j.services === "object" && j.services !== null ? 0 : 1);
-  } catch { process.exit(1); }
-});
-'; then
-      HEALTH_PORT="${cand}"
-      echo "    (PORT not in PM2 env — found our bot's health endpoint on :${cand})"
-      break
-    fi
-  done
-  HEALTH_PORT="${HEALTH_PORT:-5000}"
-fi
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:${HEALTH_PORT}/api/health}"
-HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
-elapsed=0
-until curl -fsS --max-time 5 "${HEALTH_URL}" | node -e '
-let raw = "";
-process.stdin.on("data", c => raw += c);
-process.stdin.on("end", () => {
-  try {
-    const j = JSON.parse(raw);
-    if (!j || typeof j.services !== "object" || j.services === null) {
-      console.error("health responder is NOT the full bot (no services object) — another app/edition owns this port. Response:", JSON.stringify(j));
-      console.error("hint: override with HEALTH_URL=http://127.0.0.1:<bot-port>/api/health bash deploy.sh");
+    filePort = require("dotenv").parse(fs.readFileSync(".env")).PORT;
+  } catch (e) {
+    if (e.code !== "ENOENT") {
+      console.error("Cannot read full-app .env for health port resolution:", e.message);
       process.exit(1);
     }
+  }
+  const candidates = [env.PORT, env.env && env.env.PORT, filePort, process.env.PORT, 3001, 3000, 5000];
+  const ports = candidates.filter(p => /^\d+$/.test(String(p)) && Number(p) > 0 && Number(p) <= 65535);
+  console.log([...new Set(ports.map(Number))].join(" "));
+});
+' "${PM2_APP}")"
+fi
+HEALTH_URL="${HEALTH_URL:-}"
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
+health_probe_start=${SECONDS}
+is_full_health() {
+  printf '%s' "$1" | node -e '
+let raw = "";
+process.stdin.on("data", c => raw += c);
+process.stdin.on("end", () => {
+  try {
+    const j = JSON.parse(raw);
+    process.exit(j && typeof j.ok === "boolean" && j.services &&
+      typeof j.services === "object" && !Array.isArray(j.services) ? 0 : 1);
+  } catch { process.exit(1); }
+});
+'
+}
+local_probe_ok() {
+  local body cand
+  if [ -z "${HEALTH_URL}" ]; then
+    # Always discover by identity, even when PORT is populated but wrong.
+    # Pin the first full responder (including ok:false) so we cannot hide an
+    # unhealthy full app by switching to a different full responder later.
+    for cand in ${HEALTH_PORTS}; do
+      if [ $((SECONDS - health_probe_start)) -ge "${HEALTH_TIMEOUT}" ]; then
+        return 1
+      fi
+      body="$(curl -fsS --max-time 3 "http://127.0.0.1:${cand}/api/health" 2>/dev/null)" || continue
+      if is_full_health "${body}"; then
+        HEALTH_URL="http://127.0.0.1:${cand}/api/health"
+        echo "    Found full-edition health endpoint: ${HEALTH_URL}"
+        break
+      fi
+      echo "    Ignoring non-full health responder on :${cand}; leaving it untouched." >&2
+    done
+    [ -n "${HEALTH_URL}" ] || return 1
+  fi
+  # Capture curl separately: transport failure must never be masked by a
+  # valid-looking partial body. HEALTH_URL overrides are checked, not replaced.
+  body="$(curl -fsS --max-time 5 "${HEALTH_URL}")" || return 1
+  if ! is_full_health "${body}"; then
+    echo "    Health responder is NOT the full bot: ${HEALTH_URL}; leaving all processes running." >&2
+    return 1
+  fi
+  printf '%s' "${body}" | node -e '
+let raw = "";
+process.stdin.on("data", c => raw += c);
+process.stdin.on("end", () => {
+  try {
+    const j = JSON.parse(raw);
     if (j.ok === true) process.exit(0);
     console.error("health responded but not ok:", JSON.stringify(j.services));
   } catch (e) { console.error("health response was not JSON"); }
   process.exit(1);
 });
-'; do
-  elapsed=$((elapsed + 5))
+'
+}
+until local_probe_ok; do
+  elapsed=$((SECONDS - health_probe_start))
   if [ "${elapsed}" -ge "${HEALTH_TIMEOUT}" ]; then
     echo "" >&2
     echo "██████████████████████████████████████████████████████████" >&2
     echo "ERROR: post-restart health check FAILED after ${HEALTH_TIMEOUT}s." >&2
-    echo "       ${HEALTH_URL} never reported ok:true — the new build may be broken." >&2
-    echo "       Recent PM2 logs follow; roll back with:" >&2
-    echo "         git reset --hard <previous-good-sha> && bash deploy.sh" >&2
+    echo "       ${HEALTH_URL:-No full-edition endpoint found (ports: ${HEALTH_PORTS})} never reported full-edition ok:true." >&2
+    echo "       Verify the full app's port/settings; a different responder is not evidence it is down." >&2
+    echo "       No process has been stopped. Leave community independent; do not stop either app by port." >&2
+    echo "       Override the target with HEALTH_URL=http://127.0.0.1:<full-port>/api/health." >&2
+    echo "       Recent PM2 logs follow. Diagnose the target before attempting a rollback." >&2
     echo "██████████████████████████████████████████████████████████" >&2
     pm2 logs "${PM2_APP}" --lines 60 --nostream >&2 || true
     exit 1
   fi
-  echo "    ... waiting for ${HEALTH_URL} (${elapsed}s/${HEALTH_TIMEOUT}s)"
+  echo "    ... waiting for ${HEALTH_URL:-a full-edition health endpoint} (${elapsed}s/${HEALTH_TIMEOUT}s)"
   sleep 5
 done
 echo "    Health check passed — ${HEALTH_URL} reports ok:true."
@@ -313,9 +342,10 @@ process.stdin.on("end", () => {
   try {
     const arr = JSON.parse(raw);
     const p = Array.isArray(arr) && arr.find(x => x && x.name === process.argv[1]);
-    const env = (p && p.pm2_env && p.pm2_env.env) || {};
-    console.log(env.NODE_ENV || "");
-    console.log(env.CANONICAL_HOST || "");
+    const env = (p && p.pm2_env) || {};
+    const snapshot = env.env || {};
+    console.log(env.NODE_ENV || snapshot.NODE_ENV || "");
+    console.log(env.CANONICAL_HOST || snapshot.CANONICAL_HOST || "");
   } catch {}
 });
 ' "${PM2_APP}" 2>/dev/null || true)"
@@ -336,6 +366,10 @@ if [ -n "${PUBLIC_HEALTH_URL}" ] && [ "${PUBLIC_HEALTH_URL}" != "skip" ]; then
   public_probe_ok() {
     local body
     body="$(curl -fsS --max-time 10 "${PUBLIC_HEALTH_URL}")" || return 1
+    if ! is_full_health "${body}"; then
+      echo "    Public health responder is NOT the full bot: ${PUBLIC_HEALTH_URL}" >&2
+      return 1
+    fi
     printf '%s' "${body}" | node -e '
 let raw = "";
 process.stdin.on("data", c => raw += c);

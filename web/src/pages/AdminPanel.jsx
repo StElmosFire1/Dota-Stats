@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import LobbyAutomationControl from '../components/LobbyAutomationControl';
 import { useSuperuser } from '../context/SuperuserContext';
 import { useFeatureFlag } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
@@ -10335,6 +10336,7 @@ export default function AdminPanel() {
 
       {/* Task #497 — Site lockdown toggle */}
       <LockdownCard superuserKey={superuserKey} />
+      <LobbyAutomationControl editable />
 
       {/* Task #498 — Lockdown access log (hidden when the gate is off) */}
       <LockdownAttemptsCard superuserKey={superuserKey} />

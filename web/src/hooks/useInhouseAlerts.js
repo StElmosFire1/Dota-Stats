@@ -121,7 +121,7 @@ function ringChurchBell(ctx, masterVolume = 0.7) {
   setTimeout(() => { try { master.disconnect(); } catch (_) {} }, 3000);
 }
 
-export function useInhouseAlerts({ session, players, myAccountId, draftStatus }) {
+export function useInhouseAlerts({ session, players, myAccountId, draftStatus, enabled = true, managed = false }) {
   const [muted, setMutedState] = useState(() => (typeof window !== 'undefined' ? readMuted() : false));
   const audioCtxRef = useRef(null);
   // Lazy-loaded HTMLAudioElement for the shipped mp3; falls back to Web
@@ -177,6 +177,7 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
   }, []);
 
   const fire = useCallback((kind, opts) => {
+    if (!enabled) return;
     // v5.92: the mute toggle ONLY silences the audible chime — browser
     // notifications still fire so a player who muted the page tab can
     // still see the OS-level toast for an accept/draft/match-ready event.
@@ -241,7 +242,7 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
       } // end !skipBell
     }
     // Browser notification (best-effort, always attempted).
-    if (typeof window !== 'undefined' && 'Notification' in window) {
+    if (!managed && typeof window !== 'undefined' && 'Notification' in window) {
       const title = (opts && opts.title) || NOTIF_TITLES[kind] || 'Inhouse alert';
       const send = () => {
         try {
@@ -257,7 +258,7 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
         Notification.requestPermission().then(p => { if (p === 'granted') send(); }).catch(() => {});
       }
     }
-  }, [muted, voicePackId]);
+  }, [muted, voicePackId, enabled, managed]);
 
   // v6.62 / Task #206 — load the signed-in user's selected voice pack
   // alongside the existing pick-warning pref load. Anonymous viewers (or
@@ -362,6 +363,7 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
       prev.current = { status: null, sessionId: null, capForMe: false, pickerTeam: null, serverReady: false };
       return;
     }
+    if (managed || !enabled) return;
     const inSession = (players || []).some(p => Number(p.account_id) === Number(myAccountId));
     const cap1 = Number(session.captain1_account_id) || 0;
     const cap2 = Number(session.captain2_account_id) || 0;
@@ -394,7 +396,7 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
     }
 
     prev.current = { status: session.status, sessionId: session.id, capForMe: isCaptain, pickerTeam, serverReady };
-  }, [session, players, myAccountId, draftStatus, fire]);
+  }, [session, players, myAccountId, draftStatus, fire, managed, enabled]);
 
   // Task #178 — schedule a one-shot pre-deadline warning for the captain
   // on the clock. Runs whenever the deadline / picker / pref changes;
@@ -449,7 +451,7 @@ export function useInhouseAlerts({ session, players, myAccountId, draftStatus })
   }, [session, myAccountId, draftStatus, pickWarningEnabled, pickWarningLeadMs, fire]);
 
   return useMemo(
-    () => ({ muted, setMuted, toggleMute: () => setMuted(!muted), testChime }),
-    [muted, setMuted, testChime]
+    () => ({ muted, setMuted, toggleMute: () => setMuted(!muted), testChime, playReminder: (kind = 'accept') => fire(kind) }),
+    [muted, setMuted, testChime, fire]
   );
 }

@@ -6,6 +6,7 @@ import { SeasonProvider } from './context/SeasonContext';
 import { AdminProvider, useAdmin } from './context/AdminContext';
 import { SuperuserProvider, useSuperuser } from './context/SuperuserContext';
 import { SteamAuthProvider, useSteamAuth } from './context/SteamAuthContext';
+import LobbyAttention from './components/LobbyAttention';
 // v6.82 — useVoicePackEvents (post-match polling that fired win/loss/
 // first-blood/achievement-unlock while the user might be tabbed into
 // Dota) is intentionally not mounted anymore. Voice packs are now a
@@ -1322,6 +1323,7 @@ function AppShell() {
       {!isStreamer && <SuperuserLoginModal />}
       {!isStreamer && <WelcomeModal />}
       {!isStreamer && <GlobalOnboardingWizard />}
+      {!isStreamer && <LobbyAttention />}
       {!isStreamer && <GlobalVoicePackEvents />}
       {!isStreamer && <DiscordLinkModal />}
       {!isStreamer && <DiscordRetryBanner />}

@@ -50,6 +50,13 @@ async function main() {
     console.error('[Startup] Database init failed:', err.message);
   }
 
+  // Load before any Steam/Discord callbacks can create or join game lobbies.
+  try {
+    await require('./inhouse/automationPolicy').refresh();
+  } catch (err) {
+    console.error('[Startup] Dota automation disabled: policy could not be loaded:', err.message);
+  }
+
   // --- Auto-seed patch notes on every startup (upsert by version) ---
   if (startupStatus.database) {
     try {

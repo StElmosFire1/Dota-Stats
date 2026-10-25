@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { getProMatches, getProMatchLeagues, getProMatchPatches } from '../api';
 import { getHeroName, getHeroImageUrl, ALL_HERO_IDS } from '../heroNames';
 import SortableTh from '../components/SortableTh';
+import './ProReplayBrowser.css';
 
 // Task #378 — Pro replay browser.
 // Reads the cached OpenDota /proMatches snapshot from our DB (synced every
@@ -13,19 +14,16 @@ import SortableTh from '../components/SortableTh';
 // replay_url.
 
 function HeroIcons({ picks }) {
-  if (!Array.isArray(picks) || picks.length === 0) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+  if (!Array.isArray(picks) || picks.length === 0) return <span className="pr-hero-fallback">No picks recorded</span>;
   return (
-    <span style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap', alignItems: 'center' }}>
+    <span className="pr-heroes" aria-label={`${picks.length} heroes`}>
       {picks.map((p, i) => {
         const id = p?.hero_id;
         const img = id ? getHeroImageUrl(id) : null;
         const name = id ? (getHeroName(id) || `Hero ${id}`) : '?';
-        // Dota hero portraits are ~256×144 (16:9). Size by height and let the
-        // width follow the natural aspect ratio so they don't get squished
-        // into a square; object-fit:contain keeps them crisp.
         return img
-          ? <img key={`${id}-${i}`} src={img} alt={name} title={name} style={{ height: 24, width: 'auto', objectFit: 'contain', borderRadius: 3, display: 'block' }} />
-          : <span key={i} style={{ fontSize: 11, color: 'var(--text-muted)' }}>{name}</span>;
+          ? <img className="pr-hero-icon" key={`${id}-${i}`} src={img} alt={name} title={name} loading="lazy" />
+          : <span className="pr-hero-fallback" key={i}>{name}</span>;
       })}
     </span>
   );
@@ -57,10 +55,14 @@ export default function ProReplayBrowser() {
   // first; toggling a column you're already on flips the direction.
   const [sortKey, setSortKey] = useState('date');
   const [sortDir, setSortDir] = useState('desc');
+  const hasFilters = Object.values(filters).some(Boolean);
   const toggleSort = (k) => {
     if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(k); setSortDir('desc'); }
   };
+  const clearFilters = () => setFilters({
+    league_id: '', hero_id: '', position: '', patch: '', team: '', q: '',
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -112,17 +114,33 @@ export default function ProReplayBrowser() {
   };
 
   return (
-    <div>
-      <h1 className="page-title">Pro Replay Browser</h1>
-      <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-        Recent pro/league matches cached from OpenDota — filter by league, hero,
-        or team name, then jump straight into the Draft Assistant with both sides
-        pre-loaded, or open the replay on OpenDota.
-      </p>
+    <main className="pro-replay">
+      <header className="pr-heading">
+        <div className="pr-heading-copy">
+          <div className="pr-eyebrow">Match archive / Pro circuit</div>
+          <h1 className="pr-title">Pro Replay Browser</h1>
+          <p className="pr-description">
+            Study recent professional drafts and inhouse replays. Narrow the archive by event, hero, role, patch, or team, then carry any draft into the Draft Assistant.
+          </p>
+        </div>
+        <div className="pr-snapshot" aria-label="Maximum of one hundred matches shown">
+          <strong>{sorted.length}</strong> matches in view
+        </div>
+      </header>
 
-      <div className="card" style={{ padding: 16, marginBottom: 16, display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-          <span style={{ color: 'var(--text-muted)' }}>League</span>
+      <section className="pr-filter-panel" aria-labelledby="pr-filter-title">
+        <div className="pr-filter-head">
+          <div>
+            <span className="pr-section-label" id="pr-filter-title">Match filters</span>
+            <span className="pr-filter-caption">Combine filters to focus your review.</span>
+          </div>
+          <button className="pr-reset" type="button" onClick={clearFilters} disabled={!hasFilters}>
+            Clear filters
+          </button>
+        </div>
+        <div className="pr-filter-grid">
+        <label className="pr-field">
+          <span>League</span>
           <select
             value={filters.league_id}
             onChange={(e) => setFilters((f) => ({ ...f, league_id: e.target.value }))}
@@ -136,8 +154,8 @@ export default function ProReplayBrowser() {
             ))}
           </select>
         </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Hero</span>
+        <label className="pr-field">
+          <span>Hero</span>
           <select
             value={filters.hero_id}
             onChange={(e) => setFilters((f) => ({ ...f, hero_id: e.target.value }))}
@@ -149,8 +167,8 @@ export default function ProReplayBrowser() {
             ))}
           </select>
         </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Position</span>
+        <label className="pr-field">
+          <span>Position</span>
           <select
             value={filters.position}
             onChange={(e) => setFilters((f) => ({ ...f, position: e.target.value }))}
@@ -165,8 +183,8 @@ export default function ProReplayBrowser() {
             <option value="5">Hard support (5)</option>
           </select>
         </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Patch</span>
+        <label className="pr-field">
+          <span>Patch</span>
           <select
             value={filters.patch}
             onChange={(e) => setFilters((f) => ({ ...f, patch: e.target.value }))}
@@ -176,75 +194,118 @@ export default function ProReplayBrowser() {
             {patches.map((p) => <option key={p} value={p}>Patch {p}</option>)}
           </select>
         </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Team name</span>
+        <label className="pr-field">
+          <span>Team name</span>
           <input
             type="text"
             value={filters.team}
             placeholder="Team Liquid"
+            autoComplete="off"
             onChange={(e) => setFilters((f) => ({ ...f, team: e.target.value }))}
             aria-label="Filter by team name"
           />
         </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-          <span style={{ color: 'var(--text-muted)' }}>Search (any field)</span>
+        <label className="pr-field">
+          <span>Search archive</span>
           <input
             type="text"
             value={filters.q}
-            placeholder="ESL One, BetBoom…"
+            placeholder="Event, team, or match"
+            autoComplete="off"
             onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
             aria-label="Search any field"
           />
         </label>
-      </div>
+        </div>
+      </section>
 
       {error && (
-        <div className="card" style={{ padding: 12, marginBottom: 12, color: 'var(--accent-red, #f55)' }}>
-          {error}
+        <div className="pr-error" role="alert">
+          <p>{error}</p>
+          <button className="pr-retry" type="button" onClick={load}>Try again</button>
         </div>
       )}
 
+      <div className="pr-status" aria-live="polite">
+        <strong>{loading ? 'Updating match archive…' : error ? 'Archive unavailable' : `${sorted.length} ${sorted.length === 1 ? 'match' : 'matches'} found`}</strong>
+        <div className="pr-sort-mobile" aria-label="Sort matches">
+          <label htmlFor="pr-mobile-sort">Sort</label>
+          <select id="pr-mobile-sort" value={sortKey} onChange={(e) => {
+            setSortKey(e.target.value);
+            setSortDir('desc');
+          }}>
+            <option value="date">Date</option>
+            <option value="prestige">League</option>
+            <option value="duration">Length</option>
+          </select>
+          <button type="button" onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))} aria-label={`Sort ${sortDir === 'asc' ? 'descending' : 'ascending'}`} title={`Current order: ${sortDir === 'asc' ? 'ascending' : 'descending'}`}>
+            {sortDir === 'asc' ? '↑' : '↓'}
+          </button>
+        </div>
+      </div>
+
       {loading ? (
-        <p>Loading…</p>
-      ) : sorted.length === 0 ? (
-        <p style={{ color: 'var(--text-muted)' }}>No matches match these filters. The cache may still be warming up — check back in a few minutes.</p>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="table" style={{ width: '100%' }}>
+        <div className="pr-results" aria-label="Loading matches" aria-busy="true">
+          <div className="pr-table-scroll"><table className="pr-table"><tbody>
+            {[0, 1, 2, 3].map((row) => (
+              <tr className="pr-skeleton-row" key={row}>
+                <td><span className="pr-skeleton short" /></td>
+                <td><span className="pr-skeleton" /></td>
+                <td><span className="pr-skeleton" /></td>
+                <td><span className="pr-skeleton" /></td>
+                <td><span className="pr-skeleton wide" /></td>
+                <td><span className="pr-skeleton wide" /></td>
+                <td><span className="pr-skeleton short" /></td>
+                <td><span className="pr-skeleton short" /></td>
+                <td><span className="pr-skeleton" /></td>
+              </tr>
+            ))}
+          </tbody></table></div>
+        </div>
+      ) : !error && sorted.length === 0 ? (
+        <div className="pr-empty">
+          <h2>No matches in this view</h2>
+          <p>Try broadening or clearing your filters. The cached pro match archive may also be warming up; check back shortly.</p>
+        </div>
+      ) : !error && (
+        <div className="pr-results">
+          <div className="pr-table-scroll">
+          <table className="pr-table">
             <thead>
               <tr>
                 <SortableTh active={sortKey === 'date'} direction={sortDir} onSort={() => toggleSort('date')}>Date</SortableTh>
                 <SortableTh active={sortKey === 'prestige'} direction={sortDir} onSort={() => toggleSort('prestige')}>League</SortableTh>
-                <th>Radiant</th>
-                <th>Dire</th>
-                <th>Radiant picks</th>
-                <th>Dire picks</th>
+                <th scope="col">Radiant</th>
+                <th scope="col">Dire</th>
+                <th scope="col">Radiant draft</th>
+                <th scope="col">Dire draft</th>
                 <SortableTh active={sortKey === 'duration'} direction={sortDir} onSort={() => toggleSort('duration')}>Length</SortableTh>
-                <th>Winner</th>
-                <th style={{ minWidth: 200 }}>Actions</th>
+                <th scope="col">Winner</th>
+                <th scope="col" style={{ minWidth: 200 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((m) => (
                 <tr key={m.match_id}>
-                  <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fmtDate(m.start_time)}</td>
-                  <td>{m.league_name || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                  <td>{m.radiant_team_name || <span style={{ color: 'var(--text-muted)' }}>Radiant</span>}</td>
-                  <td>{m.dire_team_name || <span style={{ color: 'var(--text-muted)' }}>Dire</span>}</td>
-                  <td><HeroIcons picks={m.radiant_picks} /></td>
-                  <td><HeroIcons picks={m.dire_picks} /></td>
-                  <td>{fmtDuration(m.duration)}</td>
-                  <td style={{ fontWeight: 600, color: m.radiant_win ? 'var(--accent-green, #4caf50)' : 'var(--accent-red, #f44336)' }}>
+                  <td className="pr-date" data-label="Date">{fmtDate(m.start_time)}</td>
+                  <td className="pr-league" data-label="League">{m.league_name || '—'}</td>
+                  <td className="pr-team pr-team-radiant" data-label="Radiant">{m.radiant_team_name || 'Radiant'}</td>
+                  <td className="pr-team pr-team-dire" data-label="Dire">{m.dire_team_name || 'Dire'}</td>
+                  <td className="pr-hero-cell" data-label="Radiant draft"><HeroIcons picks={m.radiant_picks} /></td>
+                  <td className="pr-hero-cell" data-label="Dire draft"><HeroIcons picks={m.dire_picks} /></td>
+                  <td className="pr-duration" data-label="Length">{fmtDuration(m.duration)}</td>
+                  <td className={`pr-winner ${m.radiant_win ? 'pr-winner-radiant' : 'pr-winner-dire'}`} data-label="Winner">
                     {m.radiant_win == null ? '—' : (m.radiant_win ? 'Radiant' : 'Dire')}
                   </td>
-                  <td>
+                  <td className="pr-actions" data-label="Actions">
+                    <div className="pr-action-group">
                     <button
                       type="button"
                       onClick={() => analyzeInDraft(m)}
-                      style={{ marginRight: 6 }}
+                      className="pr-action pr-action-primary"
                       aria-label={`Analyze match ${m.match_id} in Draft Assistant`}
                     >
-                      Analyze in Draft
+                      Analyze draft
                     </button>
                     {m.has_local_replay ? (
                       // In-app replay viewer only works when we've also
@@ -253,24 +314,26 @@ export default function ProReplayBrowser() {
                       // exist solely on OpenDota fall through to the
                       // external link below so the row action is never
                       // a dead end.
-                      <Link to={`/replay/${m.match_id}`} aria-label={`Open replay viewer for ${m.match_id}`}>Replay</Link>
+                      <Link className="pr-action" to={`/replay/${m.match_id}`} aria-label={`Open replay viewer for ${m.match_id}`}>View replay</Link>
                     ) : m.has_replay ? (
-                      <a
+                      <a className="pr-action"
                         href={`https://www.opendota.com/matches/${m.match_id}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         aria-label={`Open match ${m.match_id} on OpenDota (replay available)`}
                       >
-                        Replay ↗
+                        OpenDota
                       </a>
-                    ) : null}
+                    ) : <span className="pr-no-replay">No replay</span>}
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }

@@ -1,5 +1,14 @@
 module.exports = [
   {
+    "version": "9.61",
+    "title": "Full-site deploys check the correct app",
+    "published_at": "2026-10-19",
+    "notes": [
+      "**Full-site deployments no longer mistake the community site for the full app.** Health checks verify the full edition even when saved port settings are stale, while keeping community independent. Both local readiness and public-site health must still pass, and a failed check does not stop either app."
+    ],
+    "author": "System"
+  },
+  {
     "version": "9.60",
     "title": "Safer match DMs and corrected inhouse ranks",
     "published_at": "2026-08-22",

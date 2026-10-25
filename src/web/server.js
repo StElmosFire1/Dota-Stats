@@ -13945,6 +13945,37 @@ NOTES
     }
   });
 
+  // Separate from session settings: governs bot/GC + dedicated-server actions.
+  router.get('/inhouse/automation', async (req, res) => {
+    try {
+      const enabled = await require('../inhouse/automationPolicy').refresh();
+      res.set('Cache-Control', 'no-store').json({ enabled });
+    } catch (err) {
+      res.status(503).json({ error: 'Could not read Dota automation policy.' });
+    }
+  });
+
+  router.put('/admin/inhouse/automation', requireAdmin, express.json(), async (req, res) => {
+    if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
+    try {
+      const enabled = await require('../inhouse/automationPolicy').setEnabled(req.body.enabled);
+      res.json({ enabled });
+    } catch (err) {
+      res.status(500).json({ error: 'Could not save Dota automation policy.' });
+    }
+  });
+
+  async function requireDotaAutomation(req, res, next) {
+    try {
+      if (!await require('../inhouse/automationPolicy').refresh()) {
+        return res.status(409).json({ error: 'Dota automation is off. Arrange the Dota match manually; website joining and drafting remain available.', code: 'DOTA_AUTOMATION_DISABLED' });
+      }
+      next();
+    } catch (err) {
+      res.status(503).json({ error: 'Dota automation policy unavailable. No game action was attempted.' });
+    }
+  }
+
   router.get('/inhouse', async (req, res) => {
     try {
       const tenantId = _resolveScopeTenantId(req);
@@ -14835,7 +14866,7 @@ NOTES
         if (_draftComplete || isDraftComplete(cur, allPlayers)) {
           provisionInhouseServer(req.params.id, { trigger: 'auto_draft_complete' })
             .then(r => {
-              if (r && r.ok) console.log(`[Inhouse] Auto-provisioned session #${req.params.id} after draft completion`);
+              if (r && r.ok && !r.skipped) console.log(`[Inhouse] Auto-provisioned session #${req.params.id} after draft completion`);
               else if (r && !r.skipped) console.warn(`[Inhouse] Auto-provision after draft failed for session #${req.params.id}:`, r.error);
             })
             .catch(e => console.warn('[Inhouse] Auto-provision threw:', e.message));
@@ -15007,7 +15038,7 @@ NOTES
   // the captains see a Retry button on /inhouse; this is the route it hits.
   // Authorization: either captain of the session, OR a superuser. Same
   // single-flight lock as the manual route — concurrent retries collapse.
-  router.post('/inhouse/:id/server/retry', express.json(), async (req, res) => {
+  router.post('/inhouse/:id/server/retry', express.json(), requireDotaAutomation, async (req, res) => {
     try {
       const actor = _resolveInhouseActor(req, false);
       const session = await db.getInhouseSession(req.params.id);
@@ -15058,7 +15089,7 @@ NOTES
   // and getOrCreateOpenInhouseSession) and to the autoStartTicker passes,
   // so it cannot pollute /inhouse history or trip background re-provisioning.
   // ──────────────────────────────────────────────────────────────────────
-  router.post('/admin/inhouse/diag-provision', requireSuperuser, express.json(), async (req, res) => {
+  router.post('/admin/inhouse/diag-provision', requireSuperuser, express.json(), requireDotaAutomation, async (req, res) => {
     try {
       const cfg = require('../config').config;
       const pool = db.getPool();
@@ -15205,7 +15236,7 @@ NOTES
   //   session's stored password in sync. Returns the same live-RCON
   //   `serverStatus` readout the diag-provision route returns.
   // ──────────────────────────────────────────────────────────────────────
-  router.post('/admin/inhouse/rcon-push-password', requireSuperuser, express.json(), async (req, res) => {
+  router.post('/admin/inhouse/rcon-push-password', requireSuperuser, express.json(), requireDotaAutomation, async (req, res) => {
     try {
       const cfg = require('../config').config;
       const cfgFailures = [];
@@ -15304,7 +15335,7 @@ NOTES
     }
   });
 
-  router.post('/inhouse/:id/server', requireAdmin, express.json(), async (req, res) => {
+  router.post('/inhouse/:id/server', requireAdmin, express.json(), requireDotaAutomation, async (req, res) => {
     try {
       // Task #168 — delegated to the shared helper so the manual admin
       // override and the auto-trigger from /draft-pick (and the recovery
