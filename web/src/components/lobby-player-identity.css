@@ -11,15 +11,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 34px;
-  width: 34px;
-  height: 34px;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
 }
 .lobby-player-ring,
 .lobby-player-ring svg {
   display: block;
-  width: 34px;
-  height: 34px;
+  width: 48px;
+  height: 48px;
 }
 .lobby-player-tier-overlay,
 .lobby-player-tier-standalone {
@@ -32,16 +32,16 @@
   inset: 0;
 }
 .lobby-player-tier-overlay img {
-  width: 17px;
-  height: 17px;
+  width: 24px;
+  height: 24px;
   object-fit: contain;
 }
 .lobby-player-tier-standalone {
-  inset: 3px;
+  inset: 4px;
 }
 .lobby-player-tier-standalone img {
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
 }
 .lobby-player-name { color: inherit; text-decoration: none; overflow-wrap: anywhere; }
@@ -63,8 +63,24 @@
   box-shadow: 0 10px 32px #0006;
   font: 13px/1.45 var(--font, sans-serif);
   overflow-wrap: anywhere;
-  pointer-events: none;
+  pointer-events: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .lobby-player-info strong { font-family: var(--font-serif); font-size: 16px; }
 .lobby-player-info-rank { color: var(--pb-brass, #c5a975); }
 .lobby-player-info small { color: var(--text-muted, #a0a8b6); }
+.lobby-player-scouting { width: 100%; min-width: 0; }
+.lobby-player-scouting section { border-top: 1px solid var(--pb-line, #ffffff20); margin-top: 10px; padding-top: 8px; }
+.lobby-player-scouting h4 { margin: 0 0 6px; font-size: 12px; color: var(--pb-brass, #c5a975); }
+.lobby-player-scouting h4 small { display: block; font-size: 10px; font-weight: 400; }
+.lobby-player-scouting p { margin: 4px 0; font-size: 12px; }
+.lobby-scout-title { color: var(--pb-brass, #c5a975); font-style: italic; }
+.lobby-scout-line { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px; margin: 4px 0; font-size: 12px; }
+.lobby-scout-hero { display: inline-flex; align-items: center; gap: 5px; }
+.lobby-scout-hero img { width: 28px; height: 16px; object-fit: cover; border-radius: 2px; }
+.lobby-scout-featured { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.lobby-scout-match { display: grid; grid-template-columns: minmax(0, 1fr) 18px auto; gap: 3px 8px; margin: 7px 0; font-size: 12px; }
+.lobby-scout-match small { grid-column: 1 / -1; }
+.lobby-scout-match .is-win { color: #7ccf94; }
+.lobby-scout-match .is-loss { color: #f19c9c; }

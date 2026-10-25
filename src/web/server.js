@@ -13930,6 +13930,19 @@ NOTES
 
   const { createRosterSummaryLoader, enrichRoster } = require('../inhouse/rosterSummary');
   const loadRosterSummaries = createRosterSummaryLoader(() => db.getComputedLeaderboard(null));
+  router.get('/inhouse/players/:accountId/scouting', async (req, res) => {
+    const accountId = String(req.params.accountId);
+    if (!/^[1-9]\d{0,15}$/.test(accountId)) return res.status(400).json({ error: 'Invalid account id' });
+    try {
+      if (await db.isAccountHidden(accountId)) return res.status(404).json({ error: 'Account not available' });
+      const { getPlayerScouting } = require('../inhouse/playerScouting');
+      const scouting = await getPlayerScouting(accountId, db);
+      res.set('Cache-Control', 'private, max-age=30').json(scouting);
+    } catch (err) {
+      console.warn('[Inhouse] Player scouting unavailable:', err.message);
+      res.status(503).json({ error: 'Player scouting is temporarily unavailable.' });
+    }
+  });
   router.get('/inhouse/active', async (req, res) => {
     try {
       const tenantId = _resolveScopeTenantId(req);

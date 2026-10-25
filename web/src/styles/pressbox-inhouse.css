@@ -9,6 +9,170 @@
   /* page wrapper — keeps every selector below page-scoped */
 }
 
+/* The inhouse board is the only page that deliberately escapes the site
+   reading-width container: teams sit wide while the draft pool stays legible. */
+.inhouse-route-container {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  padding-inline: clamp(16px, 2.2vw, 36px);
+}
+
+.pb-inhouse.pb-inhouse-wide {
+  width: 100%;
+  max-width: none !important;
+  box-sizing: border-box;
+}
+
+.pb-inhouse .inhouse-draft-board {
+  align-items: start;
+}
+.pb-inhouse .pb-inhouse-player-actions-panel:empty { display: none; }
+
+.pb-inhouse .pb-draft-pool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.pb-inhouse .inhouse-draft-board .pb-draft-player {
+  min-width: 0;
+  margin-bottom: 0 !important;
+}
+
+.pb-inhouse .pb-draft-player-footer {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.pb-inhouse .inhouse-draft-board .pb-draft-player.is-pool-player {
+  display: grid !important;
+  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 3px 9px !important;
+  padding: 7px 9px 7px 12px !important;
+}
+
+.pb-inhouse .pb-draft-player.is-pool-player > .lobby-player-cosmetics {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+.pb-inhouse .pb-draft-player.is-pool-player > div:nth-of-type(1) {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.pb-inhouse .pb-draft-player.is-pool-player > div:nth-of-type(1) > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 5px !important;
+  font-size: 14px !important;
+  line-height: 1.25;
+}
+
+.pb-inhouse .pb-draft-player.is-pool-player > div:nth-of-type(1) > div:nth-child(2) {
+  margin-top: 2px !important;
+  font-size: 12px !important;
+  line-height: 1.35;
+}
+
+.pb-inhouse .pb-draft-player.is-pool-player .pb-draft-player-footer {
+  grid-column: 2;
+  grid-row: 2;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.pb-inhouse .pb-draft-player.is-pool-player .pb-draft-player-status {
+  padding: 2px 7px !important;
+  font-size: 11px !important;
+  line-height: 1.3;
+}
+
+.pb-inhouse .pb-draft-player.is-pool-player .pb-draft-player-actions {
+  margin-left: auto;
+}
+
+.pb-inhouse .pb-draft-player.is-pool-player .pb-draft-player-actions button {
+  padding: 4px 8px !important;
+}
+
+.pb-inhouse.is-drafting .pb-inhouse-header {
+  margin-bottom: 12px;
+}
+
+.pb-inhouse .pb-draft-workspace {
+  margin-top: 10px !important;
+}
+
+.pb-inhouse .pb-draft-timer {
+  padding: 9px 13px !important;
+  margin-bottom: 9px !important;
+}
+
+.pb-inhouse .pb-draft-auto-note {
+  flex: 1 1 300px;
+  margin: 0;
+  color: var(--pb-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  max-width: 42rem;
+}
+
+@media (min-width: 1101px) {
+  .inhouse-route-container:has(.is-drafting) { padding-block: 12px; }
+  .pb-inhouse.is-drafting { padding: 0 !important; }
+  .pb-inhouse.is-drafting .pb-inhouse-header { align-items: center; gap: 16px; margin-bottom: 10px; }
+  .pb-inhouse.is-drafting .pb-inhouse-heading-copy { flex: 1 1 0; }
+  .pb-inhouse.is-drafting .pb-page-title { font-size: 28px !important; line-height: 1.15; }
+  .pb-inhouse.is-drafting .pb-inhouse-subtitle { margin-top: 6px; line-height: 1.4; }
+  .pb-inhouse.is-drafting .pb-inhouse-session { padding: 12px !important; }
+  .pb-inhouse.is-drafting .pb-inhouse-session-heading { margin-bottom: 8px !important; }
+  .pb-inhouse.is-drafting .pb-inhouse-session-heading > div:first-child { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .pb-inhouse.is-drafting .pb-inhouse-session-heading > div:first-child > div { margin-top: 0 !important; }
+}
+
+@media (max-width: 1100px) {
+  .pb-inhouse .inhouse-draft-board {
+    grid-template-columns: minmax(220px, 0.85fr) minmax(420px, 1.5fr) minmax(220px, 0.85fr) !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .pb-inhouse .inhouse-draft-board {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .pb-inhouse .pb-draft-pool-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .inhouse-route-container {
+    padding-inline: 12px;
+  }
+
+  .pb-inhouse .pb-draft-pool-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pb-inhouse .pb-draft-player {
+    flex-wrap: wrap;
+  }
+
+  .pb-inhouse .pb-draft-player > div:nth-of-type(1) {
+    flex: 1 1 calc(100% - 64px);
+  }
+}
+
 /* ---- Page header ---- */
 .pb-inhouse .pb-inhouse-header {
   display: flex;

@@ -89,7 +89,7 @@ function Countdown({ startsAt, seconds, onExpire, endsAt, label, variant }) {
   );
 }
 
-function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canDraft, onDraftPick, balanceScore, viewerIsAdmin, myCaptainTeam }) {
+function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canDraft, onDraftPick, balanceScore, viewerIsAdmin, myCaptainTeam, isPoolPlayer = false }) {
   const mmr = player.inhouse_mmr == null ? null : Math.round(Number(player.inhouse_mmr));
   const statusColors = {
     registered: { bg: 'rgba(120,120,120,0.15)', color: '#aaa', label: 'Waiting' },
@@ -103,12 +103,12 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
   const displayName = resolvePlayerDisplayName(player);
 
   return (
-    <div style={{
+    <div className={`pb-draft-player${isPoolPlayer ? ' is-pool-player' : ''}`} style={{
       position: 'relative',
       display: 'flex',
       alignItems: 'center',
       gap: 12,
-      padding: '10px 14px 10px 18px',
+      padding: '8px 10px 8px 14px',
       background: isCurrentUser ? 'color-mix(in srgb, var(--pb-brass) 10%, var(--pb-surface))' : 'var(--pb-surface)',
       border: `1px solid ${isCurrentUser ? 'color-mix(in srgb, var(--pb-brass) 45%, var(--pb-line))' : 'var(--pb-line)'}`,
       borderRadius: 6,
@@ -181,36 +181,36 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
           {player.not_in_dota === false && player.status === 'accepted' && <span> · 🎮 In Dota</span>}
         </div>
       </div>
-      <div style={{ padding: '4px 10px', background: s.bg, color: s.color, borderRadius: 4, fontSize: 12, fontWeight: 600 }}>
-        {s.label}
+      <div className="pb-draft-player-footer">
+        <div className="pb-draft-player-status" style={{ padding: '4px 10px', background: s.bg, color: s.color, borderRadius: 4, fontSize: 12, fontWeight: 600 }}>
+          {s.label}
+        </div>
+        {/* Task #815 — captain pick and admin override actions stay available. */}
+        {canDraft && player.team === 0 && player.status !== 'declined' && (
+          viewerIsAdmin ? (
+            <div className="pb-draft-player-actions" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <span aria-hidden="true" title="Admin override" style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>Admin</span>
+              <button type="button" aria-label={`Admin: assign ${displayName} to Green side`} onClick={() => onDraftPick(player.account_id, 1)} style={{ padding: '4px 8px', background: '#2e7d32', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>→ Green</button>
+              <button type="button" aria-label={`Admin: assign ${displayName} to Red side`} onClick={() => onDraftPick(player.account_id, 2)} style={{ padding: '4px 8px', background: '#c62828', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>→ Red</button>
+            </div>
+          ) : myCaptainTeam ? (
+            <button
+              type="button"
+              className="pb-draft-player-actions"
+              aria-label={`Pick ${displayName} onto your side`}
+              onClick={() => onDraftPick(player.account_id, myCaptainTeam)}
+              style={{
+                padding: '6px 16px',
+                background: myCaptainTeam === 1 ? '#2e7d32' : '#c62828',
+                color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer',
+                fontSize: 13, fontWeight: 700, letterSpacing: 0.4,
+              }}
+            >
+              Pick
+            </button>
+          ) : null
+        )}
       </div>
-      {/* Task #815 — draft controls. The captain whose turn it is sees a
-          single "Pick" button that drops the player onto their OWN side.
-          Admins get a clearly-separated override that can still assign to
-          either side (Green / Red). Captains whose turn it isn't see nothing. */}
-      {canDraft && player.team === 0 && player.status !== 'declined' && (
-        viewerIsAdmin ? (
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <span aria-hidden="true" title="Admin override" style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>Admin</span>
-            <button type="button" aria-label={`Admin: assign ${displayName} to Green side`} onClick={() => onDraftPick(player.account_id, 1)} style={{ padding: '4px 8px', background: '#2e7d32', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>→ Green</button>
-            <button type="button" aria-label={`Admin: assign ${displayName} to Red side`} onClick={() => onDraftPick(player.account_id, 2)} style={{ padding: '4px 8px', background: '#c62828', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>→ Red</button>
-          </div>
-        ) : myCaptainTeam ? (
-          <button
-            type="button"
-            aria-label={`Pick ${displayName} onto your side`}
-            onClick={() => onDraftPick(player.account_id, myCaptainTeam)}
-            style={{
-              padding: '6px 16px',
-              background: myCaptainTeam === 1 ? '#2e7d32' : '#c62828',
-              color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer',
-              fontSize: 13, fontWeight: 700, letterSpacing: 0.4,
-            }}
-          >
-            Pick
-          </button>
-        ) : null
-      )}
     </div>
   );
 }
@@ -1044,7 +1044,7 @@ export default function Inhouse() {
   if (loading) return <div style={{ padding: 20 }}>Loading…</div>;
 
   return (
-    <div className="pb-inhouse" style={{ padding: 20, maxWidth: 1100, margin: '0 auto' }}>
+    <div className={`pb-inhouse${['drafting', 'server_failed', 'in_progress', 'completed'].includes(session?.status) ? ' pb-inhouse-wide' : ''}${session?.status === 'drafting' ? ' is-drafting' : ''}`} style={{ padding: 20, maxWidth: 1100, margin: '0 auto' }}>
       <header className="pb-inhouse-header">
         <div className="pb-inhouse-heading-copy">
           <div className="pb-eyebrow" style={{ marginBottom: 6 }}>Live Lobby</div>
@@ -1056,12 +1056,18 @@ export default function Inhouse() {
               'linear-gradient(to right, var(--pb-line), var(--pb-line)) bottom/100% 1px no-repeat',
           }} />
           <p className="pb-inhouse-subtitle">
-            A private 5v5 Dota 2 match for OCE community members. Sign in, pick your preferred roles, wait for 10 players, then get drafted onto a team. In website-only mode, arrange the Dota lobby manually.
+            {session?.status === 'drafting'
+              ? 'Draft your team below. Hover a player’s name for hero history, recent results and roles.'
+              : 'A private 5v5 Dota 2 match for OCE community members. Sign in, pick your preferred roles, wait for 10 players, then get drafted onto a team. In website-only mode, arrange the Dota lobby manually.'}
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {/* v5.92 — mute toggle for inhouse sound alerts. */}
           <button className="btn" type="button" aria-haspopup="dialog" onClick={openLobbyReminderSettings}>Lobby reminder settings</button>
+          {session?.status === 'drafting' && (
+            <LobbyAutomationControl editable={isAdmin || hasAdminRole} visible={isAdmin || hasAdminRole}
+              collapsible onChange={setDotaAutomation} />
+          )}
           {SHOW_SERVER_CONNECT && serverStatus && (
             <div className="pb-card pb-card-sm pb-server-status-card" style={{ padding: '10px 16px' }}>
               <div className="pb-eyebrow" style={{ marginBottom: 5 }}>Dedicated Server</div>
@@ -1081,12 +1087,12 @@ export default function Inhouse() {
         </div>
       </header>
 
-      <LobbyAutomationControl
+      {session?.status !== 'drafting' && <LobbyAutomationControl
         editable={isAdmin || hasAdminRole}
         visible={isAdmin || hasAdminRole}
         collapsible
         onChange={setDotaAutomation}
-      />
+      />}
 
       {error && <div style={{ padding: 12, background: 'rgba(244,67,54,0.1)', border: '1px solid #f44336', borderRadius: 6, marginBottom: 16, color: '#f44336' }}>{error}</div>}
 
@@ -1228,12 +1234,12 @@ export default function Inhouse() {
           completed:   { bg: 'rgba(120,120,120,0.18)', fg: 'var(--text-muted)', label: 'COMPLETED' },
         })[session.status] || { bg: 'var(--bg)', fg: 'var(--text-muted)', label: String(session.status || '').toUpperCase() };
         return (
-        <div className="pb-card" style={{
+        <div className="pb-card pb-inhouse-session" style={{
           padding: 20,
           borderTop: '3px solid var(--pb-brass)',
           marginBottom: 20,
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
+          <div className="pb-inhouse-session-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
             <div style={{ flex: '1 1 auto', minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <h2 className="pb-serif" style={{ margin: 0, fontSize: '1.5rem', letterSpacing: 0.2 }}>
@@ -1503,7 +1509,7 @@ export default function Inhouse() {
 
           {/* Player accept/decline panel */}
           {myAccountId && (
-            <div style={{ marginTop: 16, padding: '18px 20px', background: 'rgba(33,150,243,0.06)', borderRadius: 8, border: '1px solid rgba(33,150,243,0.2)' }}>
+            <div className="pb-inhouse-player-actions-panel" style={{ marginTop: 16, padding: '18px 20px', background: 'rgba(33,150,243,0.06)', borderRadius: 8, border: '1px solid rgba(33,150,243,0.2)' }}>
               {!isInSession && ['open','accepting'].includes(session.status) && (
                 <div>
                   <div style={{ fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Join this inhouse</div>
@@ -1799,10 +1805,10 @@ export default function Inhouse() {
             );
 
             return (
-              <div style={{ marginTop: 20 }}>
+              <div className="pb-draft-workspace" style={{ marginTop: 20 }}>
                 {/* Timer / turn-indicator strip — anchored at the top of the draft board. */}
                 {isDrafting && (
-                  <div className="pb-card" style={{
+                  <div className="pb-card pb-draft-timer" style={{
                     borderTop: '3px solid var(--pb-brass)',
                     padding: '12px 16px',
                     marginBottom: 14,
@@ -1818,6 +1824,11 @@ export default function Inhouse() {
                         {undrafted.length > 0 ? `${undrafted.length} player${undrafted.length === 1 ? '' : 's'} remaining` : 'Draft complete'}
                       </div>
                     </div>
+                    {undrafted.length > 0 && (
+                      <div className="pb-draft-auto-note">
+                        Timer expiry auto-picks the highest lobby skill-score player remaining. Roles are not balanced; checked every 5 seconds.
+                      </div>
+                    )}
                     {turn && undrafted.length > 0 && (
                       <div style={{
                         padding: '8px 14px', borderRadius: 4, fontWeight: 700, fontSize: 13,
@@ -1924,7 +1935,7 @@ export default function Inhouse() {
                 {/* Three-column board: roster · pool · roster. Stacks on narrow screens. */}
                 <div style={{
                   display: 'grid',
-                  gridTemplateColumns: 'minmax(220px, 1fr) minmax(260px, 1.4fr) minmax(220px, 1fr)',
+                  gridTemplateColumns: 'minmax(260px, 1fr) minmax(520px, 2fr) minmax(260px, 1fr)',
                   gap: 14,
                 }} className="inhouse-draft-board">
                   <RosterPanel
@@ -1936,7 +1947,7 @@ export default function Inhouse() {
                   <div className="pb-card" style={{
                     borderTop: '3px solid var(--pb-brass)',
                     padding: '14px 12px 12px',
-                    minHeight: 320,
+                    minHeight: 0,
                   }}>
                     <div className="pb-eyebrow" style={{ letterSpacing: '0.16em', marginBottom: 2 }}>The Pool</div>
                     <div style={{
@@ -1954,12 +1965,13 @@ export default function Inhouse() {
                       ? <div style={{ color: 'var(--text-muted)', fontSize: 13, fontStyle: 'italic', padding: '6px 4px' }}>
                           {isDrafting ? 'All players drafted.' : 'No unpicked players.'}
                         </div>
-                      : undrafted.sort((a,b)=>Number(b.trueskill_mmr)-Number(a.trueskill_mmr)).map(p => (
+                      : <div className="pb-draft-pool-grid">{undrafted.sort((a,b)=>Number(b.trueskill_mmr)-Number(a.trueskill_mmr)).map(p => (
                           <PlayerRow key={p.account_id} player={p} session={session}
                             isCurrentUser={Number(p.account_id) === myAccountId}
                             viewerIsAdmin={isAdmin} myCaptainTeam={myCaptainTeam}
+                            isPoolPlayer
                             canDraft={isDrafting && canDraft} onDraftPick={draftPick} />
-                        ))}
+                        ))}</div>}
                   </div>
 
                   <RosterPanel
@@ -2031,7 +2043,7 @@ export default function Inhouse() {
         );
       })()}
 
-      {pastSessions.length > 0 && (() => {
+      {pastSessions.length > 0 && !['drafting', 'server_failed', 'in_progress'].includes(session?.status) && (() => {
         const PAST_STATUS_BADGE = {
           completed:   { bg: 'rgba(76,175,80,0.14)',   fg: '#4caf50', label: 'Completed' },
           cancelled:   { bg: 'rgba(244,67,54,0.14)',   fg: '#f44336', label: 'Cancelled' },

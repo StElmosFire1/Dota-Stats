@@ -1334,7 +1334,7 @@ function AppShell() {
       {!isStreamer && <DiscordRetryBanner />}
       {!isStreamer && <SignInRetryBanner />}
       {!isStreamer && <SideBanners />}
-      <main className={isOverlayRoute ? 'overlay-main' : 'container'}>
+      <main className={isOverlayRoute ? 'overlay-main' : location.pathname === '/inhouse' ? 'container inhouse-route-container' : 'container'}>
         <RootErrorBoundary resetKey={location.pathname}>
           <Suspense fallback={isStreamer ? null : <div className="loading">Loading…</div>}>
             <Routes>
