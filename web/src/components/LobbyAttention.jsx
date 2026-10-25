@@ -1,8 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSteamAuth } from '../context/SteamAuthContext';
 import { lobbyAttention } from '../lib/lobbyAttention';
 import { useInhouseAlerts } from '../hooks/useInhouseAlerts';
+import Dialog from './Dialog';
+import { LOBBY_REMINDER_SETTINGS_EVENT } from '../lib/lobbyReminderSettings';
 
 // Mounted outside routes so reminders survive navigation to another site page.
 // Preferences are per-account, per-browser; no unsolicited sound or permission prompt.
@@ -13,6 +15,10 @@ export default function LobbyAttention() {
   const [enabled, setEnabled] = useState(false);
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
+  const [permission, setPermission] = useState(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [snapshot, setSnapshot] = useState({ session: null, players: [], draft: null });
   const sounds = useInhouseAlerts({
     session: snapshot.session, players: snapshot.players, myAccountId: accountId ? Number(accountId) : null,
@@ -29,6 +35,17 @@ export default function LobbyAttention() {
   const ackKey = `${storageKey}.ack`;
 
   useEffect(() => {
+    const open = () => {
+      setPermission(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+      setSettingsOpen(true);
+    };
+    window.addEventListener(LOBBY_REMINDER_SETTINGS_EVENT, open);
+    return () => window.removeEventListener(LOBBY_REMINDER_SETTINGS_EVENT, open);
+  }, []);
+
+  useEffect(() => {
+    setSettingsOpen(false);
+    setSettingsError('');
     try { setEnabled(localStorage.getItem(storageKey) === 'true'); } catch { setEnabled(false); }
     setNotice(null); setSnapshot({ session: null, players: [], draft: null });
     try {
@@ -133,18 +150,24 @@ export default function LobbyAttention() {
 
   async function toggle() {
     const next = !enabled;
+    // Update the visible setting immediately: a browser permission prompt may
+    // remain unanswered and must not make the website control appear broken.
+    setEnabled(next);
+    setSettingsError('');
+    try { localStorage.setItem(storageKey, String(next)); } catch { /* In-memory preference still works. */ }
     if (next) {
       try {
         sounds.setMuted(false);
         sounds.testChime();
-        if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
-      } catch { setError('Desktop alerts or sound are unavailable. In-site reminders still work.'); }
+        if ('Notification' in window && Notification.permission === 'default') {
+          setPermission(await Notification.requestPermission());
+        }
+      } catch { setSettingsError('Desktop alerts or sound are unavailable. In-site reminders still work.'); }
     }
-    setEnabled(next);
-    try { localStorage.setItem(storageKey, String(next)); } catch { /* In-memory preference still works. */ }
   }
   if (!accountId) return null;
   return (
+    <>
     <aside id="lobby-reminders" aria-label="Lobby reminders" style={{ position: 'fixed', bottom: 18, right: 18, zIndex: 1200, maxWidth: 'min(360px, calc(100vw - 36px))', padding: 14, borderRadius: 10, background: 'var(--bg-card, #172034)', color: 'var(--text-primary)', border: '1px solid var(--border)', boxShadow: '0 4px 24px #0005' }}>
       <button className="btn" type="button" aria-pressed={enabled} onClick={toggle}>Lobby reminders: {enabled ? 'on' : 'off'}</button>
       {enabled && <details style={{ fontSize: 12, marginTop: 8 }}><summary>Sound and browser permissions</summary><p>Sound repeats every 20 seconds until acknowledged or no longer needed. Keep this site open. After a refresh, <button type="button" onClick={sounds.testChime}>test / resume sound</button>. Browser and OS settings may limit background alerts.</p></details>}
@@ -160,5 +183,25 @@ export default function LobbyAttention() {
         }}>Acknowledge</button>
       </div>}
     </aside>
+    <Dialog open={settingsOpen} onClose={closeSettings} labelledBy="lobby-reminder-settings-title"
+      contentStyle={{ width: 'min(440px, 100%)', maxHeight: '85vh', overflowY: 'auto', padding: 24, borderRadius: 10, background: 'var(--bg-card, #172034)', color: 'var(--text)', border: '1px solid var(--border)' }}>
+      <h2 id="lobby-reminder-settings-title" style={{ marginTop: 0 }}>Lobby reminder settings</h2>
+      <p>Optional reminders for ready checks, your draft turn and match updates. This setting applies to your account in this browser.</p>
+      <button className="btn" type="button" aria-pressed={enabled} onClick={toggle}>
+        {enabled ? 'Turn lobby reminders off' : 'Turn lobby reminders on'}
+      </button>
+      <p role="status">Reminders are {enabled ? 'on' : 'off'}.</p>
+      <p>When enabled, sound repeats every 20 seconds until you acknowledge the update or it no longer needs your attention.</p>
+      <button className="btn" type="button" disabled={!enabled} onClick={() => { sounds.setMuted(false); sounds.testChime(); }}>
+        Test / resume sound
+      </button>
+      <p>Desktop notifications: {permission === 'granted' ? 'allowed' : permission === 'denied' ? 'blocked in your browser' : permission === 'unsupported' ? 'not supported in this browser' : 'permission not granted yet'}.</p>
+      {permission === 'denied' && <p>Allow notifications in your browser’s site permissions if you want desktop popups. In-site reminders remain available.</p>}
+      <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Keep this site open. Browser, device and operating-system settings can limit background sound and notifications.</p>
+      {settingsError && <p role="alert">{settingsError}</p>}
+      {enabled && error && <p role="status">{error}</p>}
+      <button className="btn" type="button" onClick={closeSettings}>Done</button>
+    </Dialog>
+    </>
   );
 }

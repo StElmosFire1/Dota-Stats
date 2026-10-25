@@ -6,7 +6,8 @@ import { useSteamAuth } from '../context/SteamAuthContext';
 import { WhyIsThisSafeLink } from '../components/SteamTrustModal';
 import { resolveDisplayName, resolvePlayerDisplayName } from '../utils/displayName';
 import LobbyAutomationControl from '../components/LobbyAutomationControl';
-import LobbyPlayerIdentity from '../components/LobbyPlayerIdentity';
+import LobbyPlayerIdentity, { LobbyPlayerEmblem } from '../components/LobbyPlayerIdentity';
+import { openLobbyReminderSettings } from '../lib/lobbyReminderSettings';
 import { superuserFetch, getCaptainAutoPickStats } from '../api';
 import MoodFormWidget from '../components/MoodFormWidget';
 import SignInPrompt from '../components/SignInPrompt';
@@ -120,8 +121,7 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
         background: `linear-gradient(to bottom, transparent, ${isCurrentUser ? 'var(--amber)' : 'var(--brass)'} 30%, ${isCurrentUser ? 'var(--amber)' : 'var(--brass)'} 70%, transparent)`,
         opacity: isCurrentUser ? 0.95 : 0.55,
       }} />
-      {/* T005 — serif monogram avatar (mirrors the mockup's roster/pool cards). */}
-      <span className="pb-avatar" aria-hidden="true">{(displayName || '?').trim().charAt(0) || '?'}</span>
+      <LobbyPlayerEmblem player={player} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, fontFamily: 'var(--font-serif)', fontSize: 15 }}>
           {/* Task #815 — open the profile in a NEW TAB so clicking a player
@@ -1061,7 +1061,7 @@ export default function Inhouse() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {/* v5.92 — mute toggle for inhouse sound alerts. */}
-          <a className="btn" href="#lobby-reminders">Lobby reminder settings</a>
+          <button className="btn" type="button" aria-haspopup="dialog" onClick={openLobbyReminderSettings}>Lobby reminder settings</button>
           {SHOW_SERVER_CONNECT && serverStatus && (
             <div className="pb-card pb-card-sm pb-server-status-card" style={{ padding: '10px 16px' }}>
               <div className="pb-eyebrow" style={{ marginBottom: 5 }}>Dedicated Server</div>

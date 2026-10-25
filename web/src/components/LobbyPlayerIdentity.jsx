@@ -7,6 +7,29 @@ import FounderRing from './founderRings/FounderRing';
 import { FRAME_META } from '../profileCosmetics';
 import './lobby-player-identity.css';
 
+export function LobbyPlayerEmblem({ player }) {
+  const mmr = player.inhouse_mmr == null ? null : Number(player.inhouse_mmr);
+  const hasRating = mmr != null && Number.isFinite(mmr);
+  const isLeader = Number(player.leaderboard_rank) === 1;
+  const hasRing = Boolean(player.founder_ring);
+  if (!hasRing && !hasRating) return null;
+  return (
+    <span className={`lobby-player-cosmetics${hasRing && hasRating ? ' has-ring-and-tier' : ''}`}
+      aria-label={hasRing ? 'Equipped ring' : 'Inhouse rank'}>
+      {hasRing && (
+        <span className="lobby-player-ring" title="Equipped ring">
+          <FounderRing sku={player.founder_ring} size={34} disc="emblem" />
+        </span>
+      )}
+      {hasRating && (
+        <span className={hasRing ? 'lobby-player-tier-overlay' : 'lobby-player-tier-standalone'}>
+          <TierEmblemImg mmr={mmr} isLeader={isLeader} />
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function LobbyPlayerIdentity({ player, displayName }) {
   const [anchor, setAnchor] = useState(null);
   const [dismissed, setDismissed] = useState(false);
@@ -28,8 +51,6 @@ export default function LobbyPlayerIdentity({ player, displayName }) {
   return (
     <span className="lobby-player-identity" onMouseEnter={show} onMouseLeave={close}
       onFocus={show} onBlur={close} onKeyDown={event => { if (event.key === 'Escape') setDismissed(true); }}>
-      {player.founder_ring && <span title="Equipped ring"><FounderRing sku={player.founder_ring} size={30} disc="emblem" /></span>}
-      {hasRating && <TierEmblemImg mmr={mmr} isLeader={isLeader} />}
       <Link to={`/player/${player.account_id}`} target="_blank" rel="noopener noreferrer"
         aria-label={`Open ${displayName}'s profile in a new tab`}
         aria-describedby={open ? id : undefined}
