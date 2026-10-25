@@ -284,3 +284,238 @@
 .pb-inhouse .pb-inhouse-past-row:focus-within {
   background: color-mix(in srgb, var(--pb-brass) 5%, transparent);
 }
+
+/* ---- Compact captain poll ---- */
+.pb-inhouse .pb-captain-vote {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--pb-surface);
+  border: 1px solid var(--pb-line);
+}
+
+.pb-inhouse .pb-captain-vote-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+}
+
+.pb-inhouse .pb-captain-vote-title {
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+
+.pb-inhouse .pb-captain-vote-copy {
+  color: var(--pb-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pb-inhouse .pb-captain-vote-leader strong {
+  color: var(--pb-brass);
+  font-family: var(--font-serif);
+}
+
+.pb-inhouse .pb-captain-vote-leader .pb-num {
+  color: var(--pb-muted);
+  font-size: 11px;
+}
+
+.pb-inhouse .pb-captain-vote-access {
+  margin-left: 8px;
+  color: var(--pb-muted);
+  font-size: 11px;
+  white-space: normal;
+}
+
+.pb-inhouse .pb-captain-vote-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.pb-inhouse .pb-captain-vote-option {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--pb-line);
+  border-radius: 5px;
+  background: var(--pb-elevated);
+}
+
+.pb-inhouse .pb-captain-vote-option.is-leading {
+  border-color: color-mix(in srgb, var(--pb-brass) 54%, var(--pb-line));
+}
+
+.pb-inhouse .pb-captain-vote-option.is-selected {
+  border-color: var(--pb-brass);
+  background: color-mix(in srgb, var(--pb-brass) 12%, var(--pb-surface));
+}
+
+.pb-inhouse .pb-captain-vote-choice {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  color: var(--text);
+  text-align: left;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pb-inhouse .pb-captain-vote-choice:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.pb-inhouse .pb-captain-vote-choice:not(:disabled):hover {
+  color: var(--pb-brass);
+}
+
+.pb-inhouse .pb-captain-vote-choice:focus-visible,
+.pb-inhouse .pb-captain-vote-description summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--pb-brass) 72%, transparent);
+  outline-offset: 2px;
+  position: relative;
+  z-index: 1;
+}
+
+.pb-inhouse .pb-captain-vote-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-serif);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pb-inhouse .pb-captain-vote-count {
+  min-width: 1.8em;
+  margin-left: auto;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pb-line) 60%, transparent);
+  color: var(--pb-muted);
+  font: 700 11px/1.35 var(--font-mono, monospace);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pb-inhouse .pb-captain-vote-option.is-selected .pb-captain-vote-count {
+  background: var(--pb-brass);
+  color: var(--pb-surface);
+}
+
+.pb-inhouse .pb-captain-vote-state {
+  flex: 0 0 auto;
+  color: var(--pb-brass);
+  font: 700 9px/1.2 var(--font-condensed, var(--font));
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pb-inhouse .pb-captain-vote-description {
+  border-top: 1px solid color-mix(in srgb, var(--pb-line) 68%, transparent);
+}
+
+.pb-inhouse .pb-captain-vote-description summary {
+  width: fit-content;
+  padding: 3px 8px 5px;
+  color: var(--pb-muted);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1.2;
+  list-style: none;
+}
+
+.pb-inhouse .pb-captain-vote-description summary::-webkit-details-marker {
+  display: none;
+}
+
+.pb-inhouse .pb-captain-vote-description summary::after {
+  content: " +";
+  color: var(--pb-brass);
+}
+
+.pb-inhouse .pb-captain-vote-description[open] summary::after {
+  content: " −";
+}
+
+.pb-inhouse .pb-captain-vote-description p {
+  margin: 0;
+  padding: 0 8px 8px;
+  color: var(--pb-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* The scroll frame is the details content's only full-width child: it respects
+   the inset imposed by the shared details styling and contains narrow screens. */
+.pb-inhouse .pb-inhouse-past-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--pb-line);
+  border-radius: 5px;
+  overscroll-behavior-inline: contain;
+}
+
+.pb-inhouse .pb-inhouse-past-table {
+  width: 100%;
+  min-width: 400px;
+  border: 0;
+  border-radius: 0;
+}
+
+.pb-inhouse .pb-inhouse-past-table th,
+.pb-inhouse .pb-inhouse-past-table td {
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+
+.pb-inhouse .pb-inhouse-past-table th {
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .pb-inhouse .pb-captain-vote-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .pb-inhouse .pb-captain-vote {
+    padding: 10px;
+  }
+
+  .pb-inhouse .pb-captain-vote-options {
+    gap: 6px;
+  }
+
+  .pb-inhouse .pb-captain-vote-choice {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px;
+  }
+
+  .pb-inhouse .pb-captain-vote-state {
+    order: 3;
+    width: 100%;
+  }
+
+  .pb-inhouse .pb-inhouse-past-table {
+    min-width: 360px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pb-inhouse .pb-inhouse-past-row,
+  .pb-inhouse .pb-inhouse-admin-settings > summary::before,
+  .pb-inhouse .pb-inhouse-history > summary::before {
+    transition: none;
+  }
+}

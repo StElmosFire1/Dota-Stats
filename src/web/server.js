@@ -13928,12 +13928,19 @@ NOTES
   // Inhouse Sessions API (FACEIT-style match accept + draft)
   // ============================================================
 
+  const { createRosterSummaryLoader, enrichRoster } = require('../inhouse/rosterSummary');
+  const loadRosterSummaries = createRosterSummaryLoader(() => db.getComputedLeaderboard(null));
   router.get('/inhouse/active', async (req, res) => {
     try {
       const tenantId = _resolveScopeTenantId(req);
       const session = await db.getActiveInhouseSession({ tenantId });
       if (!session) return res.json({ session: null });
       const players = await db.getInhouseSessionPlayers(session.id);
+      try {
+        enrichRoster(players, await loadRosterSummaries());
+      } catch (err) {
+        console.warn('[Inhouse] Public player summary unavailable:', err.message);
+      }
       // Enrich the lobby roster with current win/loss streaks (same source as
       // the leaderboard). Best-effort — the lobby must render without it.
       try {

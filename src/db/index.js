@@ -14816,10 +14816,13 @@ async function getInhouseSessionPlayers(sessionId) {
             r.discord_id AS discord_id,
             COALESCE(r.wins, 0) AS wins,
             COALESCE(r.losses, 0) AS losses,
+            pp.profile_frame,
+            pp.equipped_founder_ring AS founder_ring,
             lp.last_played
        FROM inhouse_session_players isp
        LEFT JOIN ratings r ON r.player_id = isp.account_id
        LEFT JOIN nicknames n ON n.account_id = isp.account_id
+       LEFT JOIN player_profiles pp ON pp.account_id = isp.account_id
        LEFT JOIN (
          -- One grouped pass restricted to this session's roster (max ~10-20
          -- players) instead of a correlated per-row scan; this function is on

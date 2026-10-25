@@ -131,7 +131,7 @@ export function TierBadge({ mmr, dbTiers = null, isLeader = false }) {
 // Small heraldic tier emblem (image only) for the Global Standings player cell —
 // mirrors the mockup's TierEmblem rendered beside the player name. Falls back to
 // the tier emoji glyph if the badge art fails to load.
-function TierEmblemImg({ mmr, isLeader = false }) {
+export function TierEmblemImg({ mmr, isLeader = false }) {
   const t = getTier(mmr, { isLeader });
   if (!t) return null;
   return t.badge ? (

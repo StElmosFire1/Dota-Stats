@@ -6,6 +6,7 @@ import { useSteamAuth } from '../context/SteamAuthContext';
 import { WhyIsThisSafeLink } from '../components/SteamTrustModal';
 import { resolveDisplayName, resolvePlayerDisplayName } from '../utils/displayName';
 import LobbyAutomationControl from '../components/LobbyAutomationControl';
+import LobbyPlayerIdentity from '../components/LobbyPlayerIdentity';
 import { superuserFetch, getCaptainAutoPickStats } from '../api';
 import MoodFormWidget from '../components/MoodFormWidget';
 import SignInPrompt from '../components/SignInPrompt';
@@ -88,7 +89,7 @@ function Countdown({ startsAt, seconds, onExpire, endsAt, label, variant }) {
 }
 
 function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canDraft, onDraftPick, balanceScore, viewerIsAdmin, myCaptainTeam }) {
-  const mmr = Math.round(Number(player.trueskill_mmr) || 0);
+  const mmr = player.inhouse_mmr == null ? null : Math.round(Number(player.inhouse_mmr));
   const statusColors = {
     registered: { bg: 'rgba(120,120,120,0.15)', color: '#aaa', label: 'Waiting' },
     accepted: { bg: 'rgba(76,175,80,0.15)', color: '#4caf50', label: '✓ Ready' },
@@ -121,20 +122,12 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
       }} />
       {/* T005 — serif monogram avatar (mirrors the mockup's roster/pool cards). */}
       <span className="pb-avatar" aria-hidden="true">{(displayName || '?').trim().charAt(0) || '?'}</span>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-serif)', fontSize: 15 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 600, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, fontFamily: 'var(--font-serif)', fontSize: 15 }}>
           {/* Task #815 — open the profile in a NEW TAB so clicking a player
               during a live draft never navigates away from the lobby. The
               live session stays put; back/refresh still shows the lobby. */}
-          <Link
-            to={`/player/${player.account_id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Open ${displayName}'s profile in a new tab`}
-            style={{ color: 'inherit', textDecoration: 'none' }}
-          >
-            {displayName}
-          </Link>
+          <LobbyPlayerIdentity player={player} displayName={displayName} />
           {isCaptain && <span style={{ fontSize: 11, padding: '2px 6px', background: '#ff9800', color: '#000', borderRadius: 3, fontWeight: 700 }}>CAPTAIN</span>}
           {player.team > 0 && <span style={{ fontSize: 11, padding: '2px 6px', background: player.team === 1 ? '#2e7d32' : '#c62828', color: '#fff', borderRadius: 3 }}>{player.team === 1 ? 'Green side' : 'Red side'}</span>}
           {/* Task #179 — flag picks made by the autoStartTicker deadline sweep
@@ -157,7 +150,7 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
           )}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-          MMR {mmr}
+          {mmr == null ? 'MMR unavailable' : `MMR ${mmr.toLocaleString()}`}
           {balanceScore != null && <span> · <span title="Auto-balance score that fed into the projected balance" style={{ color: 'var(--brass)', fontWeight: 600 }}>Score {balanceScore.toLocaleString()}</span></span>}
           {player.preferred_positions && <span> · Prefers {player.preferred_positions}</span>}
           {/* Lobby enrichment — win rate, streak, last-played so waiting
@@ -1441,22 +1434,26 @@ export default function Inhouse() {
               auto-start ticker the moment we flip into the accept phase.
               Tie / zero-vote → Highest Rank. */}
           {session.status === 'open' && (
-            <div className="pb-card-sm" style={{ marginTop: 14, padding: '16px 18px', background: 'var(--pb-surface)', border: '1px solid var(--pb-line)' }}>
-              <div style={{ marginBottom: 14 }}>
-                <div className="pb-eyebrow" style={{ fontSize: 13, marginBottom: 4 }}>👑 Captain Mode — Vote</div>
-                <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                  Players in the lobby vote for how captains are chosen. The leading mode is locked in when the accept phase starts.
+            <section className="pb-card-sm pb-captain-vote" aria-labelledby="pb-captain-vote-title">
+              <div className="pb-captain-vote-heading">
+                <div>
+                  <div id="pb-captain-vote-title" className="pb-eyebrow pb-captain-vote-title">Captain mode</div>
+                  <div className="pb-captain-vote-copy">
+                    Optional vote · one choice per player. The leader is locked when accept starts.
                   {voteTally.totalVotes > 0 && (
-                    <span> Current leader: <strong style={{ color: 'var(--text)', fontFamily: 'var(--font-serif)' }}>{({
+                    <span className="pb-captain-vote-leader"> Leading: <strong>{({
                       highest_rank: 'Highest Rank',
                       random: 'Random',
                       auto_balance: 'Auto-balance',
                       volunteer: 'Volunteer',
-                    })[voteTally.winning] || voteTally.winning}</strong> <span className="pb-num" style={{ color: 'var(--text-muted)', fontSize: 12 }}>({voteTally.totalVotes} vote{voteTally.totalVotes === 1 ? '' : 's'})</span></span>
+                    })[voteTally.winning] || voteTally.winning}</strong> <span className="pb-num">({voteTally.totalVotes} vote{voteTally.totalVotes === 1 ? '' : 's'})</span></span>
                   )}
+                  {!myAccountId || !isInSession ? <span className="pb-captain-vote-access">Join the lobby to vote.</span> : null}
+                  {voteTally.myVote && <span className="pb-captain-vote-access">Your vote is optional — select it again to clear.</span>}
+                  </div>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: 10 }}>
+              <div className="pb-captain-vote-options" role="group" aria-label="Choose a captain selection mode">
                 {[
                   { id: 'highest_rank', label: 'Highest Rank', hint: 'Top 2 by MMR / leaderboard rank — best for competitive balance.' },
                   { id: 'random',       label: 'Random',       hint: 'Two random captains from accepted players — keeps it casual.' },
@@ -1468,55 +1465,30 @@ export default function Inhouse() {
                   const isWinning = voteTally.winning === opt.id && voteTally.totalVotes > 0;
                   const disabled = !myAccountId || !isInSession;
                   return (
-                    <button
-                      key={opt.id}
-                      onClick={() => castCaptainVote(opt.id)}
-                      disabled={disabled}
-                      title={disabled ? 'Join the lobby to vote' : (isMine ? 'Click again to clear your vote' : opt.hint)}
-                      style={{
-                        padding: '14px 16px',
-                        background: isMine
-                          ? 'color-mix(in srgb, var(--brass) 20%, var(--pb-surface))'
-                          : isWinning
-                            ? 'color-mix(in srgb, var(--pb-brass) 8%, var(--bg-elevated))'
-                            : 'var(--bg-elevated)',
-                        border: `2px solid ${isMine ? 'var(--brass)' : isWinning ? 'color-mix(in srgb, var(--pb-brass) 50%, var(--border))' : 'var(--border)'}`,
-                        borderRadius: 8,
-                        cursor: disabled ? 'not-allowed' : 'pointer',
-                        opacity: disabled ? 0.5 : 1,
-                        textAlign: 'left',
-                        color: 'var(--text)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 6,
-                        transition: 'border-color 0.15s, background 0.15s',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                        <span style={{
-                          fontWeight: 700, fontSize: 15,
-                          fontFamily: 'var(--font-serif)',
-                          color: isMine ? 'var(--brass)' : 'var(--text)',
-                        }}>{opt.label}</span>
-                        <span className="pb-num" style={{
-                          fontSize: 14, fontWeight: 700, padding: '2px 10px', borderRadius: 999,
-                          background: count > 0 ? 'var(--brass)' : 'var(--bg)',
-                          color: count > 0 ? '#0d1424' : 'var(--text-muted)',
-                          minWidth: '2ch', textAlign: 'center',
-                        }}>{count}</span>
-                      </div>
-                      <span style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.4 }}>{opt.hint}</span>
-                      {isMine && (
-                        <span style={{
-                          fontSize: 11, color: 'var(--brass)', fontWeight: 700, letterSpacing: 0.5,
-                          fontFamily: 'var(--font-condensed, var(--font))', textTransform: 'uppercase',
-                        }}>✓ Your vote · click to clear</span>
-                      )}
-                    </button>
+                    <div key={opt.id} className={`pb-captain-vote-option${isMine ? ' is-selected' : ''}${isWinning ? ' is-leading' : ''}`}>
+                      <button
+                        type="button"
+                        className="pb-captain-vote-choice"
+                        onClick={() => castCaptainVote(opt.id)}
+                        disabled={disabled}
+                        aria-pressed={isMine}
+                        aria-label={`${opt.label}, ${count} vote${count === 1 ? '' : 's'}${isWinning ? ', leading' : ''}${isMine ? ', selected; activate to clear vote' : ''}`}
+                        title={disabled ? 'Join the lobby to vote' : (isMine ? 'Select again to clear your vote' : undefined)}
+                      >
+                        <span className="pb-captain-vote-name">{opt.label}</span>
+                        <span className="pb-captain-vote-count" aria-hidden="true">{count}</span>
+                        {isWinning && <span className="pb-captain-vote-state">Leading</span>}
+                        {isMine && <span className="pb-captain-vote-state is-mine">Your vote · clear</span>}
+                      </button>
+                      <details className="pb-captain-vote-description">
+                        <summary aria-label={`About ${opt.label}`}>About</summary>
+                        <p>{opt.hint}</p>
+                      </details>
+                    </div>
                   );
                 })}
               </div>
-            </div>
+            </section>
           )}
 
           {/* v5.75: auto-start countdown — visible to everyone once min_players is reached. */}
@@ -2083,7 +2055,8 @@ export default function Inhouse() {
         return (
           <details className="pb-inhouse-history" style={{ marginTop: 28 }}>
             <summary>Recent sessions · {pastSessions.length} past {pastSessions.length === 1 ? 'session' : 'sessions'}</summary>
-            <table className="pb-inhouse-past-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <div className="pb-inhouse-past-scroll">
+            <table className="pb-inhouse-past-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, tableLayout: 'fixed' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--pb-line)' }}>
                   <SortableTh
@@ -2095,15 +2068,15 @@ export default function Inhouse() {
                   >#</SortableTh>
                   <SortableTh
                     className="pb-eyebrow"
-                    style={{ textAlign: 'left', padding: '8px 10px' }}
+                    style={{ textAlign: 'left', padding: '8px 10px', width: '7em' }}
                     active={pastSortField === 'status'}
                     direction={pastSortDir > 0 ? 'asc' : 'desc'}
                     onSort={() => handlePastSort('status')}
                   >Status</SortableTh>
-                  <th className="pb-eyebrow" style={{ textAlign: 'left', padding: '8px 10px' }}>Match</th>
+                  <th className="pb-eyebrow" style={{ textAlign: 'left', padding: '8px 10px', width: '6em' }}>Match</th>
                   <SortableTh
                     className="pb-eyebrow"
-                    style={{ textAlign: 'left', padding: '8px 10px' }}
+                    style={{ textAlign: 'left', padding: '8px 10px', width: '42%' }}
                     active={pastSortField === 'created_at'}
                     direction={pastSortDir > 0 ? 'asc' : 'desc'}
                     onSort={() => handlePastSort('created_at')}
@@ -2134,7 +2107,7 @@ export default function Inhouse() {
                           ? <Link to={`/match/${s.match_id}`} style={{ color: 'var(--brass)', fontWeight: 600 }} className="pb-num">{s.match_id}</Link>
                           : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                       </td>
-                      <td style={{ padding: '10px 10px', color: 'var(--text-muted)', fontSize: 13 }}>
+                      <td style={{ padding: '8px 10px', color: 'var(--text-muted)', fontSize: 12, overflowWrap: 'anywhere' }}>
                         {new Date(s.created_at).toLocaleString('en-AU')}
                       </td>
                     </tr>
@@ -2142,6 +2115,7 @@ export default function Inhouse() {
                 })}
               </tbody>
             </table>
+            </div>
           </details>
         );
       })()}
