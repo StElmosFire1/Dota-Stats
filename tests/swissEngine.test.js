@@ -53,14 +53,23 @@ test('pairRound1 odd field assigns lowest seed as bye', () => {
   assertNoDuplicates(r, 'round-1 odd');
 });
 
-test('pairNextRound: no-repeat pairing across multiple constrained rounds', () => {
+function seededRng(seed) {
+  let value = seed >>> 0;
+  return () => {
+    value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
+    return value / 4294967296;
+  };
+}
+
+function assertThreeRoundsWithoutRematches(seed) {
+  const rng = seededRng(seed);
   // 8 players. Simulate 3 rounds and verify nobody is paired with the same
   // opponent twice and nobody appears twice in any round.
   const players = mkPlayers(8).map(p => ({ ...p, wins: 0, losses: 0, byes: 0, opponents: [] }));
   const allOpponents = new Map(players.map(p => [String(p.account_id), new Set()]));
 
   // Round 1: deterministic by seed.
-  const r1 = pairRound1(players);
+  const r1 = pairRound1(players, { rng });
   assertNoDuplicates(r1, 'r1');
   for (const [a, b] of r1.pairs) {
     allOpponents.get(String(a.account_id)).add(String(b.account_id));
@@ -77,7 +86,7 @@ test('pairNextRound: no-repeat pairing across multiple constrained rounds', () =
 
   // Rounds 2 & 3.
   for (let round = 2; round <= 3; round++) {
-    const r = pairNextRound(players);
+    const r = pairNextRound(players, { rng });
     assertNoDuplicates(r, `r${round}`);
     for (const [a, b] of r.pairs) {
       const ka = String(a.account_id), kb = String(b.account_id);
@@ -94,6 +103,35 @@ test('pairNextRound: no-repeat pairing across multiple constrained rounds', () =
       loser.opponents.push(String(winner.account_id));
     }
   }
+}
+
+test('pairNextRound: no-repeat pairing across multiple constrained rounds', () => {
+  // Seed 45 reproduced the greedy dead end that intermittently blocked deploys.
+  assertThreeRoundsWithoutRematches(45);
+});
+
+test('pairNextRound: no-repeat invariant holds across 256 reproducible shuffle sequences', () => {
+  for (let seed = 1; seed <= 256; seed++) {
+    assertThreeRoundsWithoutRematches(seed);
+  }
+});
+
+test('pairNextRound: repair respects either player’s opponent history and does not mutate inputs', () => {
+  const players = [
+    { account_id: 1, wins: 1, opponents: [] },
+    { account_id: 2, wins: 1, opponents: ['1'] },
+    { account_id: 3, wins: 1, opponents: [] },
+    { account_id: 4, wins: 1, opponents: [] },
+  ];
+  const before = structuredClone(players);
+  const result = pairNextRound(players, { rng: () => 0.999 });
+  assert.equal(result.pairs.length, 2);
+  assertNoDuplicates(result);
+  for (const [a, b] of result.pairs) {
+    assert.ok(!(a.opponents || []).includes(String(b.account_id)));
+    assert.ok(!(b.opponents || []).includes(String(a.account_id)));
+  }
+  assert.deepEqual(players, before);
 });
 
 test('pairNextRound: odd field gives bye to lowest scorer who has not had one', () => {

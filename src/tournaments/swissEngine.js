@@ -66,6 +66,46 @@ function pairRound1(players, { rng = null } = {}) {
 // no two players who have already met are paired. Falls back to cross-group
 // "float" pairing when an unmatched player remains. Bye assignment: lowest
 // scorer who has not yet had a bye gets the bye.
+function _haveMet(a, b) {
+  return (a.opponents || []).some(id => _toKey(id) === _toKey(b.account_id))
+    || (b.opponents || []).some(id => _toKey(id) === _toKey(a.account_id));
+}
+
+// Greedy score-group pairing can leave two previous opponents at the end
+// even though rearranging earlier pairs avoids the rematch. Only enter this
+// bounded repair search when the normal path actually produced a rematch.
+function _repairRematches(players) {
+  const compatible = new Map(players.map(a => [
+    a, new Set(players.filter(b => a !== b && !_haveMet(a, b))),
+  ]));
+  let budget = 20000;
+  function search(pool) {
+    if (!pool.length) return [];
+    if (--budget < 0) return null;
+    // Pair the most constrained player first to avoid another greedy dead end.
+    let first;
+    let options;
+    for (const a of pool) {
+      const candidates = pool.filter(b => compatible.get(a).has(b));
+      if (!candidates.length) return null;
+      if (!options || candidates.length < options.length) {
+        first = a;
+        options = candidates;
+      }
+    }
+    // Prefer nearby scores; random tie order comes from the existing shuffle.
+    options.sort((a, b) => Math.abs((a.wins || 0) - (first.wins || 0))
+      - Math.abs((b.wins || 0) - (first.wins || 0)));
+    for (const partner of options) {
+      if (budget < 0) return null;
+      const rest = search(pool.filter(p => p !== first && p !== partner));
+      if (rest) return [[first, partner], ...rest];
+    }
+    return null;
+  }
+  return search(players);
+}
+
 function pairNextRound(players, { rng = null } = {}) {
   const remaining = players.slice();
   _shuffleInPlace(remaining, rng); // randomise within score for fairness
@@ -142,6 +182,10 @@ function pairNextRound(players, { rng = null } = {}) {
   // than leaving the round malformed.
   if (unpaired.length === 1 && !bye) {
     bye = unpaired.shift();
+  }
+  if (pairs.some(([a, b]) => _haveMet(a, b))) {
+    const repaired = _repairRematches(remaining);
+    if (repaired) return { pairs: repaired, bye };
   }
   return { pairs, bye };
 }
