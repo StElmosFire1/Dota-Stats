@@ -19,14 +19,149 @@
   gap: 16px;
 }
 
+/* The lobby introduction leads the page; utility actions can wrap below it
+   without taking width away from the heading and its explanatory copy. */
+.pb-inhouse .pb-inhouse-heading-copy {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
 /* Descriptive subtitle below the page title. Comfortable reading size,
-   slightly muted, wraps naturally on narrow screens. */
+   slightly muted, and broad enough to read as a single introduction. */
 .pb-inhouse .pb-inhouse-subtitle {
   font-size: 14px;
   line-height: 1.55;
   color: var(--pb-muted);
   margin: 10px 0 0;
-  max-width: 540px;
+  max-width: none;
+}
+
+/* Role choice is a single, quiet control group rather than another loud panel. */
+.pb-inhouse .pb-inhouse-role-picker {
+  min-width: 0;
+  margin: 12px 0 0;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--pb-line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--pb-elevated) 48%, transparent);
+}
+
+.pb-inhouse .pb-inhouse-role-picker legend {
+  padding: 0 6px;
+  color: var(--pb-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.pb-inhouse .pb-inhouse-role-picker:focus-within {
+  border-color: color-mix(in srgb, var(--pb-brass) 58%, var(--pb-line));
+}
+
+.pb-inhouse .pb-inhouse-role-error {
+  margin: 8px 0 0;
+  color: var(--pb-dire, #d76d62);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* Optional history and admin controls stay available without competing with
+   the active lobby. Match the existing Press Box outline and brass details. */
+.pb-inhouse .pb-inhouse-admin-settings,
+.pb-inhouse .pb-inhouse-history {
+  margin: 14px 0;
+  border: 1px solid var(--pb-line);
+  border-radius: 6px;
+  background: var(--pb-surface);
+}
+
+.pb-inhouse .pb-inhouse-admin-settings > summary,
+.pb-inhouse .pb-inhouse-history > summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 10px 14px;
+  color: var(--pb-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  list-style: none;
+  text-transform: uppercase;
+}
+
+.pb-inhouse .pb-inhouse-admin-settings > summary::-webkit-details-marker,
+.pb-inhouse .pb-inhouse-history > summary::-webkit-details-marker {
+  display: none;
+}
+
+.pb-inhouse .pb-inhouse-admin-settings > summary::before,
+.pb-inhouse .pb-inhouse-history > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-right: 1px solid var(--pb-brass);
+  border-bottom: 1px solid var(--pb-brass);
+  transform: rotate(-45deg);
+  transition: transform 0.16s ease;
+}
+
+.pb-inhouse .pb-inhouse-admin-settings[open] > summary::before,
+.pb-inhouse .pb-inhouse-history[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.pb-inhouse .pb-inhouse-admin-settings > summary:hover,
+.pb-inhouse .pb-inhouse-history > summary:hover,
+.pb-inhouse .pb-inhouse-admin-settings > summary:focus-visible,
+.pb-inhouse .pb-inhouse-history > summary:focus-visible {
+  color: var(--pb-brass);
+}
+
+.pb-inhouse .pb-inhouse-admin-settings > summary:focus-visible,
+.pb-inhouse .pb-inhouse-history > summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--pb-brass) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.pb-inhouse .pb-inhouse-admin-settings[open] > :not(summary),
+.pb-inhouse .pb-inhouse-history[open] > :not(summary) {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+
+.pb-inhouse .pb-inhouse-admin-settings[open] > :last-child,
+.pb-inhouse .pb-inhouse-history[open] > :last-child {
+  margin-bottom: 14px;
+}
+
+.pb-inhouse .pb-inhouse-admin-settings[open] > summary,
+.pb-inhouse .pb-inhouse-history[open] > summary {
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--pb-line);
+}
+
+@media (max-width: 600px) {
+  .pb-inhouse .pb-inhouse-header {
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .pb-inhouse .pb-inhouse-heading-copy {
+    flex-basis: 100%;
+  }
+
+  .pb-inhouse .pb-inhouse-subtitle {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .pb-inhouse .pb-inhouse-role-picker {
+    padding: 10px 11px 12px;
+  }
 }
 
 /* ---- Dedicated-server status card status pills ---- */

@@ -27,6 +27,9 @@ function run({
   try {
     const bin = path.join(dir, 'bin');
     fs.mkdirSync(bin);
+    fs.mkdirSync(path.join(dir, 'scripts'));
+    fs.copyFileSync(path.join(root, 'scripts/deploy-health-auth.js'),
+      path.join(dir, 'scripts/deploy-health-auth.js'));
     if (filePort !== undefined) fs.writeFileSync(path.join(dir, '.env'), `PORT="${filePort}" # app port\n`);
     const processes = [
       {

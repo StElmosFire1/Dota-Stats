@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 
-export default function LobbyAutomationControl({ editable = false, onChange }) {
+export default function LobbyAutomationControl({ editable = false, onChange, visible = true, collapsible = false }) {
   const [enabled, setEnabled] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -29,7 +29,10 @@ export default function LobbyAutomationControl({ editable = false, onChange }) {
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
-  return (
+  // Keep loading policy for the player's website-only instructions even when
+  // the administrator explanation itself is hidden.
+  if (!visible) return null;
+  const content = (
     <section className="card" aria-label="Lobby Dota automation" style={{ padding: 18, marginBottom: 16, border: '1px solid var(--border)', borderRadius: 10 }}>
       <h3 style={{ marginTop: 0 }}>Lobby Dota automation</h3>
       <p>{enabled === null ? 'Checking mode…' : enabled ? 'Automated Dota mode' : 'Website-only mode'}</p>
@@ -39,5 +42,12 @@ export default function LobbyAutomationControl({ editable = false, onChange }) {
       </button>}
       {error && <p role="alert">{error}</p>}
     </section>
+  );
+  if (!collapsible) return content;
+  return (
+    <details className="pb-inhouse-admin-settings">
+      <summary>Admin controls · {enabled === null ? 'Checking lobby mode…' : enabled ? 'Automated Dota mode' : 'Website-only mode'}</summary>
+      {content}
+    </details>
   );
 }

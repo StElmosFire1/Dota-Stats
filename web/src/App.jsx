@@ -724,6 +724,11 @@ function Nav() {
   // for all viewers. Hiding the nav link when false makes the "surface
   // fully hidden" intent match what the API already enforces.
   const showProReplays = useFeatureFlag('pro_replay_browser');
+  // These unfinished tools stay out of menus unless explicitly enabled.
+  // Unlike legacy flags, missing/failed/loading values must not reveal them.
+  const { flags: navigationFlags } = useFeatureFlags();
+  const showDraftAssistant = navigationFlags.draft_assistant_navigation === true;
+  const showDraftTrainer = navigationFlags.draft_trainer_navigation === true;
   // Task #248 — single shared poller for both the desktop NavPlayersLink
   // badge and the mobile-only MobileLiveBadge so we don't fire two
   // /api/presence/live/count requests every 30s.
@@ -773,8 +778,8 @@ function Nav() {
         <DropdownMenu label="Heroes &amp; Draft">
           <DropdownItem to="/heroes">Heroes</DropdownItem>
           <DropdownItem to="/synergy">Synergy</DropdownItem>
-          <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>
-          <DropdownItem to="/heroes/draft-trainer">Draft Trainer</DropdownItem>
+          {showDraftAssistant && <DropdownItem to="/draft">Draft &amp; Assistant</DropdownItem>}
+          {showDraftTrainer && <DropdownItem to="/heroes/draft-trainer">Draft Trainer</DropdownItem>}
           <DropdownItem to="/ward-map">Ward Maps</DropdownItem>
           <DropdownItem to="/multikills">Multi-Kills</DropdownItem>
           <DropdownItem to="/pudge-stats">Pudge Hook Stats</DropdownItem>

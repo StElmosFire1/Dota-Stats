@@ -8,6 +8,7 @@ const session = require('express-session');
 const helmet = require('helmet');
 const { rateLimit } = require('express-rate-limit');
 const db = require('../db');
+const { parsePreferredPositions } = require('../inhouse/preferredRoles');
 const { idem, idemBucket } = require('../payments/stripeIdem');
 // Web push (Wave 3 F7). Loaded lazily — if VAPID env vars are missing the
 // push routes respond 503 cleanly. We do require() unconditionally so the
@@ -14093,6 +14094,11 @@ NOTES
     try {
       const actor = _resolveInhouseActor(req);
       if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      const preferredPositions = parsePreferredPositions(req.body?.preferredPositions);
+      if (!preferredPositions) return res.status(400).json({
+        error: 'Select at least one preferred role (P1–P5) before joining the queue.',
+        code: 'PREFERRED_ROLES_REQUIRED',
+      });
       // Task #136 — Discord-link + guild-membership hard gate.
       const gate = await _enforceDiscordGuildGate(actor);
       if (gate) return res.status(gate.status).json(gate.body);
@@ -14109,7 +14115,7 @@ NOTES
         });
       }
       const player = await db.joinInhouseSession(
-        session.id, actor.accountId, req.body?.preferredPositions || null
+        session.id, actor.accountId, preferredPositions
       );
       // Task #136 — capture the express-session id so the sweep tick can
       // drop this seat the moment the underlying Steam session goes away
@@ -14319,13 +14325,18 @@ NOTES
     try {
       const actor = _resolveInhouseActor(req);
       if (actor.error) return res.status(actor.status).json({ error: actor.error });
+      const preferredPositions = parsePreferredPositions(req.body?.preferredPositions);
+      if (!preferredPositions) return res.status(400).json({
+        error: 'Select at least one preferred role (P1–P5) before joining the queue.',
+        code: 'PREFERRED_ROLES_REQUIRED',
+      });
       // Task #136 — Discord-link + guild-membership hard gate.
       const gate = await _enforceDiscordGuildGate(actor);
       if (gate) return res.status(gate.status).json(gate.body);
       const session = await db.getInhouseSession(req.params.id);
       if (!session) return res.status(404).json({ error: 'Session not found' });
       if (!['open','accepting'].includes(session.status)) return res.status(400).json({ error: 'Session not joinable in current phase' });
-      const player = await db.joinInhouseSession(session.id, actor.accountId, req.body?.preferredPositions || null);
+      const player = await db.joinInhouseSession(session.id, actor.accountId, preferredPositions);
       try { await db.touchInhousePlayerHeartbeat(actor.accountId, req.sessionID || null); } catch {}
       res.json({ player });
     } catch (err) {

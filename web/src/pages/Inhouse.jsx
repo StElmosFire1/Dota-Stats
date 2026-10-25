@@ -7,7 +7,6 @@ import { WhyIsThisSafeLink } from '../components/SteamTrustModal';
 import { resolveDisplayName, resolvePlayerDisplayName } from '../utils/displayName';
 import LobbyAutomationControl from '../components/LobbyAutomationControl';
 import { superuserFetch, getCaptainAutoPickStats } from '../api';
-import LiveQueueWidget from '../components/LiveQueueWidget';
 import MoodFormWidget from '../components/MoodFormWidget';
 import SignInPrompt from '../components/SignInPrompt';
 import SortableTh from '../components/SortableTh';
@@ -599,6 +598,12 @@ export default function Inhouse() {
   // Task #172 — per-pick draft countdown budget (seconds). Default 30s.
   const [draftPickSeconds, setDraftPickSeconds] = useState(30);
   const [myPositions, setMyPositions] = useState([]);
+  const [roleError, setRoleError] = useState('');
+  const rolePickerRef = useRef(null);
+  function togglePreferredPosition(id) {
+    setMyPositions(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setRoleError('');
+  }
   const [draftStatus, setDraftStatus] = useState(null);
   // Task #445 — Live pick advisor opt-in. We fetch the signed-in viewer's
   // own profile customisation once (cheap GET /api/me/profile read) to
@@ -740,6 +745,13 @@ export default function Inhouse() {
 
   async function joinSession() {
     if (!myAccountId) return;
+    if (myPositions.length === 0) {
+      setRoleError('Choose at least one preferred role before joining the queue. You can select more than one.');
+      rolePickerRef.current?.focus();
+      rolePickerRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+    setRoleError('');
     try {
       // v6.03 — auto-running lobby. Always go through /inhouse/join (no id);
       // the backend auto-creates an open session with default settings if
@@ -1040,12 +1052,8 @@ export default function Inhouse() {
 
   return (
     <div className="pb-inhouse" style={{ padding: 20, maxWidth: 1100, margin: '0 auto' }}>
-      {/* Task #316 — live queue widget: shows in-progress sessions + queued
-          players, falls back to recent matches when the queue is empty. */}
-      <LiveQueueWidget emptyMode="recent" />
-      <LobbyAutomationControl editable={isAdmin || hasAdminRole} onChange={setDotaAutomation} />
-      <div className="pb-inhouse-header">
-        <div>
+      <header className="pb-inhouse-header">
+        <div className="pb-inhouse-heading-copy">
           <div className="pb-eyebrow" style={{ marginBottom: 6 }}>Live Lobby</div>
           <h1 className="pb-page-title" style={{ margin: 0, fontSize: '2.1rem' }}>Inhouse Lobby</h1>
           <div aria-hidden="true" style={{
@@ -1078,7 +1086,14 @@ export default function Inhouse() {
             </div>
           )}
         </div>
-      </div>
+      </header>
+
+      <LobbyAutomationControl
+        editable={isAdmin || hasAdminRole}
+        visible={isAdmin || hasAdminRole}
+        collapsible
+        onChange={setDotaAutomation}
+      />
 
       {error && <div style={{ padding: 12, background: 'rgba(244,67,54,0.1)', border: '1px solid #f44336', borderRadius: 6, marginBottom: 16, color: '#f44336' }}>{error}</div>}
 
@@ -1103,14 +1118,17 @@ export default function Inhouse() {
               <div style={{ maxWidth: 520, marginLeft: 'auto', marginRight: 'auto', textAlign: 'left' }}>
                 <MoodFormWidget accountId={myAccountId} compact />
               </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 12 }}>
+              <fieldset className="pb-inhouse-role-picker" ref={rolePickerRef} tabIndex={-1} aria-describedby={roleError ? 'inhouse-role-error' : undefined}>
+                <legend>Preferred roles · choose at least one</legend>
                 {POSITIONS.map(p => (
-                  <button key={p.id} onClick={() => setMyPositions(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                  <button type="button" key={p.id} onClick={() => togglePreferredPosition(p.id)}
+                    aria-pressed={myPositions.includes(p.id)}
                     style={{ padding: '4px 10px', background: myPositions.includes(p.id) ? '#2196f3' : 'var(--bg)', color: myPositions.includes(p.id) ? '#fff' : 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
                     {p.label}
                   </button>
                 ))}
-              </div>
+              </fieldset>
+              {roleError && <p id="inhouse-role-error" className="pb-inhouse-role-error" role="alert">{roleError}</p>}
               <button
                 onClick={joinSession}
                 disabled={discordGateBlocked}
@@ -1520,11 +1538,13 @@ export default function Inhouse() {
                   <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
                     Pick the positions you're comfortable playing. You can select multiple — captains will see your preferences when drafting.
                   </div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                  <fieldset className="pb-inhouse-role-picker" ref={rolePickerRef} tabIndex={-1} aria-describedby={roleError ? 'inhouse-role-error' : undefined}>
+                    <legend>Preferred roles · choose at least one</legend>
                     {POSITIONS.map(p => (
                       <button
                         key={p.id}
-                        onClick={() => setMyPositions(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                        type="button"
+                        onClick={() => togglePreferredPosition(p.id)}
                         aria-pressed={myPositions.includes(p.id)}
                         style={{
                           padding: '8px 16px',
@@ -1543,7 +1563,8 @@ export default function Inhouse() {
                         {p.label}
                       </button>
                     ))}
-                  </div>
+                  </fieldset>
+                  {roleError && <p id="inhouse-role-error" className="pb-inhouse-role-error" role="alert">{roleError}</p>}
                   <button
                     onClick={joinSession}
                     disabled={discordGateBlocked}
@@ -2060,8 +2081,8 @@ export default function Inhouse() {
           else { setPastSortField(field); setPastSortDir(-1); }
         };
         return (
-          <div style={{ marginTop: 28 }}>
-            <h3 className="pb-section-title" style={{ marginBottom: 14 }}>Recent Sessions</h3>
+          <details className="pb-inhouse-history" style={{ marginTop: 28 }}>
+            <summary>Recent sessions · {pastSessions.length} past {pastSessions.length === 1 ? 'session' : 'sessions'}</summary>
             <table className="pb-inhouse-past-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--pb-line)' }}>
@@ -2121,7 +2142,7 @@ export default function Inhouse() {
                 })}
               </tbody>
             </table>
-          </div>
+          </details>
         );
       })()}
     </div>

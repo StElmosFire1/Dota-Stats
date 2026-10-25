@@ -1137,6 +1137,8 @@ async function init() {
          ('welcome_modal_s10', 'off', 'One-shot Season 10 welcome modal shown post-launch'),
          ('hero_meta_v2', 'off', 'Wave 2: Hero analytics overhaul — position-specific WR, pick frequency by tier, best counters'),
          ('draft_assistant_v2', 'off', 'Wave 2: Live counter-pick + synergy suggestions during the captain draft phase'),
+         ('draft_assistant_navigation', 'off', 'Draft Assistant menu visibility only. Off hides Draft & Assistant from navigation; On shows it; Preview shows it only to superusers. Direct links and Analyze in Draft remain available.'),
+         ('draft_trainer_navigation', 'off', 'Draft Trainer menu visibility only. Off hides Draft Trainer from navigation; On shows it; Preview shows it only to superusers. Direct links remain available.'),
          ('mvp_attitude_analytics', 'off', 'Wave 3: MVP rate + attitude trend analytics on player profiles'),
          ('web_push', 'off', 'Wave 3: Browser web push notifications for game reminders + match completions'),
          ('pro_tier', 'off', 'Pro Tier — paid lifetime unlock. Gates Hero Meta V2, Hero Matchups, Skill Builds, Compare/H2H, Benchmarks, premium profile cosmetics, and CSV match exports when state=on'),

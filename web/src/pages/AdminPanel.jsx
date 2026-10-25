@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import LobbyAutomationControl from '../components/LobbyAutomationControl';
 import { useSuperuser } from '../context/SuperuserContext';
-import { useFeatureFlag } from '../context/FeatureFlagsContext';
+import { useFeatureFlag, useFeatureFlags } from '../context/FeatureFlagsContext';
 import { useSeason } from '../context/SeasonContext';
 import { getAdminRivals, regenerateRivals, repairRival, setRivalExempt, adminListCommunityChallenges, adminCreateCommunityChallenge, adminUpdateCommunityChallenge, adminDeleteCommunityChallenge, getStoredReplays, extendReplayExpiry, getPlayerRanks, triggerRankSync, setManualRank, clearPlayerRank, getSignupRequests, updateSignupRequest, getSeasons, getSeasonTiers, ensureSeasonTiers, updateSeasonTier, placeAllPlayersInTiers, getSeasonTierPlayers, setSeasonEndConditions, closeSeasonApi, reannounceSeasonApi, rolloverSeasonApi, undoSeasonRolloverApi, setMatchReplayPath, getMatchReplayStatus, getAdminHeroTierOverrides, setAdminHeroTierOverride, deleteAdminHeroTierOverride, getTournaments, recomputeAchievements, getAdminFeatureFlags, setFeatureFlag, getAdminDiscordRichPresence, superuserFetch, getDiscordIdCollisions, resolveDiscordIdCollision, enforceDiscordIdUniqueIndex, getDiscordAutoJoinFailures, clearDiscordAutoJoinFailure, getFoundersRingRefunds, retryFoundersRingRefund, runInhouseDiagProvision, cleanupInhouseDiag, pushInhouseServerPassword, fetchRecentReplays, retryReplayFetch, getAgentTrafficReport, getAssetHotlinkReport, getTwitchLinks, setTwitchLink, getLockdownState, setLockdownState, getLockdownAttempts, getLockdownAudit, getInhouseMarkets, adminSetBettingPaused, adminVoidBetMarket, adminSettleBetMarket, adminCreateCustomMarket, getFailedTournamentPayouts, retryFailedTournamentPayout, getPayoutsAwaitingConnect, getPaidPayoutReceipts, resendPayoutReceipt, resendAllPayoutReceipts, getAdminOpsLogs, getAdminOpsHistory, getLootboxAdminSets, retireLootboxSet, createLootboxSet, lootboxLabInspect, lootboxLabSimulate, lootboxLabOwnership, lootboxLabHistory, getPlayerV3ModifierHistory, adminGetNotifyTestTypes, adminSendNotifyTest, adminRunJob, getAdminEconomyPrices, setAdminEconomyPrices, getLootboxDupeReturns, setLootboxDupeReturns, getLootboxDupeReturnsAudit, getAdminDmRecipients, adminDmBlast, getAdminDmBlastStatus, getAdminDmBlasts, getAdminCosmeticsCatalog, getAdminAnalyticsSite, getAdminAnalyticsGames } from '../api';
 import CosmeticPreview from '../components/CosmeticPreview';
@@ -7265,6 +7265,7 @@ function CommunityChallengesPanel({ superuserKey }) {
 // by GET /api/admin/feature-flags with a three-state toggle (on/preview/off)
 // and lets the operator change any of them without a DB shell.
 function FeatureFlagsEditorCard({ superuserKey }) {
+  const { refresh: refreshPublicFlags } = useFeatureFlags();
   const [flags, setFlags] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(null);
@@ -7289,6 +7290,7 @@ function FeatureFlagsEditorCard({ superuserKey }) {
     setSaving(key); setMsg('');
     try {
       await setFeatureFlag({ key, state }, superuserKey);
+      await refreshPublicFlags();
       setMsg(`✓ ${key} → ${state}`);
       load();
     } catch (e) {
@@ -7338,7 +7340,9 @@ function FeatureFlagsEditorCard({ superuserKey }) {
       </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 14 }}>
         All runtime feature flags. <strong>On</strong> = everyone; <strong>Preview</strong> = superusers only;
-        <strong> Off</strong> = hidden + routes 404. Changes take effect immediately, no restart needed.
+        <strong> Off</strong> = disabled for that feature. Changes take effect immediately, no restart needed.
+        {' '}The <code>draft_assistant_navigation</code> and <code>draft_trainer_navigation</code> controls
+        only hide dropdown entries; direct links and Analyze in Draft still work.
       </p>
       {msg && <div role="status" style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>{msg}</div>}
 

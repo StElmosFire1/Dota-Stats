@@ -253,6 +253,13 @@ process.stdin.on("end", () => {
 fi
 HEALTH_URL="${HEALTH_URL:-}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-120}"
+deploy_health_fetch() (
+  # Pipe the existing credential into curl's config stream, not argv/logs.
+  # Authenticate only loopback or the canonical HTTPS host; never redirects.
+  set -o pipefail
+  node scripts/deploy-health-auth.js "$1" "${3:-}" |
+    curl --config - --no-location -fsS --max-time "$2" "$1"
+)
 health_probe_start=${SECONDS}
 is_full_health() {
   printf '%s' "$1" | node -e '
@@ -277,7 +284,7 @@ local_probe_ok() {
       if [ $((SECONDS - health_probe_start)) -ge "${HEALTH_TIMEOUT}" ]; then
         return 1
       fi
-      body="$(curl -fsS --max-time 3 "http://127.0.0.1:${cand}/api/health" 2>/dev/null)" || continue
+      body="$(deploy_health_fetch "http://127.0.0.1:${cand}/api/health" 3 2>/dev/null)" || continue
       if is_full_health "${body}"; then
         HEALTH_URL="http://127.0.0.1:${cand}/api/health"
         echo "    Found full-edition health endpoint: ${HEALTH_URL}"
@@ -289,7 +296,7 @@ local_probe_ok() {
   fi
   # Capture curl separately: transport failure must never be masked by a
   # valid-looking partial body. HEALTH_URL overrides are checked, not replaced.
-  body="$(curl -fsS --max-time 5 "${HEALTH_URL}")" || return 1
+  body="$(deploy_health_fetch "${HEALTH_URL}" 5)" || return 1
   if ! is_full_health "${body}"; then
     echo "    Health responder is NOT the full bot: ${HEALTH_URL}; leaving all processes running." >&2
     return 1
@@ -365,7 +372,7 @@ if [ -n "${PUBLIC_HEALTH_URL}" ] && [ "${PUBLIC_HEALTH_URL}" != "skip" ]; then
   public_probe_start=${SECONDS}
   public_probe_ok() {
     local body
-    body="$(curl -fsS --max-time 10 "${PUBLIC_HEALTH_URL}")" || return 1
+    body="$(deploy_health_fetch "${PUBLIC_HEALTH_URL}" 10 "${EFFECTIVE_CANONICAL_HOST}")" || return 1
     if ! is_full_health "${body}"; then
       echo "    Public health responder is NOT the full bot: ${PUBLIC_HEALTH_URL}" >&2
       return 1
