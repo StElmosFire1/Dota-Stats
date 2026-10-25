@@ -1973,7 +1973,7 @@ export default function Inhouse() {
                   display: 'grid',
                   gridTemplateColumns: 'minmax(260px, 1fr) minmax(520px, 2fr) minmax(260px, 1fr)',
                   gap: 14,
-                }} className="inhouse-draft-board">
+                }} className={`inhouse-draft-board${undrafted.length === 0 && (draftStatus?.review?.available || draftStatus?.review?.approved) ? ' is-reviewing' : ''}`}>
                   <RosterPanel
                     label={team1Label} accent="#4caf50" capName={cap1Name}
                     activeCaptain={isDrafting && undrafted.length > 0 && turn === 1}
@@ -1988,13 +1988,13 @@ export default function Inhouse() {
                     padding: '14px 12px 12px',
                     minHeight: 520,
                   }}>
-                    <div className="pb-eyebrow" style={{ letterSpacing: '0.16em', marginBottom: 2 }}>The Pool</div>
+                    {undrafted.length > 0 && <><div className="pb-eyebrow" style={{ letterSpacing: '0.16em', marginBottom: 2 }}>The Pool</div>
                     <div style={{
                       fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700,
                       color: 'var(--text-primary)', marginBottom: 10,
                     }}>
                       Unpicked players {undrafted.length > 0 ? `(${undrafted.length})` : ''}
-                    </div>
+                    </div></>}
                     {isDrafting && isMyTurn && !isAdmin && undrafted.length > 0 && (
                       <div style={{ marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>
                         It's your turn — hit <strong style={{ color: myCaptainTeam === 1 ? '#4caf50' : '#f44336' }}>Pick</strong> next to the player you want on your {myCaptainTeam === 1 ? 'Green' : 'Red'} side.
@@ -2002,7 +2002,7 @@ export default function Inhouse() {
                     )}
                     {undrafted.length === 0
                       ? (draftStatus?.review?.available || draftStatus?.review?.approved)
-                        ? <div className="pb-draft-review-in-pool" tabIndex={0} aria-label="Captain team review">
+                        ? <div className="pb-draft-review-in-pool" aria-label="Captain team review">
                             <DraftTeamReview
                               sessionId={session.id}
                               review={draftStatus.review}

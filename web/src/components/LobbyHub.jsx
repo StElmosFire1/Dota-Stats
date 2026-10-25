@@ -8,7 +8,27 @@ import './lobby-hub.css';
 const ROLES = [
   ['1', 'Carry'], ['2', 'Mid'], ['3', 'Offlane'], ['4', 'Soft support'], ['5', 'Hard support'],
 ];
-const PHASE = { open: 'Queue open', accepting: 'Ready check', drafting: 'Captain draft', server_failed: 'Server recovery', in_progress: 'Match live', completed: 'Match complete', cancelled: 'Match closed' };
+function lobbyStatus(session, members, ownPlayer, accountId, stale, snapshot) {
+  if (stale) return { short: 'Offline', full: 'Offline' };
+  if (!session) return { short: 'Idle', full: 'Idle' };
+  const status = session.status;
+  if (status === 'open') return { short: `${members.length}/10`, full: `${members.length} of 10 queued` };
+  if (status === 'accepting') return ownPlayer?.status === 'accepted'
+    ? { short: 'Ready', full: 'Ready' }
+    : { short: 'Starting', full: 'Starting' };
+  if (status === 'drafting') {
+    const draft = session.draft || snapshot?.draft || {};
+    const captainTeam = String(session.captain1_account_id) === String(accountId) ? 1
+      : String(session.captain2_account_id) === String(accountId) ? 2 : null;
+    const ownTurn = captainTeam != null && draft.currentPickerTeam === captainTeam;
+    return draft.complete
+      ? (draft.review?.approved ? { short: 'Ready', full: 'Ready' } : { short: 'Review', full: 'Review pending' })
+      : ownTurn ? { short: 'Pick', full: 'Your draft pick' } : { short: 'Drafting', full: 'Drafting' };
+  }
+  if (status === 'server_failed') return { short: 'Attention', full: 'Attention required' };
+  if (status === 'in_progress') return { short: 'Live', full: 'Live' };
+  return { short: 'Idle', full: 'Idle' };
+}
 
 export default function LobbyHub({ snapshot, accountId, onRefresh, children, attention, steamUser, isAdmin = false, settingsAction, stale = false }) {
   const location = useLocation();
@@ -26,14 +46,13 @@ export default function LobbyHub({ snapshot, accountId, onRefresh, children, att
   const members = players.filter(p => p.status !== 'declined');
   const member = !!members.find(p => String(p.account_id) === String(accountId));
   const ownPlayer = members.find(p => String(p.account_id) === String(accountId));
-  const phase = PHASE[session?.status] || 'No active lobby';
+  const status = lobbyStatus(session, members, ownPlayer, accountId, stale, snapshot);
   const quickJoinable = session?.status === 'open' && !!accountId && !member;
   const blocked = !!steamUser && (steamUser.needs_discord_link === true || steamUser.discord_in_guild === false);
   const targetKey = `${session?.id ?? ''}:${accountId ?? ''}`;
   const currentTargetKey = useRef(targetKey);
   currentTargetKey.current = targetKey;
   const roleContextCurrent = !!joinTarget && `${joinTarget.sessionId}:${joinTarget.accountId}` === targetKey;
-  const reminderOnly = inhousePage;
 
   useEffect(() => {
     joinAttempt.current += 1;
@@ -92,32 +111,45 @@ export default function LobbyHub({ snapshot, accountId, onRefresh, children, att
   if (!accountId) return null;
   return (
     <>
-      <aside className={`lh-widget${inhousePage ? ' lh-widget-page' : ''}`} aria-label="OCE Inhouse lobby">
-        <div className="lh-widget-top">
-          <span className="lh-brand-mark" aria-hidden="true">OI</span>
-          <div className="lh-widget-title"><span className="lh-kicker">OCE Inhouse</span><strong>{phase}</strong></div>
-          {!reminderOnly && <span className="lh-count"><b>{members.length}</b><span>/ 10 queued</span></span>}
-          {ownPlayer && <span className="lh-own-status">{ownPlayer.status === 'accepted' ? 'You’re ready' : ownPlayer.status === 'drafted' ? 'Drafted' : 'You’re queued'}</span>}
-          <button className="lh-toggle" type="button" aria-expanded={expanded} aria-label={expanded ? 'Collapse lobby panel' : 'Expand lobby panel'} onClick={() => setExpanded(v => !v)}>{expanded ? '−' : '+'}</button>
-        </div>
-        <div className="lh-widget-actions">
-          {!reminderOnly && <Link to="/inhouse" className="lh-open-link">Open lobby <span aria-hidden="true">↗</span></Link>}
-          {quickJoinable && !inhousePage && <button type="button" className="lh-join-button" onClick={beginJoin} disabled={stale} title={blocked ? 'Link your Discord and join the OCE Inhouse server first.' : ''}>{blocked ? 'Discord required' : stale ? 'Refresh to join' : 'Quick join'}</button>}
-          {settingsAction && <button className="lh-settings" type="button" onClick={settingsAction}>Reminder settings</button>}
-        </div>
-        {stale && <p className="lh-inline-error" role="status">Lobby details may be out of date. Refresh before joining.</p>}
-        {attention}
-        {expanded && !inhousePage && (
-          <div className="lh-expanded">
-            {session ? <>
-              <div className="lh-roster-heading"><span>In the room</span><span>{members.length} / 10</span></div>
-              <div className="lh-roster-names">{members.slice(0, 10).map(p => <span className="lh-roster-name" key={p.account_id}>{resolvePlayerDisplayName(p)}</span>)}</div>
-              {(member || isAdmin) && <LobbyChat key={`${session.id}:${accountId}`} sessionId={session.id} accountId={accountId} sessionStatus={session.status} allowed />}
-            </> : <p className="lh-chat-empty">No lobby is active right now. Check back soon.</p>}
-            {children}
-          </div>
+      <aside className={`lh-widget${expanded ? ' is-expanded' : ' is-collapsed'}${inhousePage ? ' lh-widget-page' : ''}`} aria-label="OCE Inhouse lobby">
+        {!expanded ? (
+          <button
+            className={`lh-collapsed-button${attention ? ' has-attention' : ''}`}
+            type="button"
+            aria-expanded="false"
+            aria-label={`${status.full}${attention && status.full !== 'Attention required' ? ', Attention required' : ''}. Expand lobby panel`}
+            onClick={() => setExpanded(true)}
+          >
+            <span className="lh-square-mark" aria-hidden="true">OI</span>
+            <span className="lh-square-status">{status.short}</span>
+            {attention && <span className="lh-attention-indicator" aria-hidden="true" />}
+          </button>
+        ) : (
+          <>
+            <div className="lh-widget-top">
+              <span className="lh-brand-mark" aria-hidden="true">OI</span>
+              <div className="lh-widget-title"><span className="lh-kicker">OCE Inhouse</span><strong>{status.full}</strong></div>
+              <span className="lh-count"><b>{members.length}</b><span>/ 10 queued</span></span>
+              {ownPlayer && <span className="lh-own-status">{ownPlayer.status === 'accepted' ? 'You’re ready' : ownPlayer.status === 'drafted' ? 'Drafted' : 'You’re queued'}</span>}
+              <button className="lh-toggle" type="button" aria-expanded="true" aria-label="Collapse lobby panel" onClick={() => setExpanded(false)}>−</button>
+            </div>
+            <div className="lh-widget-actions">
+              {!inhousePage && <Link to="/inhouse" className="lh-open-link">Open lobby <span aria-hidden="true">↗</span></Link>}
+              {quickJoinable && <button type="button" className="lh-join-button" onClick={beginJoin} disabled={stale} title={blocked ? 'Link your Discord and join the OCE Inhouse server first.' : ''}>{blocked ? 'Discord required' : stale ? 'Refresh to join' : 'Quick join'}</button>}
+              {settingsAction && <button className="lh-settings" type="button" onClick={settingsAction}>Reminder settings</button>}
+            </div>
+            {stale && <p className="lh-inline-error" role="status">Lobby details may be out of date. Refresh before joining.</p>}
+            {attention}
+            <div className="lh-expanded">
+              {session ? <>
+                <div className="lh-roster-heading"><span>In the room</span><span>{members.length} / 10</span></div>
+                <div className="lh-roster-names">{members.slice(0, 10).map(p => <span className="lh-roster-name" key={p.account_id}>{resolvePlayerDisplayName(p)}</span>)}</div>
+                {(member || isAdmin) && <LobbyChat key={`${session.id}:${accountId}`} sessionId={session.id} accountId={accountId} sessionStatus={session.status} allowed />}
+              </> : <p className="lh-chat-empty">No lobby is active right now. Check back soon.</p>}
+              {children}
+            </div>
+          </>
         )}
-        {expanded && inhousePage && <div className="lh-expanded lh-reminders-expanded">{children}</div>}
       </aside>
       <Dialog open={roleOpen && roleContextCurrent} onClose={() => !joining && setRoleOpen(false)} labelledBy="lh-role-title"
         contentClassName="lh-role-dialog">

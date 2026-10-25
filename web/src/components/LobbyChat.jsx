@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import './lobby-hub.css';
 
 const CLOSED = new Set(['completed', 'cancelled']);
@@ -19,6 +19,7 @@ function chronologicalUnique(messages) {
 }
 
 export default function LobbyChat({ sessionId, accountId, sessionStatus, allowed = false }) {
+  const inputId = useId();
   const [messages, setMessages] = useState([]);
   const [canSend, setCanSend] = useState(false);
   const [canModerate, setCanModerate] = useState(false);
@@ -215,8 +216,16 @@ export default function LobbyChat({ sessionId, accountId, sessionStatus, allowed
       {sessionReady && error && <p className="lh-inline-error" role="status">{error}</p>}
       {canSendNow ? (
         <form className="lh-chat-form" onSubmit={send}>
-          <label className="lh-visually-hidden" htmlFor={`lobby-chat-${sessionId}`}>Message</label>
-          <textarea id={`lobby-chat-${sessionId}`} value={body} rows={2} placeholder="Say something useful…" onChange={e => setBody(Array.from(e.target.value).slice(0, 500).join(''))} />
+          <label className="lh-visually-hidden" htmlFor={inputId}>Message</label>
+          <textarea id={inputId} value={body} rows={2} placeholder="Say something useful…"
+            onChange={e => setBody(Array.from(e.target.value).slice(0, 500).join(''))}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) {
+                event.preventDefault();
+                send(event);
+              }
+            }} />
+          <span className="lh-chat-key-hint">Enter to send · Shift+Enter for a new line</span>
           <div className="lh-chat-submit"><span>{Array.from(body).length}/500</span><button type="submit" disabled={sending || !body.trim()}>{sending ? 'Sending…' : 'Send'}</button></div>
         </form>
       ) : <p className="lh-chat-closed">{CLOSED.has(sessionStatus) ? 'Chat is closed for this match.' : 'Chat is read-only.'}</p>}

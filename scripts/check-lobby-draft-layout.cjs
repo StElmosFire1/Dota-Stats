@@ -132,7 +132,7 @@ const { getDraftReview } = require('../src/inhouse/draftReview');
             await page.waitForFunction(expected => document.querySelectorAll('.pb-draft-pool-grid .pb-draft-player').length === expected, 7 - count);
             const after = await geometry();
             assert.equal(after.length, before.length);
-            for (let i = 0; i < before.length; i++) {
+            for (let i = 0; count < 7 && i < before.length; i++) {
               for (const field of ['x', 'y', 'width', 'height']) assert.ok(Math.abs(after[i][field] - before[i][field]) < 2, `Layout shifted after pick ${count + 1}: panel ${i} ${field} ${before[i][field]} → ${after[i][field]}`);
             }
           }
@@ -143,6 +143,17 @@ const { getDraftReview } = require('../src/inhouse/draftReview');
           await page.screenshot({ path: `/tmp/lobby-draft-complete-${width}.jpg` });
           const review = page.locator('.pb-draft-review-in-pool');
           await review.getByRole('button', { name: 'Propose trade', exact: true }).waitFor();
+          const reviewLayout = await review.evaluate(node => {
+            const centre = node.closest('.pb-card');
+            return {
+              reviewClipped: node.scrollHeight > node.clientHeight + 1,
+              centreClipped: centre.scrollHeight > centre.clientHeight + 1,
+              overflow: getComputedStyle(node).overflowY,
+            };
+          });
+          assert.equal(reviewLayout.reviewClipped, false, 'Review actions must not require nested scrolling');
+          assert.equal(reviewLayout.centreClipped, false, 'Centre panel must grow to show the entire review');
+          assert.equal(reviewLayout.overflow, 'visible');
           assert.equal(await page.locator('.is-active-captain').count(), 0);
           const greenId = players.find(p => p.team === 1 && p.account_id !== 42).account_id;
           const redId = players.find(p => p.team === 2 && p.account_id !== 43).account_id;
