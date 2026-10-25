@@ -2459,6 +2459,18 @@ async function init() {
         UNIQUE (session_id, account_id)
       )
     `);
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS inhouse_chat_messages (
+        id BIGSERIAL PRIMARY KEY,
+        session_id INTEGER NOT NULL REFERENCES inhouse_sessions(id) ON DELETE CASCADE,
+        account_id BIGINT NOT NULL,
+        display_name TEXT NOT NULL,
+        body TEXT NOT NULL CHECK (char_length(body) BETWEEN 1 AND 500),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await p.query(`CREATE INDEX IF NOT EXISTS inhouse_chat_session_idx ON inhouse_chat_messages (session_id, id DESC)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS inhouse_chat_sender_idx ON inhouse_chat_messages (session_id, account_id, created_at DESC)`);
     // Task #136 — liveness heartbeat. Frontend pings every ~15s while the
     // lobby page is mounted; the autoStartTicker sweep drops anyone whose
     // last_seen_at is older than the configured threshold.
@@ -2502,6 +2514,7 @@ async function init() {
     // deadline expires, so an AFK captain can no longer stall the lobby.
     await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS draft_pick_seconds INTEGER DEFAULT 30`);
     await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS draft_pick_deadline_at TIMESTAMPTZ`);
+    await p.query(`ALTER TABLE inhouse_sessions ADD COLUMN IF NOT EXISTS draft_review JSONB`);
     // Task #297 — diagnostic test sessions used by the superuser-only
     // "Test: Provision & Connect" button on the admin panel. Flagged rows
     // are hidden from every public/active-session selector and from the

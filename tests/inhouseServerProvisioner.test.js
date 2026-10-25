@@ -56,8 +56,16 @@ function makeBot() {
   };
 }
 
-function makeDb({ initialSession, players = [] }) {
-  const state = { session: { ...initialSession } };
+function makeDb({ initialSession, players = Array.from({ length: 10 }, (_, i) => ({ account_id: i + 1, team: i % 2 + 1, status: 'drafted' })) }) {
+  const state = { session: { captain1_account_id: 1, captain2_account_id: 2, ...initialSession } };
+  // Existing provisioning tests start with a completed, captain-approved
+  // roster. Explicit draft_review:null exercises the new fail-closed gate.
+  if (!Object.hasOwn(initialSession, 'draft_review')) {
+    state.session.draft_review = {
+      ...require('../src/inhouse/draftReview').getDraftReview(state.session, players),
+      confirmations: [1, 2], approved: true,
+    };
+  }
   const updates = [];
   return {
     state,
@@ -72,6 +80,22 @@ function makeDb({ initialSession, players = [] }) {
     async getInhouseSessionPlayers() { return players; },
   };
 }
+
+test('all real provisioning paths wait for both captain confirmations, with no RCON or status change', async () => {
+  const db = makeDb({ initialSession: { id: 1, status: 'drafting', draft_review: null } });
+  let rconCalls = 0;
+  const helper = loadHelperWithStubs({
+    db, bot: makeBot(), setMatchPassword: async () => { rconCalls++; },
+    config: { dota: { dedicatedServer: { ip: '10.0.0.1', rconPassword: 'rcon' } } },
+  });
+  for (const trigger of ['auto_draft_complete', 'auto_recovery', 'manual', 'captain_retry']) {
+    const result = await helper.provisionInhouseServer(1, { trigger });
+    assert.equal(result.skipped, 'captain_review_required');
+    assert.equal(result.ok, false);
+  }
+  assert.equal(rconCalls, 0);
+  assert.equal(db.updates.length, 0);
+});
 
 test('success path: drafting → in_progress with RCON configured + Discord ping', async () => {
   const db = makeDb({ initialSession: { id: 1, status: 'drafting', team1_is_radiant: true } });

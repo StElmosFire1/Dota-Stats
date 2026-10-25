@@ -13930,6 +13930,9 @@ NOTES
 
   const { createRosterSummaryLoader, enrichRoster } = require('../inhouse/rosterSummary');
   const loadRosterSummaries = createRosterSummaryLoader(() => db.getComputedLeaderboard(null));
+  require('../inhouse/chat').registerLobbyChat(router, {
+    db, isAdmin: isAdminOrHigher, visibleInScope: _visibleInScope, resolveScope: _resolveScopeTenantId,
+  });
   router.get('/inhouse/players/:accountId/scouting', async (req, res) => {
     const accountId = String(req.params.accountId);
     if (!/^[1-9]\d{0,15}$/.test(accountId)) return res.status(400).json({ error: 'Invalid account id' });
@@ -14762,9 +14765,10 @@ NOTES
       // chosen. Skipped for the auto_balance 10-player path because that
       // mode pre-assigns every team and the draft is already complete; the
       // post-assignment block below clears the deadline for that case.
+      const { getNextPickDeadline } = require('../inhouse/draftPick');
       const _initialPickDeadline = (typeof _autoBalanceAssignments !== 'undefined' && _autoBalanceAssignments)
         ? null
-        : new Date(Date.now() + (Number(session.draft_pick_seconds) || 30) * 1000);
+        : getNextPickDeadline(session, Date.now(), true);
       const updated = await db.updateInhouseSession(session.id, {
         captain1_account_id: cap1.account_id,
         captain2_account_id: cap2.account_id,
@@ -14822,91 +14826,25 @@ NOTES
 
   router.post('/inhouse/:id/draft-pick', express.json(), async (req, res) => {
     try {
-      const { accountId, team, pickOrder, pickSource } = req.body || {};
+      const { accountId, team, pickSource, expectedPickDeadlineAt, expectedPickIndex } = req.body || {};
       if (!accountId || ![1,2].includes(team)) return res.status(400).json({ error: 'accountId and team (1|2) required' });
       // Task #179 — record whether this pick was made by a captain or by the
       // autoStartTicker deadline sweep. Only the deadline sweep is allowed to
       // claim 'auto_deadline'; any other caller silently maps to 'captain'.
-      const _isAdminForSource = !!(req.session && req.session.isSuperuser) ||
-        !!(process.env.SUPERUSER_PASSWORD && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD);
+      const _isAdminForSource = !!(process.env.SUPERUSER_PASSWORD && req.headers['x-superuser-key'] === process.env.SUPERUSER_PASSWORD);
       const _pickSource = (_isAdminForSource && pickSource === 'auto_deadline') ? 'auto_deadline' : 'captain';
-      const cur = await db.getInhouseSession(req.params.id);
-      if (!cur) return res.status(404).json({ error: 'Session not found' });
-      if (cur.status !== 'drafting') return res.status(400).json({ error: 'Not in drafting phase' });
-
-      // v5.75: captains can pick directly (no admin required), but only the
-      // captain whose turn it is, and only for their own team. Admins can
-      // override at any time.
-      const adminKey = process.env.SUPERUSER_PASSWORD;
-      const isAdmin = !!(req.session && req.session.isSuperuser) ||
-        !!(adminKey && req.headers['x-superuser-key'] === adminKey);
-      const myAccountId = req.session?.accountId ? Number(req.session.accountId) : null;
-
-      if (!isAdmin) {
-        if (!myAccountId) return res.status(401).json({ error: 'Sign in with Steam to pick.' });
-        const cap1 = Number(cur.captain1_account_id);
-        const cap2 = Number(cur.captain2_account_id);
-        const myTeam = myAccountId === cap1 ? 1 : myAccountId === cap2 ? 2 : null;
-        if (!myTeam) return res.status(403).json({ error: 'Only the captains can pick.' });
-        if (myTeam !== team) return res.status(403).json({ error: 'You can only pick onto your own team.' });
-        const allPlayers = await db.getInhouseSessionPlayers(cur.id);
-        const turn = _currentPickerTeam(allPlayers, cur);
-        if (turn === null) return res.status(400).json({ error: 'Draft is complete.' });
-        if (turn !== myTeam) return res.status(409).json({ error: "It's not your turn to pick." });
-      }
-
-      // Atomic conditional pick: only succeeds if player is still unpicked AND not declined
-      const pool = db.getPool();
-      const guard = await pool.query(
-        `UPDATE inhouse_session_players
-            SET team = $1, pick_order = $2, status = 'drafted', pick_source = $5
-          WHERE session_id = $3 AND account_id = $4 AND team = 0 AND status <> 'declined'
-       RETURNING *`,
-        [team, pickOrder ?? null, req.params.id, accountId, _pickSource]
-      );
-      if (guard.rowCount === 0) {
-        return res.status(409).json({ error: 'Player already picked or no longer eligible' });
-      }
-      res.json({ player: guard.rows[0] });
-
-      // Task #172 — reset the per-pick countdown. If the draft is now
-      // complete clear the deadline; otherwise restart the budget for the
-      // next captain on the clock. Best-effort — failures here don't fail
-      // the pick (the response has already been sent).
-      let _allPlayers = null;
-      let _draftComplete = false;
-      try {
-        _allPlayers = await db.getInhouseSessionPlayers(req.params.id);
-        const { isDraftComplete } = require('../inhouse/serverProvisioner');
-        _draftComplete = isDraftComplete(cur, _allPlayers);
-        const next = _draftComplete
-          ? null
-          : new Date(Date.now() + (Number(cur.draft_pick_seconds) || 30) * 1000);
-        await db.updateInhouseSession(req.params.id, { draft_pick_deadline_at: next });
-      } catch (e) {
-        console.warn('[Inhouse] draft-pick deadline update failed:', e.message);
-      }
-
-      // Task #168 — fire-and-forget auto-provision the dedicated server the
-      // moment the 8th non-captain pick lands. No admin click required. The
-      // helper has its own per-session single-flight lock, so a concurrent
-      // tick from autoStartTicker won't double-provision.
-      try {
-        const allPlayers = _allPlayers || await db.getInhouseSessionPlayers(req.params.id);
-        const { provisionInhouseServer, isDraftComplete } = require('../inhouse/serverProvisioner');
-        if (_draftComplete || isDraftComplete(cur, allPlayers)) {
-          provisionInhouseServer(req.params.id, { trigger: 'auto_draft_complete' })
-            .then(r => {
-              if (r && r.ok && !r.skipped) console.log(`[Inhouse] Auto-provisioned session #${req.params.id} after draft completion`);
-              else if (r && !r.skipped) console.warn(`[Inhouse] Auto-provision after draft failed for session #${req.params.id}:`, r.error);
-            })
-            .catch(e => console.warn('[Inhouse] Auto-provision threw:', e.message));
-        }
-      } catch (e) {
-        console.warn('[Inhouse] Auto-provision wiring error:', e.message);
-      }
+      const { pickPlayer } = require('../inhouse/draftPick');
+      const picked = await pickPlayer(db.getPool(), {
+        sessionId: req.params.id, accountId, team,
+        requesterAccountId: req.session?.accountId,
+        isAdmin: await isAdminOrHigher(req), source: _pickSource,
+        expectedPickDeadlineAt, expectedPickIndex,
+      });
+      res.json({ player: picked.player });
+      // The last pick opens captain review. Provisioning only follows both
+      // confirmations, never draft completion alone.
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(err.status || 500).json({ error: err.message });
     }
   });
 
@@ -14925,7 +14863,7 @@ NOTES
       res.json({
         sequence: seq,
         pickIdx: drafted,
-        currentPickerTeam: _teamForPickIndex(drafted),
+        currentPickerTeam: _currentPickerTeam(players, cur),
         complete: drafted >= seq.length,
         // Task #172 — per-pick countdown payload. `pickDeadlineAt` is the
         // ISO timestamp at which the autoStartTicker will auto-pick for the
@@ -14933,9 +14871,33 @@ NOTES
         // (default 30s) that the frontend uses to render the progress bar.
         pickDeadlineAt: cur.draft_pick_deadline_at || null,
         pickSeconds: Number(cur.draft_pick_seconds) || 30,
+        pickStartsAt: cur.draft_pick_deadline_at
+          ? new Date(new Date(cur.draft_pick_deadline_at).getTime() - (Number(cur.draft_pick_seconds) || 30) * 1000).toISOString()
+          : null,
+        pickGraceSeconds: drafted === 0 ? 10 : 0,
+        review: require('../inhouse/draftReview').getDraftReview(cur, players),
       });
     } catch (err) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Only the actual Steam captain can confirm or negotiate. Admin role alone
+  // must never substitute for the other captain's consent.
+  router.post('/inhouse/:id/draft-review', express.json(), async (req, res) => {
+    try {
+      const { action, revision, team1AccountId, team2AccountId, proposalId } = req.body || {};
+      const result = await require('../inhouse/draftReview').updateDraftReview(db.getPool(), {
+        sessionId: req.params.id, requesterAccountId: req.session?.accountId,
+        action, revision, team1AccountId, team2AccountId, proposalId,
+      });
+      res.json(result);
+      if (result.review.approved) {
+        require('../inhouse/serverProvisioner').provisionInhouseServer(req.params.id, { trigger: 'captains_confirmed' })
+          .catch(e => console.warn('[Inhouse] Provision after captain review failed:', e.message));
+      }
+    } catch (error) {
+      res.status(error.status || 500).json({ error: error.message });
     }
   });
 

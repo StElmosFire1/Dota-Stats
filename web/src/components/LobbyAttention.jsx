@@ -5,6 +5,7 @@ import { lobbyAttention } from '../lib/lobbyAttention';
 import { useInhouseAlerts } from '../hooks/useInhouseAlerts';
 import Dialog from './Dialog';
 import { LOBBY_REMINDER_SETTINGS_EVENT } from '../lib/lobbyReminderSettings';
+import LobbyHub from './LobbyHub';
 
 // Mounted outside routes so reminders survive navigation to another site page.
 // Preferences are per-account, per-browser; no unsolicited sound or permission prompt.
@@ -168,21 +169,48 @@ export default function LobbyAttention() {
   if (!accountId) return null;
   return (
     <>
-    <aside id="lobby-reminders" aria-label="Lobby reminders" style={{ position: 'fixed', bottom: 18, right: 18, zIndex: 1200, maxWidth: 'min(360px, calc(100vw - 36px))', padding: 14, borderRadius: 10, background: 'var(--bg-card, #172034)', color: 'var(--text-primary)', border: '1px solid var(--border)', boxShadow: '0 4px 24px #0005' }}>
-      <button className="btn" type="button" aria-pressed={enabled} onClick={toggle}>Lobby reminders: {enabled ? 'on' : 'off'}</button>
-      {enabled && <details style={{ fontSize: 12, marginTop: 8 }}><summary>Sound and browser permissions</summary><p>Sound repeats every 20 seconds until acknowledged or no longer needed. Keep this site open. After a refresh, <button type="button" onClick={sounds.testChime}>test / resume sound</button>. Browser and OS settings may limit background alerts.</p></details>}
-      {enabled && 'Notification' in window && Notification.permission === 'denied' && <p style={{ fontSize: 12 }}>Desktop notifications are blocked. Allow them in your browser’s site permissions if wanted.</p>}
-      {enabled && error && <p role="status">{error}</p>}
-      {enabled && notice && <div role="alert">
+    <LobbyHub
+      snapshot={snapshot}
+      accountId={accountId}
+      steamUser={steamUser}
+      isAdmin={false}
+      stale={!!error}
+      attention={enabled && notice && <div className="lh-attention" role="alert">
+        <span className="lh-attention-label">Lobby update</span>
         <p>{notice.message}</p>
-        <Link to="/inhouse">Open lobby</Link>{' '}
-        <button type="button" className="btn" onClick={() => {
-          acknowledged.current.add(notice.key);
-          try { localStorage.setItem(ackKey, JSON.stringify([...acknowledged.current].slice(-80))); } catch { /* In-memory acknowledgement still applies. */ }
-          setNotice(null); notification.current?.close();
-        }}>Acknowledge</button>
+        <div className="lh-attention-actions">
+          <Link to="/inhouse">Open lobby</Link>
+          <button type="button" onClick={() => {
+            acknowledged.current.add(notice.key);
+            try { localStorage.setItem(ackKey, JSON.stringify([...acknowledged.current].slice(-80))); } catch { /* In-memory acknowledgement still applies. */ }
+            setNotice(null); notification.current?.close();
+          }}>Acknowledge</button>
+        </div>
       </div>}
-    </aside>
+      onRefresh={async () => {
+        try {
+          const response = await fetch('/api/inhouse/active', { credentials: 'include', cache: 'no-store' });
+          if (!response.ok) throw new Error('Lobby updates unavailable. Retrying…');
+          const data = await response.json();
+          setSnapshot({ session: data.session, players: data.players || [], draft: null });
+          setError('');
+        } catch (e) {
+          setError(e.message || 'Lobby updates unavailable. Retrying…');
+          throw e;
+        }
+      }}
+      settingsAction={() => {
+        setPermission(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
+        setSettingsOpen(true);
+      }}
+    >
+      <section id="lobby-reminders" className="lh-reminder-content" aria-label="Lobby reminders">
+        <button className="btn" type="button" aria-pressed={enabled} onClick={toggle}>Lobby reminders: {enabled ? 'on' : 'off'}</button>
+        {enabled && <details style={{ fontSize: 12, marginTop: 8 }}><summary>Sound and browser permissions</summary><p>Sound repeats every 20 seconds until acknowledged or no longer needed. Keep this site open. After a refresh, <button type="button" onClick={sounds.testChime}>test / resume sound</button>. Browser and OS settings may limit background alerts.</p></details>}
+        {enabled && 'Notification' in window && Notification.permission === 'denied' && <p style={{ fontSize: 12 }}>Desktop notifications are blocked. Allow them in your browser’s site permissions if wanted.</p>}
+        {enabled && error && <p role="status">{error}</p>}
+      </section>
+    </LobbyHub>
     <Dialog open={settingsOpen} onClose={closeSettings} labelledBy="lobby-reminder-settings-title"
       contentStyle={{ width: 'min(440px, 100%)', maxHeight: '85vh', overflowY: 'auto', padding: 24, borderRadius: 10, background: 'var(--bg-card, #172034)', color: 'var(--text)', border: '1px solid var(--border)' }}>
       <h2 id="lobby-reminder-settings-title" style={{ marginTop: 0 }}>Lobby reminder settings</h2>

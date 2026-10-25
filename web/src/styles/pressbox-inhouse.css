@@ -28,12 +28,198 @@
   align-items: start;
 }
 .pb-inhouse .pb-inhouse-player-actions-panel:empty { display: none; }
+.pb-draft-clock { min-height: 36px; }
+.pb-draft-clock-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 24px; font-size: 12px; }
+.pb-draft-clock-line strong { color: var(--pb-brass); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pb-draft-clock-track { height: 4px; margin-top: 5px; border-radius: 3px; overflow: hidden; background: var(--pb-line); }
+.pb-draft-clock-track span { display: block; height: 100%; background: #67b878; }
 
 .pb-inhouse .pb-draft-pool-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
   gap: 7px;
+  align-content: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
 }
+
+.pb-inhouse .inhouse-draft-board .pb-draft-player.is-pool-player {
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.pb-inhouse .pb-draft-player.is-pool-player .pb-player-stats {
+  gap: 0 8px;
+}
+
+.pb-inhouse .pb-draft-player.is-pool-player .pb-player-stat-label {
+  font-size: 9px;
+}
+
+.pb-inhouse .pb-draft-player.is-pool-player .pb-player-stat-value {
+  font-size: 11px;
+}
+
+.pb-inhouse .inhouse-draft-board {
+  height: 540px;
+}
+
+.pb-inhouse .pb-draft-roster-panel {
+  height: 540px;
+  min-height: 0 !important;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.pb-inhouse .inhouse-draft-board > .pb-card:nth-child(2) {
+  height: 540px;
+  min-height: 0 !important;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.pb-inhouse .pb-draft-roster-panel > div:first-child {
+  flex: 0 0 auto;
+}
+
+.pb-inhouse .pb-roster-slots {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.pb-inhouse .pb-roster-slot-filled {
+  min-width: 0;
+  min-height: 0;
+}
+
+.pb-inhouse .pb-roster-slot-filled .pb-draft-player {
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  gap: 8px !important;
+  padding: 5px 8px 5px 12px !important;
+}
+
+.pb-inhouse .pb-roster-slot-filled .pb-draft-player-footer {
+  flex: 0 0 auto;
+}
+.pb-inhouse .pb-roster-slot-filled .pb-draft-player {
+  display: grid !important;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+}
+.pb-inhouse .pb-roster-slot-filled .pb-draft-player > .lobby-player-cosmetics { grid-column: 1; }
+.pb-inhouse .pb-roster-slot-filled .pb-draft-player > div:first-of-type { grid-column: 2; width: 100%; }
+.pb-inhouse .pb-roster-slot-filled .pb-draft-player > div:first-of-type > div:first-child {
+  padding-right: 64px;
+  flex-wrap: nowrap !important;
+  min-width: 0;
+}
+/* Team/captain identity is already in the panel heading. Auto-pick remains
+   explicit in the status chip rather than consuming another metadata row. */
+.pb-inhouse .pb-roster-slot-filled .pb-draft-player > div:first-of-type > div:first-child > span:not(.lobby-player-identity) { display: none; }
+.pb-inhouse .pb-roster-slot-filled .lobby-player-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pb-inhouse .pb-roster-slot-filled .pb-draft-player-footer { position: absolute; top: 6px; right: 6px; }
+.pb-inhouse .pb-roster-slot-filled .pb-draft-player-status { padding: 2px 5px !important; font-size: 10px !important; }
+.pb-inhouse .pb-roster-slot-filled .pb-player-stats { display: flex; flex-wrap: wrap; gap: 0 7px; }
+.pb-inhouse .pb-roster-slot-filled .pb-player-stat { flex-wrap: nowrap; white-space: nowrap; }
+.pb-inhouse .pb-draft-review-in-pool {
+  min-height: 0;
+  flex: 1 1 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 4px 4px;
+}
+@media (max-width: 1100px) {
+  /* Reserve the wrapped turn notice and first-pick explanation on phones,
+     including after the last pick, so the board below cannot jump. */
+  .pb-inhouse.is-drafting .pb-draft-timer { min-height: 260px; box-sizing: border-box; }
+  .pb-inhouse.is-drafting .pb-roster-slots { grid-template-rows: repeat(5, 128px); }
+}
+
+.pb-inhouse .pb-draft-player.is-active-captain {
+  animation: pb-captain-picking 2s ease-in-out infinite;
+  outline: 1px solid var(--pb-brass);
+  outline-offset: -1px;
+}
+@keyframes pb-captain-picking {
+  0%, 100% { box-shadow: inset 0 0 0 1px transparent, 0 0 0 transparent; }
+  50% { box-shadow: inset 0 0 0 1px var(--pb-brass), 0 0 14px color-mix(in srgb, var(--pb-brass) 45%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pb-inhouse .pb-draft-player.is-active-captain { animation: none; box-shadow: inset 0 0 0 1px var(--pb-brass); }
+}
+
+.pb-inhouse .pb-roster-slot {
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px dashed color-mix(in srgb, var(--pb-line) 78%, var(--pb-brass));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--pb-elevated) 48%, transparent);
+  color: #b8c1d0;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.pb-inhouse .pb-roster-slot span:first-child {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--pb-line);
+  border-radius: 50%;
+  color: var(--pb-brass);
+  font: 700 10px/1 var(--font-mono, monospace);
+}
+
+.pb-inhouse .pb-player-stats {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 1px 10px;
+  min-width: 0;
+  line-height: 1.35;
+}
+.pb-inhouse .pb-player-stat {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.pb-inhouse .pb-player-stat-label {
+  color: #b6c1d2;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.pb-inhouse .pb-player-stat-value {
+  color: #edf0f5;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.pb-inhouse .pb-player-stat-value.pb-streak-win { color: #76c893; }
+.pb-inhouse .pb-player-stat-value.pb-streak-loss { color: #d8908c; }
 
 .pb-inhouse .inhouse-draft-board .pb-draft-player {
   min-width: 0;
@@ -112,9 +298,18 @@
   margin-top: 10px !important;
 }
 
+.pb-inhouse:not(.is-drafting) .pb-draft-workspace::before {
+  content: "";
+  display: block;
+  height: 80px;
+  margin-bottom: 9px;
+}
+
 .pb-inhouse .pb-draft-timer {
   padding: 9px 13px !important;
   margin-bottom: 9px !important;
+  min-height: 80px;
+  box-sizing: border-box;
 }
 
 .pb-inhouse .pb-draft-auto-note {
@@ -127,9 +322,9 @@
 }
 
 @media (min-width: 1101px) {
-  .inhouse-route-container:has(.is-drafting) { padding-block: 12px; }
+  .inhouse-route-container:has(.is-drafting) { padding-block: 4px; }
   .pb-inhouse.is-drafting { padding: 0 !important; }
-  .pb-inhouse.is-drafting .pb-inhouse-header { align-items: center; gap: 16px; margin-bottom: 10px; }
+  .pb-inhouse.is-drafting .pb-inhouse-header { align-items: center; gap: 16px; margin-bottom: 4px; }
   .pb-inhouse.is-drafting .pb-inhouse-heading-copy { flex: 1 1 0; }
   .pb-inhouse.is-drafting .pb-page-title { font-size: 28px !important; line-height: 1.15; }
   .pb-inhouse.is-drafting .pb-inhouse-subtitle { margin-top: 6px; line-height: 1.4; }
@@ -148,10 +343,36 @@
 @media (max-width: 900px) {
   .pb-inhouse .inhouse-draft-board {
     grid-template-columns: minmax(0, 1fr) !important;
+    height: auto;
+  }
+  .pb-inhouse .pb-draft-roster-panel,
+  .pb-inhouse .inhouse-draft-board > .pb-card {
+    min-height: 0;
+  }
+
+  .pb-inhouse .pb-draft-roster-panel {
+    height: auto;
+  }
+
+  .pb-inhouse .pb-roster-slots {
+    grid-template-rows: repeat(5, minmax(96px, auto));
   }
 
   .pb-inhouse .pb-draft-pool-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+  }
+
+  .pb-inhouse .inhouse-draft-board {
+    min-height: 0;
+  }
+
+  .pb-inhouse .inhouse-draft-board > .pb-card:nth-child(2) {
+    height: 900px;
+  }
+
+  .pb-inhouse:has(.inhouse-draft-board) .pb-inhouse-player-actions-panel {
+    min-height: 96px;
   }
 }
 
@@ -162,15 +383,59 @@
 
   .pb-inhouse .pb-draft-pool-grid {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(8, minmax(0, 1fr));
   }
 
   .pb-inhouse .pb-draft-player {
     flex-wrap: wrap;
   }
 
+  .pb-inhouse .pb-roster-slots {
+    grid-template-rows: repeat(5, minmax(104px, auto));
+  }
+
   .pb-inhouse .pb-draft-player > div:nth-of-type(1) {
     flex: 1 1 calc(100% - 64px);
   }
+
+  .pb-inhouse:has(.inhouse-draft-board) .pb-inhouse-player-actions-panel {
+    min-height: 112px;
+  }
+}
+
+/* Reserve the website-only completion message's slot anywhere the draft board
+   is present. Empty panels remain unframed, but the final pick cannot move the
+   board or timer footprint down. */
+.pb-inhouse:has(.inhouse-draft-board) .pb-inhouse-player-actions-panel {
+  box-sizing: border-box;
+  min-height: 72px;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+.pb-inhouse:has(.inhouse-draft-board) .pb-inhouse-player-actions-panel:empty {
+  display: block;
+}
+
+.pb-inhouse:has(.inhouse-draft-board) .pb-inhouse-player-actions-panel > .card {
+  margin: 0 !important;
+  padding: 8px 12px !important;
+}
+
+.pb-inhouse:has(.inhouse-draft-board) .pb-inhouse-player-actions-panel > .card p {
+  margin: 4px 0 0;
+}
+
+/* Completion instructions live after the comparison workspace, so their
+   arrival never displaces the teams or remaining-player pool. */
+.pb-inhouse:has(.inhouse-draft-board) .pb-inhouse-session { display: flex; flex-direction: column; }
+.pb-inhouse:has(.inhouse-draft-board) .pb-draft-workspace { order: 1; }
+.pb-inhouse:has(.inhouse-draft-board) .pb-inhouse-player-actions-panel { order: 2; }
+@media (min-width: 1101px) {
+  .pb-inhouse.is-drafting .pb-draft-timer { min-height: 60px; }
 }
 
 /* ---- Page header ---- */

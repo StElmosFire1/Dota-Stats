@@ -60,7 +60,13 @@ function countDraftedNonCaptains(players, session) {
 // the sequence index — the canonical "whose turn is it?" answer.
 function currentPickerTeam(players, session) {
   const drafted = countDraftedNonCaptains(players, session);
-  return teamForPickIndex(drafted);
+  const scheduled = teamForPickIndex(drafted);
+  if (scheduled === null) return null;
+  const count = team => players.filter(p => Number(p.team) === team).length;
+  if (count(scheduled) < 5) return scheduled;
+  // Admin overrides can fill one side ahead of the snake schedule.
+  const other = scheduled === 1 ? 2 : 1;
+  return count(other) < 5 ? other : null;
 }
 
 module.exports = {

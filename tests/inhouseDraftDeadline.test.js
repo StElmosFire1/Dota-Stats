@@ -49,6 +49,28 @@ let _serverDb  = null;
 let _serverProvisioner = null;
 
 function _loadServer({ db, provisioner }) {
+  // Route fixtures model a transactional client. Real PostgreSQL locking and
+  // race behavior are covered independently in inhouseDraftPick.test.js.
+  const originalPool = db.getPool;
+  if (originalPool) {
+    db = { ...db, getPool: () => {
+      const pool = originalPool();
+      if (pool.connect) return pool;
+      return { ...pool, connect: async () => ({
+        query: async (sql, params) => {
+          if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [], rowCount: 0 };
+          if (sql.startsWith('SELECT * FROM inhouse_sessions')) return { rows: [await db.getInhouseSession(params[0])].filter(Boolean) };
+          if (sql.startsWith('SELECT * FROM inhouse_session_players')) return { rows: await db.getInhouseSessionPlayers(params[0]) };
+          if (sql.startsWith('UPDATE inhouse_sessions SET draft_pick_deadline_at')) {
+            await db.updateInhouseSession(params[0], { draft_pick_deadline_at: params[1] });
+            return { rows: [], rowCount: 1 };
+          }
+          return pool.query(sql, params);
+        },
+        release() {},
+      }) };
+    } };
+  }
   _serverDb = db;
   _serverProvisioner = provisioner;
 
@@ -305,14 +327,13 @@ for (let pickIdx = 0; pickIdx < 8; pickIdx++) {
       match_password: null,
     };
     // Build a roster where exactly `pickIdx` non-captain seats are drafted
-    // already (alternating teams 1/2/1/2 — actual team doesn't matter for
-    // counting), plus enough undrafted candidates for the next pick.
+    // already in legal snake order, plus an undrafted next candidate.
     const players = [
       { account_id: 1, team: 1, status: 'drafted' },
       { account_id: 2, team: 2, status: 'drafted' },
     ];
     for (let i = 0; i < pickIdx; i++) {
-      players.push({ account_id: 100 + i, team: (i % 2) + 1, status: 'drafted', pick_order: i + 1 });
+      players.push({ account_id: 100 + i, team: _PICK_TEAM_BY_IDX[i], status: 'drafted', pick_order: i + 1 });
     }
     // One undrafted candidate so the pick has somewhere to go.
     players.push({ account_id: 999, team: 0, status: 'registered', trueskill_mmr: 30, games_played: 50 });
@@ -549,14 +570,14 @@ test('/draft-pick: resets the per-pick deadline after a successful (non-final) p
   assert.ok(deadlineUpdate.draft_pick_deadline_at instanceof Date,
     'mid-draft pick should set a fresh Date deadline (not null)');
   const elapsedMs = deadlineUpdate.draft_pick_deadline_at.getTime() - beforeMs;
-  // 25s budget ± ~1s of test slop
+  // Later picks have only the 25s budget, without another lead-in.
   assert.ok(elapsedMs >= 24_000 && elapsedMs <= 26_000,
     `expected deadline to be ~25s ahead (got ${elapsedMs}ms ahead)`);
   // No auto-provision on a non-final pick
   assert.equal(provisionCalls.length, 0);
 });
 
-test('/draft-pick: clears the deadline AND fires the auto-provision trigger on the 8th (final) pick', async () => {
+test('/draft-pick: final pick clears the deadline but waits for captain review before provisioning', async () => {
   // 7 non-captain picks already placed → this request is the 8th and
   // final pick (so isDraftComplete becomes true after the UPDATE).
   const session = {
@@ -569,7 +590,7 @@ test('/draft-pick: clears the deadline AND fires the auto-provision trigger on t
     { account_id: 1, team: 1 }, { account_id: 2, team: 2 },
   ];
   for (let i = 0; i < 7; i++) {
-    players.push({ account_id: 10 + i, team: (i % 2) + 1, pick_order: i + 1, status: 'drafted' });
+    players.push({ account_id: 10 + i, team: _PICK_TEAM_BY_IDX[i], pick_order: i + 1, status: 'drafted' });
   }
   // The 10th candidate (8th non-captain pick).
   players.push({ account_id: 99, team: 0, status: 'registered' });
@@ -614,9 +635,8 @@ test('/draft-pick: clears the deadline AND fires the auto-provision trigger on t
   assert.ok(deadlineUpdate, 'a draft_pick_deadline_at update must be issued');
   assert.equal(deadlineUpdate.draft_pick_deadline_at, null,
     'final pick should clear the deadline (set to null)');
-  assert.equal(provisionCalls.length, 1,
-    'final pick must fire the Task #168 auto-provision trigger exactly once');
-  assert.equal(provisionCalls[0][1].trigger, 'auto_draft_complete');
+  assert.equal(provisionCalls.length, 0,
+    'final pick must not provision before both captains confirm');
 });
 
 // ===========================================================================

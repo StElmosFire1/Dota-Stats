@@ -67,6 +67,14 @@ async function provisionInhouseServer(sessionId, opts = {}) {
     if (cur.status !== 'drafting' && cur.status !== 'server_failed') {
       return { ok: false, error: `Cannot provision from status ${cur.status}`, skipped: 'wrong_status' };
     }
+    // The internal superuser diagnostic uses a synthetic, player-less row.
+    // Every real automatic, admin/manual and retry path needs both captains.
+    if (opts.trigger !== 'diagnostic') {
+      const players = await db.getInhouseSessionPlayers(id);
+      if (!require('./draftReview').isDraftReviewApproved(cur, players)) {
+        return { ok: false, skipped: 'captain_review_required', error: 'Both captains must confirm their teams before provisioning.' };
+      }
+    }
 
     const reqPwd = (opts.password || '').toString();
     const safePwd = /^[A-Za-z0-9_-]{4,32}$/.test(reqPwd) ? reqPwd : generateMatchPassword(8);

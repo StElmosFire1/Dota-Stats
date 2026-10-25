@@ -7,11 +7,15 @@ import { WhyIsThisSafeLink } from '../components/SteamTrustModal';
 import { resolveDisplayName, resolvePlayerDisplayName } from '../utils/displayName';
 import LobbyAutomationControl from '../components/LobbyAutomationControl';
 import LobbyPlayerIdentity, { LobbyPlayerEmblem } from '../components/LobbyPlayerIdentity';
+import DraftPickClock from '../components/DraftPickClock';
+import DraftTeamReview from '../components/DraftTeamReview';
 import { openLobbyReminderSettings } from '../lib/lobbyReminderSettings';
 import { superuserFetch, getCaptainAutoPickStats } from '../api';
 import MoodFormWidget from '../components/MoodFormWidget';
 import SignInPrompt from '../components/SignInPrompt';
 import SortableTh from '../components/SortableTh';
+import LobbyChat from '../components/LobbyChat';
+import { normalizePreferredRoles } from '../utils/preferredRoles';
 import '../styles/pressbox-inhouse.css';
 
 const POSITIONS = [
@@ -89,7 +93,7 @@ function Countdown({ startsAt, seconds, onExpire, endsAt, label, variant }) {
   );
 }
 
-function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canDraft, onDraftPick, balanceScore, viewerIsAdmin, myCaptainTeam, isPoolPlayer = false }) {
+function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canDraft, onDraftPick, balanceScore, viewerIsAdmin, myCaptainTeam, isPoolPlayer = false, fullTeams = [], isTeamRoster = false, isActiveCaptain = false }) {
   const mmr = player.inhouse_mmr == null ? null : Math.round(Number(player.inhouse_mmr));
   const statusColors = {
     registered: { bg: 'rgba(120,120,120,0.15)', color: '#aaa', label: 'Waiting' },
@@ -97,13 +101,19 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
     declined: { bg: 'rgba(244,67,54,0.15)', color: '#f44336', label: '✗ Declined' },
     drafted: { bg: 'rgba(33,150,243,0.15)', color: '#2196f3', label: 'Drafted' },
   };
-  const s = statusColors[player.status] || statusColors.registered;
+  const baseStatus = statusColors[player.status] || statusColors.registered;
+  const s = isActiveCaptain ? { bg: 'rgba(212,175,55,0.18)', color: 'var(--amber)', label: 'Picking' }
+    : player.pick_source === 'auto_deadline' ? { ...baseStatus, label: 'Auto-picked' } : baseStatus;
   // v5.92 — every name routes through the shared resolver so we never
   // render `Player <raw id>` unless every other source is missing.
   const displayName = resolvePlayerDisplayName(player);
+  const preferredRoles = normalizePreferredRoles(player.preferred_positions);
+  const preferredRoleLabel = preferredRoles.length === 5
+    ? 'All roles'
+    : preferredRoles.join(' · ');
 
   return (
-    <div className={`pb-draft-player${isPoolPlayer ? ' is-pool-player' : ''}`} style={{
+    <div className={`pb-draft-player${isPoolPlayer ? ' is-pool-player' : ''}${isActiveCaptain ? ' is-active-captain' : ''}`} style={{
       position: 'relative',
       display: 'flex',
       alignItems: 'center',
@@ -149,10 +159,15 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
             </span>
           )}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-          {mmr == null ? 'MMR unavailable' : `MMR ${mmr.toLocaleString()}`}
-          {balanceScore != null && <span> · <span title="Auto-balance score that fed into the projected balance" style={{ color: 'var(--brass)', fontWeight: 600 }}>Score {balanceScore.toLocaleString()}</span></span>}
-          {player.preferred_positions && <span> · Prefers {player.preferred_positions}</span>}
+        <div className="pb-player-stats" style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
+          <span className="pb-player-stat"><span className="pb-player-stat-label">MMR</span><span className="pb-player-stat-value">{mmr == null ? '—' : mmr.toLocaleString()}</span></span>
+          {balanceScore != null && <span className="pb-player-stat" title="Auto-balance score that fed into the projected balance"><span className="pb-player-stat-label">Score</span><span className="pb-player-stat-value" style={{ color: 'var(--brass)' }}>{balanceScore.toLocaleString()}</span></span>}
+          {preferredRoles.length > 0 && (
+            <span className="pb-player-stat">
+              <span className="pb-player-stat-label">Roles</span>
+              <span className="pb-player-stat-value">{preferredRoleLabel}</span>
+            </span>
+          )}
           {/* Lobby enrichment — win rate, streak, last-played so waiting
               players can size each other up at a glance. */}
           {(() => {
@@ -160,25 +175,25 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
             const l = Number(player.losses) || 0;
             const g = w + l;
             if (!g) return null;
-            return <span> · {Math.round((w / g) * 100)}% WR <span style={{ opacity: 0.7 }}>({g}g)</span></span>;
+            return <span className="pb-player-stat"><span className="pb-player-stat-label">Record</span><span className="pb-player-stat-value">{w}W–{l}L · {Math.round((w / g) * 100)}% WR</span></span>;
           })()}
           {(() => {
-            const st = Number(player.streak) || 0;
+            const st = Number(player.current_streak ?? player.streak) || 0;
             if (!st) return null;
             return st > 0
-              ? <span> · <span style={{ color: '#4caf50', fontWeight: 600 }}>🔥 W{st}</span></span>
-              : <span> · <span style={{ color: '#90a4ae', fontWeight: 600 }}>❄️ L{-st}</span></span>;
+              ? <span className="pb-player-stat"><span className="pb-player-stat-label">Streak</span><span className="pb-player-stat-value pb-streak-win">W{st}</span></span>
+              : <span className="pb-player-stat"><span className="pb-player-stat-label">Streak</span><span className="pb-player-stat-value pb-streak-loss">L{-st}</span></span>;
           })()}
           {(() => {
-            if (!player.last_played) return null;
+            if (isTeamRoster || !player.last_played) return null;
             const days = Math.floor((Date.now() - new Date(player.last_played).getTime()) / 86400000);
             if (!Number.isFinite(days) || days < 0) return null;
             const label = days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days}d ago`;
-            return <span> · Last played {label}</span>;
+            return <span className="pb-player-stat"><span className="pb-player-stat-label">Last</span><span className="pb-player-stat-value">{label}</span></span>;
           })()}
-          {player.roll != null && <span> · Roll {player.roll}</span>}
-          {player.voice_verified && <span> · 🎙 In voice</span>}
-          {player.not_in_dota === false && player.status === 'accepted' && <span> · 🎮 In Dota</span>}
+          {!isTeamRoster && player.roll != null && <span className="pb-player-stat"><span className="pb-player-stat-label">Roll</span><span className="pb-player-stat-value">{player.roll}</span></span>}
+          {!isTeamRoster && player.voice_verified && <span className="pb-player-stat"><span className="pb-player-stat-value">In voice</span></span>}
+          {!isTeamRoster && player.not_in_dota === false && player.status === 'accepted' && <span className="pb-player-stat"><span className="pb-player-stat-value">In Dota</span></span>}
         </div>
       </div>
       <div className="pb-draft-player-footer">
@@ -190,14 +205,15 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
           viewerIsAdmin ? (
             <div className="pb-draft-player-actions" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               <span aria-hidden="true" title="Admin override" style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>Admin</span>
-              <button type="button" aria-label={`Admin: assign ${displayName} to Green side`} onClick={() => onDraftPick(player.account_id, 1)} style={{ padding: '4px 8px', background: '#2e7d32', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>→ Green</button>
-              <button type="button" aria-label={`Admin: assign ${displayName} to Red side`} onClick={() => onDraftPick(player.account_id, 2)} style={{ padding: '4px 8px', background: '#c62828', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>→ Red</button>
+            <button type="button" disabled={fullTeams.includes(1)} title={fullTeams.includes(1) ? 'Green team is full (5/5)' : undefined} aria-label={`Admin: assign ${displayName} to Green side`} onClick={() => onDraftPick(player.account_id, 1)} style={{ padding: '4px 8px', background: '#2e7d32', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>→ Green</button>
+            <button type="button" disabled={fullTeams.includes(2)} title={fullTeams.includes(2) ? 'Red team is full (5/5)' : undefined} aria-label={`Admin: assign ${displayName} to Red side`} onClick={() => onDraftPick(player.account_id, 2)} style={{ padding: '4px 8px', background: '#c62828', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>→ Red</button>
             </div>
           ) : myCaptainTeam ? (
             <button
               type="button"
               className="pb-draft-player-actions"
               aria-label={`Pick ${displayName} onto your side`}
+            disabled={fullTeams.includes(myCaptainTeam)}
               onClick={() => onDraftPick(player.account_id, myCaptainTeam)}
               style={{
                 padding: '6px 16px',
@@ -210,6 +226,66 @@ function PlayerRow({ player, session, isCurrentUser, isCaptain, isDrafting, canD
             </button>
           ) : null
         )}
+      </div>
+    </div>
+  );
+}
+
+// Stable module-level identity is essential here: the lobby polls frequently,
+// and defining this component inside Inhouse would remount every ring on poll.
+function RosterPanel({ label, accent, capName, picks, captainId, captainStats = {}, currentUserId, session, scoreFor, activeCaptain = false }) {
+  const stats = captainStats[String(captainId)];
+  const ratioPct = stats?.picks > 0 ? stats.ratio * 100 : 0;
+  const tone = ratioPct >= 50 ? '#f87171' : '#fbbf24';
+  return (
+    <div className="pb-card pb-draft-roster-panel" style={{
+      position: 'relative',
+      borderTop: `3px solid ${accent}`,
+      padding: '14px 12px 12px',
+    }}>
+      <div style={{ marginBottom: 10 }}>
+        <div className="pb-eyebrow" style={{ letterSpacing: '0.16em' }}>{label}</div>
+        <div style={{
+          fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700,
+          color: 'var(--text-primary)', marginTop: 2,
+          display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap',
+        }}>
+          <span style={{ color: accent }}>★</span>
+          <span>{capName}</span>
+          <span style={{ fontSize: 10, fontFamily: 'var(--font-condensed, var(--font))', letterSpacing: 1, color: 'var(--text-muted)' }}>CAPTAIN</span>
+          {ratioPct >= 25 && (
+            <span
+              title={`Auto-picked ${stats.autoPicks} of ${stats.picks} picks across last ${stats.sessionsConsidered} captain ${stats.sessionsConsidered === 1 ? 'run' : 'runs'}`}
+              style={{
+                fontSize: 10, fontFamily: 'var(--font-condensed, var(--font))',
+                letterSpacing: 1, color: tone, border: `1px solid ${tone}`,
+                borderRadius: 4, padding: '1px 6px', fontWeight: 700,
+              }}
+            >⏱ {ratioPct.toFixed(0)}% AUTO</span>
+          )}
+        </div>
+      </div>
+      <div className="pb-roster-slots" aria-label={`${picks.length} of 5 players selected`}>
+        {Array.from({ length: 5 }, (_, index) => {
+          const player = picks[index];
+          return player ? (
+            <div className="pb-roster-slot-filled" key={player.account_id}>
+              <PlayerRow
+                player={player}
+                isTeamRoster
+                session={session}
+                isCurrentUser={Number(player.account_id) === currentUserId}
+                isCaptain={Number(player.account_id) === captainId}
+                isActiveCaptain={activeCaptain && Number(player.account_id) === captainId}
+                balanceScore={scoreFor(player.account_id)}
+              />
+            </div>
+          ) : (
+            <div key={`open-${index}`} className="pb-roster-slot">
+              <span>{index + 1}</span><span>Awaiting pick</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -708,7 +784,7 @@ export default function Inhouse() {
   // v5.75: when a session is in drafting, poll /draft-status so we know
   // whose turn it is and can render the captain pick UI accordingly.
   useEffect(() => {
-    if (!session || session.status !== 'drafting') {
+    if (!session || !['drafting', 'server_failed'].includes(session.status)) {
       setDraftStatus(null);
       return;
     }
@@ -866,14 +942,14 @@ export default function Inhouse() {
     // v5.75: captains can pick directly. Send admin header only if signed-in
     // user has a superuser key — the backend will fall back to session-auth
     // and verify it's the right captain's turn.
-    const teamPlayers = players.filter(p => p.team === team);
     try {
       await api(`/inhouse/${session.id}/draft-pick`, {
         method: 'POST',
         headers: isAdmin ? adminHeaders : {},
-        body: JSON.stringify({ accountId, team, pickOrder: teamPlayers.length }),
+        body: JSON.stringify({ accountId, team, expectedPickIndex: draftStatus?.pickIdx }),
       });
       await refresh();
+      setDraftStatus(await api(`/inhouse/${session.id}/draft-status`));
     } catch (e) { alert(e.message); }
   }
 
@@ -1629,7 +1705,7 @@ export default function Inhouse() {
                   pill so players don't think the lobby is stuck. On
                   server_failed show a red banner with a captain-visible
                   Retry button (admins also see it). */}
-              {dotaAutomation === true && session.status === 'drafting' && undrafted.length === 0 && isInSession && (
+              {dotaAutomation === true && session.status === 'drafting' && undrafted.length === 0 && isInSession && draftStatus?.review?.approved && (
                 <div style={{ marginTop: 8, padding: '10px 14px', background: 'rgba(33,150,243,0.12)', border: '1px solid rgba(33,150,243,0.4)', borderRadius: 6, fontSize: 13, color: '#66c0f4', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#66c0f4', animation: 'pulse 1.4s ease-in-out infinite' }} />
                   Provisioning server…
@@ -1637,8 +1713,10 @@ export default function Inhouse() {
               )}
               {dotaAutomation === false && ['drafting', 'server_failed'].includes(session.status) && undrafted.length === 0 && (
                 <div role="status" className="card" style={{ padding: 16, marginTop: 12 }}>
-                  <strong>Teams are ready — website-only mode</strong>
-                  <p>Create the Dota lobby manually and invite the players shown below. No automatic invites or game-server setup will run. An admin can mark the manual match complete afterwards.</p>
+                  <strong>{draftStatus?.review?.approved ? 'Teams are confirmed — website-only mode' : 'Teams drafted — captain review required'}</strong>
+                  <p>{draftStatus?.review?.approved
+                    ? 'Create the Dota lobby manually and invite the confirmed teams. No automatic invites or game-server setup will run. An admin can mark the manual match complete afterwards.'
+                    : 'Both captains should review their teams below. Propose a trade or confirm you are happy before arranging the match.'}</p>
                 </div>
               )}
               {dotaAutomation === true && session.status === 'server_failed' && (isInSession || isAdmin) && (
@@ -1730,7 +1808,7 @@ export default function Inhouse() {
             const myCaptainTeam = myAccountId === cap1Id ? 1 : myAccountId === cap2Id ? 2 : null;
             const turn = draftStatus?.currentPickerTeam ?? null;
             const isMyTurn = myCaptainTeam !== null && turn === myCaptainTeam;
-            const canDraft = isAdmin || isMyTurn;
+            const canDraft = isAdmin || hasAdminRole || isMyTurn;
             const turnName = turn === 1 ? cap1Name : turn === 2 ? cap2Name : null;
             const isDrafting = session.status === 'drafting';
             // Task #815 — teams read as Green side / Red side (mapped to the
@@ -1752,60 +1830,16 @@ export default function Inhouse() {
               return v == null ? null : Number(v);
             };
 
-            const RosterPanel = ({ teamNum, label, accent, capName, picks }) => (
-              <div className="pb-card" style={{
-                position: 'relative',
-                borderTop: `3px solid ${accent}`,
-                padding: '14px 12px 12px',
-                minHeight: 320,
-              }}>
-                <div style={{ marginBottom: 10 }}>
-                  <div className="pb-eyebrow" style={{ letterSpacing: '0.16em' }}>{label}</div>
-                  <div style={{
-                    fontFamily: 'var(--font-serif)', fontSize: 18, fontWeight: 700,
-                    color: 'var(--text-primary)', marginTop: 2,
-                    display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap',
-                  }}>
-                    <span style={{ color: accent }}>★</span>
-                    <span>{capName}</span>
-                    <span style={{ fontSize: 10, fontFamily: 'var(--font-condensed, var(--font))', letterSpacing: 1, color: 'var(--text-muted)' }}>CAPTAIN</span>
-                    {(() => {
-                      // Task #190 — flag chronic AFK captains in-lobby. Only
-                      // surfaces when ratio crosses a noticeable threshold.
-                      const capId = teamNum === 1 ? cap1Id : cap2Id;
-                      const stats = captainAutoStats[String(capId)];
-                      if (!stats || !(stats.picks > 0)) return null;
-                      const ratioPct = stats.ratio * 100;
-                      if (ratioPct < 25) return null;
-                      const tone = ratioPct >= 50 ? '#f87171' : '#fbbf24';
-                      return (
-                        <span
-                          title={`Auto-picked ${stats.autoPicks} of ${stats.picks} picks across last ${stats.sessionsConsidered} captain ${stats.sessionsConsidered === 1 ? 'run' : 'runs'}`}
-                          style={{
-                            fontSize: 10, fontFamily: 'var(--font-condensed, var(--font))',
-                            letterSpacing: 1, color: tone, border: `1px solid ${tone}`,
-                            borderRadius: 4, padding: '1px 6px', fontWeight: 700,
-                          }}
-                        >⏱ {ratioPct.toFixed(0)}% AUTO</span>
-                      );
-                    })()}
-                  </div>
-                </div>
-                {picks.length === 0
-                  ? <div style={{ color: 'var(--text-muted)', fontSize: 13, fontStyle: 'italic', padding: '6px 4px' }}>No picks yet</div>
-                  : picks.map(p => (
-                      <PlayerRow
-                        key={p.account_id} player={p} session={session}
-                        isCurrentUser={Number(p.account_id) === myAccountId}
-                        isCaptain={Number(p.account_id) === (teamNum === 1 ? cap1Id : cap2Id)}
-                        balanceScore={scoreFor(p.account_id)}
-                      />
-                    ))}
-              </div>
-            );
-
             return (
               <div className="pb-draft-workspace" style={{ marginTop: 20 }}>
+                {(team1.length > 5 || team2.length > 5) && (
+                  <div role="alert" style={{ padding: 12, marginBottom: 12, border: '1px solid #d8908c', borderRadius: 6, color: '#f0b5b1' }}>
+                    This existing session is over capacity (Green {team1.length}/5, Red {team2.length}/5).
+                    {' '}Further over-capacity picks are blocked. An admin should cancel this session and start a fresh draft.
+                    {' '}Extra assigned players: {[...team1.slice(5), ...team2.slice(5)].map(resolvePlayerDisplayName).join(', ')}.
+                    {' '}No players have been automatically moved or removed.
+                  </div>
+                )}
                 {/* Timer / turn-indicator strip — anchored at the top of the draft board. */}
                 {isDrafting && (
                   <div className="pb-card pb-draft-timer" style={{
@@ -1845,12 +1879,14 @@ export default function Inhouse() {
                         remaining player onto the picking captain's team via
                         the same /draft-pick handler (so the Task #168
                         auto-provision still fires on the 8th pick). */}
-                    {undrafted.length > 0 && draftStatus?.pickDeadlineAt && (
+                    {(
                       <div style={{ flex: '1 1 220px', minWidth: 220 }}>
-                        <Countdown
-                          endsAt={draftStatus.pickDeadlineAt}
-                          seconds={draftStatus.pickSeconds || 30}
-                          label={isMyTurn ? 'Pick or get auto-picked' : 'Pick timer'}
+                        <DraftPickClock
+                          startsAt={draftStatus?.pickStartsAt}
+                          deadlineAt={draftStatus?.pickDeadlineAt}
+                          seconds={draftStatus?.pickSeconds || 30}
+                          isMyTurn={isMyTurn}
+                          complete={undrafted.length === 0}
                         />
                       </div>
                     )}
@@ -1939,7 +1975,10 @@ export default function Inhouse() {
                   gap: 14,
                 }} className="inhouse-draft-board">
                   <RosterPanel
-                    teamNum={1} label={team1Label} accent="#4caf50" capName={cap1Name}
+                    label={team1Label} accent="#4caf50" capName={cap1Name}
+                    activeCaptain={isDrafting && undrafted.length > 0 && turn === 1}
+                    captainId={cap1Id} captainStats={captainAutoStats}
+                    currentUserId={myAccountId} session={session} scoreFor={scoreFor}
                     picks={team1.sort((a,b)=>(a.pick_order||0)-(b.pick_order||0))}
                   />
 
@@ -1947,7 +1986,7 @@ export default function Inhouse() {
                   <div className="pb-card" style={{
                     borderTop: '3px solid var(--pb-brass)',
                     padding: '14px 12px 12px',
-                    minHeight: 0,
+                    minHeight: 520,
                   }}>
                     <div className="pb-eyebrow" style={{ letterSpacing: '0.16em', marginBottom: 2 }}>The Pool</div>
                     <div style={{
@@ -1962,20 +2001,38 @@ export default function Inhouse() {
                       </div>
                     )}
                     {undrafted.length === 0
-                      ? <div style={{ color: 'var(--text-muted)', fontSize: 13, fontStyle: 'italic', padding: '6px 4px' }}>
-                          {isDrafting ? 'All players drafted.' : 'No unpicked players.'}
-                        </div>
+                      ? (draftStatus?.review?.available || draftStatus?.review?.approved)
+                        ? <div className="pb-draft-review-in-pool" tabIndex={0} aria-label="Captain team review">
+                            <DraftTeamReview
+                              sessionId={session.id}
+                              review={draftStatus.review}
+                              players={players}
+                              captainTeam={myCaptainTeam}
+                              captainAccountIds={[cap1Id, cap2Id]}
+                              onChanged={async () => {
+                                setDraftStatus(await api(`/inhouse/${session.id}/draft-status`));
+                                await refresh();
+                              }}
+                            />
+                          </div>
+                        : <div style={{ color: 'var(--text-muted)', fontSize: 13, fontStyle: 'italic', padding: '6px 4px' }}>
+                            {isDrafting ? 'All players drafted.' : 'No unpicked players.'}
+                          </div>
                       : <div className="pb-draft-pool-grid">{undrafted.sort((a,b)=>Number(b.trueskill_mmr)-Number(a.trueskill_mmr)).map(p => (
                           <PlayerRow key={p.account_id} player={p} session={session}
                             isCurrentUser={Number(p.account_id) === myAccountId}
-                            viewerIsAdmin={isAdmin} myCaptainTeam={myCaptainTeam}
+                            viewerIsAdmin={isAdmin || hasAdminRole} myCaptainTeam={myCaptainTeam}
+                            fullTeams={[1, 2].filter(t => players.filter(p => Number(p.team) === t).length >= 5)}
                             isPoolPlayer
                             canDraft={isDrafting && canDraft} onDraftPick={draftPick} />
                         ))}</div>}
                   </div>
 
                   <RosterPanel
-                    teamNum={2} label={team2Label} accent="#f44336" capName={cap2Name}
+                    label={team2Label} accent="#f44336" capName={cap2Name}
+                    activeCaptain={isDrafting && undrafted.length > 0 && turn === 2}
+                    captainId={cap2Id} captainStats={captainAutoStats}
+                    currentUserId={myAccountId} session={session} scoreFor={scoreFor}
                     picks={team2.sort((a,b)=>(a.pick_order||0)-(b.pick_order||0))}
                   />
                 </div>
@@ -2042,6 +2099,16 @@ export default function Inhouse() {
         </div>
         );
       })()}
+
+      {session && (isAdmin || hasAdminRole || (myPlayer && myPlayer.status !== 'declined')) && (
+        <LobbyChat
+          key={`${session.id}:${myAccountId}`}
+          sessionId={session.id}
+          accountId={myAccountId}
+          sessionStatus={session.status}
+          allowed
+        />
+      )}
 
       {pastSessions.length > 0 && !['drafting', 'server_failed', 'in_progress'].includes(session?.status) && (() => {
         const PAST_STATUS_BADGE = {

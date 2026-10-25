@@ -6,7 +6,8 @@ import RankBadge from './RankBadge';
 import FounderRing from './founderRings/FounderRing';
 import { FRAME_META } from '../profileCosmetics';
 import './lobby-player-identity.css';
-import LobbyPlayerScouting, { roleLabel } from './LobbyPlayerScouting';
+import LobbyPlayerScouting from './LobbyPlayerScouting';
+import { normalizePreferredRoles } from '../utils/preferredRoles';
 
 export function LobbyPlayerEmblem({ player }) {
   const mmr = player.inhouse_mmr == null ? null : Number(player.inhouse_mmr);
@@ -46,6 +47,7 @@ export default function LobbyPlayerIdentity({ player, displayName }) {
   const wins = Number(player.wins) || 0;
   const losses = Number(player.losses) || 0;
   const games = wins + losses;
+  const preferredRoles = normalizePreferredRoles(player.preferred_positions);
   const keepOpen = () => clearTimeout(closeTimer.current);
   const show = () => {
     keepOpen();
@@ -96,7 +98,11 @@ export default function LobbyPlayerIdentity({ player, displayName }) {
           {player.leaderboard_rank && <span>All-time leaderboard #{player.leaderboard_rank}</span>}
           <RankBadge rankTier={player.dota_rank_tier} leaderboardRank={player.dota_leaderboard_rank} />
           <span>{games ? `${wins}W / ${losses}L · ${Math.round(wins / games * 100)}% win rate` : 'No recorded games yet'}</span>
-          <span>Preferred roles: {player.preferred_positions ? String(player.preferred_positions).split(',').map(roleLabel).join(', ') : 'Not set'}</span>
+          <span>Preferred roles: {preferredRoles.length ? preferredRoles.join(', ') : 'Not set'}</span>
+          {player.last_played && Number.isFinite(new Date(player.last_played).getTime()) && <small>Last played: {new Date(player.last_played).toLocaleDateString()}</small>}
+          {player.voice_verified && <small>Verified in voice</small>}
+          {player.not_in_dota === false && <small>In Dota</small>}
+          {player.roll != null && <small>Roll: {player.roll}</small>}
           <LobbyPlayerScouting accountId={player.account_id} />
           <small>Open profile in a new tab for more details.</small>
         </aside>, document.body

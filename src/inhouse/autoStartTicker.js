@@ -30,6 +30,7 @@ const {
   DRAFT_PICK_SEQUENCE,
   countDraftedNonCaptains,
   teamForPickIndex,
+  currentPickerTeam,
 } = require('./draftSequence');
 // Hybrid skill scoring used to pick the highest-MMR remaining player —
 // mirrors the score() helper in /select-captains so the auto-pick lands
@@ -295,7 +296,7 @@ async function tick(db, basePort) {
       const isCap = (p) => Number(p.account_id) === cap1 || Number(p.account_id) === cap2;
       // Task #211 — shared count + sequence-team math (was inline here).
       const drafted = countDraftedNonCaptains(players, s);
-      const team = teamForPickIndex(drafted);
+      const team = currentPickerTeam(players, s);
       if (team === null) {
         // Draft is already complete — just clear the stale deadline so we
         // stop tripping this branch on every tick.
@@ -318,7 +319,7 @@ async function tick(db, basePort) {
       const r = await fetch(`http://127.0.0.1:${port}/api/inhouse/${s.id}/draft-pick`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-superuser-key': key },
-        body: JSON.stringify({ accountId: pick.account_id, team, pickOrder: teamPlayersBefore, pickSource: 'auto_deadline' }),
+        body: JSON.stringify({ accountId: pick.account_id, team, pickOrder: teamPlayersBefore, pickSource: 'auto_deadline', expectedPickDeadlineAt: s.draft_pick_deadline_at }),
       });
       if (r.ok) {
         log(`Session #${s.id}: pick deadline expired, auto-picked ${pick.account_id} onto team ${team} (pick ${drafted + 1}/${DRAFT_PICK_SEQUENCE.length})`);
@@ -352,6 +353,7 @@ async function tick(db, basePort) {
       // Task #211 — shared count helper (was inline here too).
       const drafted = countDraftedNonCaptains(players, s);
       if (drafted < DRAFT_PICK_SEQUENCE.length) continue;
+      if (!require('./draftReview').isDraftReviewApproved(s, players)) continue;
       const { provisionInhouseServer } = require('./serverProvisioner');
       const r = await provisionInhouseServer(s.id, { trigger: 'auto_recovery' });
       if (r.ok && !r.skipped) {
